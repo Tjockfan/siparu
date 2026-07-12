@@ -1,0 +1,239 @@
+/**
+ * Plugin configuration: JSON Schema for the Signal K admin UI + resolved
+ * runtime options with defaults.
+ *
+ * Day-1 rule: no boat-specific value may be hardcoded - SOG sanity
+ * threshold, TWS source fallback, season start, boat name, optional port
+ * table and voyage/tender-merge thresholds are all configuration.
+ */
+
+export interface PortEntry {
+  name: string
+  latitude: number
+  longitude: number
+  radiusNm: number
+}
+
+export interface VoyageOptions {
+  openKnots: number
+  openMinutes: number
+  closeMinutes: number
+  mergeMaxGapMinutes: number
+  mergeMaxHopNm: number
+  mergeShortNm: number
+}
+
+export interface Options {
+  boatName: string
+  snapshotSeconds: number
+  maxSogKnots: number
+  seasonStart: string // MM-DD
+  maxStorageMB: number
+  chartsRemoteUrl: string
+  relayUrl: string
+  ports: PortEntry[]
+  voyage: VoyageOptions
+  /**
+   * Written by the plugin at pairing, never by the user - which is why it is absent
+   * from CONFIG_SCHEMA and so never rendered in the admin UI. Holds the boat_token,
+   * so it lives at the same protection level as the rest of the Signal K config
+   * directory. Removed in one shot by "reset remote viewing" on the boat.
+   */
+  remote?: RemoteLink
+}
+
+export interface RemoteLink {
+  boatId: string
+  boatToken: string
+  /** Masked (o***@gmail.com): enough to recognise, not enough to harvest. */
+  pairedEmail: string | null
+  pairedAt: string
+}
+
+export const DEFAULTS: Options = {
+  boatName: '',
+  snapshotSeconds: 60,
+  maxSogKnots: 70,
+  seasonStart: '01-01',
+  maxStorageMB: 500,
+  chartsRemoteUrl: 'https://tiles.siparu.app',
+  relayUrl: 'https://relay.siparu.app',
+  ports: [],
+  voyage: {
+    openKnots: 1.5,
+    openMinutes: 3,
+    closeMinutes: 5,
+    mergeMaxGapMinutes: 45,
+    mergeMaxHopNm: 0.5,
+    mergeShortNm: 1.0
+  }
+}
+
+/** Values considered live-tunable internals, not user configuration. */
+export const INTERNAL = {
+  samplePeriodMs: 2000,
+  /** A path value older than this loses priority in fallback merges (TWS, depth). */
+  staleMs: 30_000,
+  /** Track segments implying speed above this are excluded from rollup distance. */
+  rollupSpeedGuardKn: 80,
+  /** No delta for this long -> /health reports degraded. */
+  degradedAfterMs: 5 * 60_000
+}
+
+export const KN_TO_MS = 0.514444
+
+export function resolveOptions(raw: unknown): Options {
+  const c = (raw ?? {}) as Partial<Options>
+  const v = (c.voyage ?? {}) as Partial<VoyageOptions>
+  const num = (x: unknown, d: number, min?: number): number =>
+    typeof x === 'number' && Number.isFinite(x) && (min === undefined || x >= min) ? x : d
+  return {
+    boatName: typeof c.boatName === 'string' ? c.boatName.trim() : DEFAULTS.boatName,
+    snapshotSeconds: num(c.snapshotSeconds, DEFAULTS.snapshotSeconds, 10),
+    maxSogKnots: num(c.maxSogKnots, DEFAULTS.maxSogKnots, 1),
+    seasonStart: /^\d{2}-\d{2}$/.test(c.seasonStart ?? '') ? (c.seasonStart as string) : DEFAULTS.seasonStart,
+    maxStorageMB: num(c.maxStorageMB, DEFAULTS.maxStorageMB, 10),
+    chartsRemoteUrl: /^https?:\/\/\S+$/.test(c.chartsRemoteUrl ?? '')
+      ? (c.chartsRemoteUrl as string).replace(/\/+$/, '')
+      : DEFAULTS.chartsRemoteUrl,
+    relayUrl: /^https?:\/\/\S+$/.test(c.relayUrl ?? '')
+      ? (c.relayUrl as string).replace(/\/+$/, '')
+      : DEFAULTS.relayUrl,
+    // Round-trip only. The plugin wrote this; the user never types it, and a
+    // half-formed one is worse than none - a boatToken without a boatId cannot
+    // stream anywhere, it can only confuse the screen into saying "paired".
+    remote:
+      c.remote && typeof c.remote.boatId === 'string' && typeof c.remote.boatToken === 'string'
+        ? {
+            boatId: c.remote.boatId,
+            boatToken: c.remote.boatToken,
+            pairedEmail: typeof c.remote.pairedEmail === 'string' ? c.remote.pairedEmail : null,
+            pairedAt: typeof c.remote.pairedAt === 'string' ? c.remote.pairedAt : new Date(0).toISOString()
+          }
+        : undefined,
+    ports: Array.isArray(c.ports)
+      ? c.ports
+          .filter(
+            (p): p is PortEntry =>
+              !!p && typeof p.name === 'string' && typeof p.latitude === 'number' && typeof p.longitude === 'number'
+          )
+          .map((p) => ({ ...p, radiusNm: num(p.radiusNm, 4.0, 0.01) }))
+      : [],
+    voyage: {
+      openKnots: num(v.openKnots, DEFAULTS.voyage.openKnots, 0.1),
+      openMinutes: num(v.openMinutes, DEFAULTS.voyage.openMinutes, 1),
+      closeMinutes: num(v.closeMinutes, DEFAULTS.voyage.closeMinutes, 1),
+      mergeMaxGapMinutes: num(v.mergeMaxGapMinutes, DEFAULTS.voyage.mergeMaxGapMinutes, 0),
+      mergeMaxHopNm: num(v.mergeMaxHopNm, DEFAULTS.voyage.mergeMaxHopNm, 0),
+      mergeShortNm: num(v.mergeShortNm, DEFAULTS.voyage.mergeShortNm, 0)
+    }
+  }
+}
+
+/** JSON Schema rendered by the Signal K admin UI plugin-config screen. */
+export const CONFIG_SCHEMA = {
+  type: 'object',
+  properties: {
+    boatName: {
+      type: 'string',
+      title: 'Boat name',
+      description: 'Leave empty to use the vessel name configured in Signal K.',
+      default: DEFAULTS.boatName
+    },
+    snapshotSeconds: {
+      type: 'number',
+      title: 'Snapshot interval (seconds)',
+      description: 'How often a history row is recorded. 60 is a good default.',
+      default: DEFAULTS.snapshotSeconds,
+      minimum: 10
+    },
+    maxSogKnots: {
+      type: 'number',
+      title: 'Maximum plausible speed (knots)',
+      description:
+        'Speed-over-ground readings above this are treated as GPS/AIS glitches and rejected. Set comfortably above your hull maximum.',
+      default: DEFAULTS.maxSogKnots,
+      minimum: 1
+    },
+    seasonStart: {
+      type: 'string',
+      title: 'Season start (MM-DD)',
+      description: 'Start of your boating season, used for season statistics.',
+      default: DEFAULTS.seasonStart
+    },
+    maxStorageMB: {
+      type: 'number',
+      title: 'History storage limit (MB)',
+      description:
+        'Raw history is pruned oldest-first when the limit is reached. Hourly/daily summaries are always kept.',
+      default: DEFAULTS.maxStorageMB,
+      minimum: 10
+    },
+    chartsRemoteUrl: {
+      type: 'string',
+      title: 'Chart tile server (advanced)',
+      description:
+        'Base URL the map loads chart tiles, fonts and sprites from. Files placed in the plugin\'s "charts" data folder are served locally instead (offline charts).',
+      default: DEFAULTS.chartsRemoteUrl
+    },
+    ports: {
+      type: 'array',
+      title: 'Named ports (optional)',
+      description: 'Used to label voyage start/end locations. Positions never leave the boat.',
+      default: [],
+      items: {
+        type: 'object',
+        required: ['name', 'latitude', 'longitude'],
+        properties: {
+          name: { type: 'string', title: 'Name' },
+          latitude: { type: 'number', title: 'Latitude' },
+          longitude: { type: 'number', title: 'Longitude' },
+          radiusNm: {
+            type: 'number',
+            title: 'Radius (NM)',
+            description: 'Voyages starting/ending within this distance are labeled with the port name.',
+            default: 4.0
+          }
+        }
+      }
+    },
+    voyage: {
+      type: 'object',
+      title: 'Voyage detection',
+      properties: {
+        openKnots: {
+          type: 'number',
+          title: 'Underway threshold (knots)',
+          description: 'A voyage opens when speed stays above this.',
+          default: DEFAULTS.voyage.openKnots
+        },
+        openMinutes: {
+          type: 'number',
+          title: 'Open after (minutes)',
+          default: DEFAULTS.voyage.openMinutes
+        },
+        closeMinutes: {
+          type: 'number',
+          title: 'Close after stationary (minutes)',
+          default: DEFAULTS.voyage.closeMinutes
+        },
+        mergeMaxGapMinutes: {
+          type: 'number',
+          title: 'Merge: max stop between legs (minutes)',
+          description: 'Short stops (e.g. picking up a tender) merge two legs into one voyage.',
+          default: DEFAULTS.voyage.mergeMaxGapMinutes
+        },
+        mergeMaxHopNm: {
+          type: 'number',
+          title: 'Merge: max drift while stopped (NM)',
+          default: DEFAULTS.voyage.mergeMaxHopNm
+        },
+        mergeShortNm: {
+          type: 'number',
+          title: 'Merge: max length of the short leg (NM)',
+          default: DEFAULTS.voyage.mergeShortNm
+        }
+      }
+    }
+  }
+}

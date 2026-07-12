@@ -1,0 +1,60 @@
+# CI has two layers:
+#  1. plugin-ci - Signal K's official reusable workflow: Linux x64/arm64, macOS,
+#     Windows (Node 20+22) plus an armv7/Venus OS run under QEMU. It verifies the
+#     package layout, entry point, schema, lifecycle, API usage, npm-pack integrity
+#     and the --ignore-scripts AppStore install.
+#  2. guards - the product's non-negotiables: the read-only proof, GET-only REST,
+#     the map-stack licence gate, and no value imports from devDependencies.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  plugin-ci:
+    # Pinned to a commit SHA (supply chain). To update:
+    # gh api repos/SignalK/signalk-server/commits/master --jq .sha
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@1806425cc9389e3de85c78609397043e67ea0f1d
+    with:
+      node-versions: '["20", "22"]'
+      build-command: 'npm run ci:build'
+      test-command: 'npm test'
+
+  guards:
+    name: Product guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Read-only proof - the plugin never writes to the boat
+        run: |
+          # The vessel-write surface of @signalk/server-api, in full. This is the
+          # promise the README makes, and it is the one that has to hold.
+          ! grep -rnE "handleMessage|nmea2000out|nmea0183out|registerPutHandler|registerActionHandler|registerDeltaInputHandler|emitPropertyValue|putSelfPath" plugin/src
+
+      - name: GET-only REST - pairing is the only exception, and it is named
+        run: |
+          # rest.ts stays GET-only. The four pairing routes move the plugin's own
+          # state - a code, an approval, a token - and call the relay outbound; the
+          # step above proves, independently, that none of it reaches the vessel.
+          # A fifth write route breaks this build on purpose: it needs a human.
+          offenders=$(grep -rnE "router\.(post|put|delete|patch)\(" plugin/src \
+            | grep -vE "router\.post\('/pair/(start|approve|deny|reset)'") || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: Read-only proof - the webapp writes only to the pairing routes
+        run: |
+          offenders=$(grep -rnE "method: *['\"]?(PUT|POST|DELETE|PATCH)" webapp/src \
+            | grep -vE "'/pair/(start|approve|deny|reset)'") || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: License gate - no Leaflet/CARTO/OpenSeaMap remnants
+        run: |
+          ! grep -rin "leaflet\|cartocdn\|openseamap" plugin/src webapp/src
+
+      - name: Runtime purity - no value imports from devDependencies
+        run: |
+          ! grep -rn "from '@signalk/server-api'\|from 'express'" plugin/src | grep -v "import type"

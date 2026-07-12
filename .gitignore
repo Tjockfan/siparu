@@ -1,0 +1,16 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.log
+.env
+.env.*
+.DS_Store
+
+# Webapp bundle - shipped via package.json "files", not committed
+public/
+
+# Local test sandbox
+.sandbox/
+
+# npm pack output
+*.tgz

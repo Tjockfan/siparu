@@ -1,0 +1,47 @@
+{
+  "name": "signalk-siparu",
+  "version": "0.1.1",
+  "description": "Kept aboard, proven ashore. An impartial, timestamped record of every voyage: position, wind, depth and logbook, written on the boat and readable from anywhere. A read-only Signal K plugin with a built-in PWA.",
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp"
+  ],
+  "main": "plugin/dist/index.js",
+  "files": [
+    "plugin/dist",
+    "public"
+  ],
+  "signalk-plugin-enabled-by-default": true,
+  "signalk": {
+    "displayName": "Siparu"
+  },
+  "author": "Siparu",
+  "homepage": "https://siparu.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tjockfan/siparu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Tjockfan/siparu/issues"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p plugin/tsconfig.json",
+    "watch": "tsc -p plugin/tsconfig.json --watch",
+    "test": "vitest run",
+    "prepack": "npm run build:all",
+    "build:webapp": "npm --prefix webapp run build",
+    "build:all": "npm run build && npm run build:webapp",
+    "ci:build": "npm --prefix webapp ci && npm run build:all"
+  },
+  "devDependencies": {
+    "@signalk/server-api": "^2.30.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.19.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0"
+  }
+}
