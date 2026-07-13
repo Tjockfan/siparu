@@ -17,6 +17,7 @@
  */
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
+import type { UplinkStatus } from './uplink'
 
 /** Written into the plugin's own options, so it survives a plugin update. */
 export interface RemoteState {
@@ -30,7 +31,18 @@ export type PairScreen =
   | { state: 'idle' }
   | { state: 'showing_code'; userCode: string; expiresAt: string }
   | { state: 'awaiting_approval'; userCode: string; email: string | null; expiresAt: string }
-  | { state: 'paired'; boatId: string; email: string | null; pairedAt: string }
+  | {
+      state: 'paired'
+      boatId: string
+      email: string | null
+      pairedAt: string
+      /**
+       * Whether she is actually reaching the relay. "Paired" and "streaming" are not
+       * the same thing, and the gap between them is where an owner sits watching a
+       * screen that has not moved for two days, believing all is well.
+       */
+      uplink?: UplinkStatus
+    }
   | { state: 'expired' }
   | { state: 'error'; message: string }
 
@@ -38,6 +50,8 @@ interface Deps {
   app: ServerAPI
   relayUrl: string
   boatName: () => string
+  /** Null before the plugin has finished starting; the screen simply omits it. */
+  uplinkStatus: () => UplinkStatus | null
   /**
    * Signal K's own id for this vessel: 'urn:mrn:imo:mmsi:...' when she has an MMSI, her
    * UUID urn otherwise, and empty when the server was never told either.
@@ -134,7 +148,15 @@ export function maskEmail(email: string | null): string | null {
 }
 
 export function registerPairRoutes(router: IRouter, deps: Deps): void {
-  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote } = deps
+  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus } = deps
+
+  const paired = (remote: RemoteState): PairScreen => ({
+    state: 'paired',
+    boatId: remote.boatId,
+    email: remote.pairedEmail,
+    pairedAt: remote.pairedAt,
+    uplink: uplinkStatus() ?? undefined
+  })
 
   /** What the on-board screen renders. Safe to poll; never returns a secret. */
   router.get('/pair/status', (_req, res) => {
@@ -146,12 +168,7 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
       // paired would hide the very thing the skipper is standing there to read.
       if (deviceCode === null || userCode === null || expiresAt === null) {
         if (remote) {
-          res.json({
-            state: 'paired',
-            boatId: remote.boatId,
-            email: remote.pairedEmail,
-            pairedAt: remote.pairedAt
-          } satisfies PairScreen)
+          res.json(paired(remote))
           return
         }
 
@@ -338,16 +355,7 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
       // Refusing a re-pairing leaves the boat exactly as she was: still linked, still
       // streaming, on the token she already holds. Only an unlink changes that.
       const remote = getRemote()
-      res.json(
-        remote
-          ? {
-              state: 'paired',
-              boatId: remote.boatId,
-              email: remote.pairedEmail,
-              pairedAt: remote.pairedAt
-            }
-          : { state: 'idle' }
-      )
+      res.json(remote ? paired(remote) : { state: 'idle' })
     })()
   })
 

@@ -11,13 +11,33 @@
  * is the whole security model, so it is not allowed to look like a notification.
  */
 import { useEffect, useState } from "react";
-import { api, type PairScreen } from "../../lib/api";
+import { api, type PairScreen, type UplinkStatus } from "../../lib/api";
 import { usePolling } from "../../lib/usePolling";
 
 const PORTAL = "app.siparu.app";
 
 function minutesLeft(expiresAt: string): number {
   return Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 60_000));
+}
+
+function ago(ts: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 90) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  return m < 90 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+}
+
+/**
+ * "On" is not the same as "getting through", and the gap between them is the quietest
+ * way this product can fail: the boat says she is paired, the owner ashore watches a
+ * screen that has not moved since Tuesday, and nobody is told why. So the boat says
+ * whether her frames are landing, in the same breath as saying she is linked.
+ */
+function uplinkLine(up: UplinkStatus | undefined): string {
+  if (!up) return "Checking the link…";
+  if (up.rejected || up.failures > 0) return up.lastError ?? "Not reaching Siparu.";
+  if (up.lastSentTs) return `Sending · last frame ${ago(up.lastSentTs)}`;
+  return "Waiting to send the first frame.";
 }
 
 export default function PairBand() {
@@ -107,11 +127,13 @@ export default function PairBand() {
 
     case "paired":
       return (
-        <div className="pair">
+        // A rejected token is not a state to report calmly: the owner is watching a
+        // dead screen and only someone standing here can fix it.
+        <div className={`pair${data.uplink?.rejected ? " err" : ""}`}>
           <div className="pl">
             <div className="t">Remote viewing · on</div>
             <div className="who">{data.email ?? "linked account"}</div>
-            {!confirmOff && <div className="s">Reinstalled, or on a new plotter? Pair again.</div>}
+            {!confirmOff && <div className="s">{uplinkLine(data.uplink)}</div>}
           </div>
           {confirmOff ? (
             <div className="acts">

@@ -329,11 +329,30 @@ export type MapConfig = {
  * vessel's live position, and "b***@gmail.com" is not enough to make that call.
  * Afterwards it is just a label, so it gets the mask.
  */
+/**
+ * Whether her frames are actually reaching the relay. Paired and streaming are two
+ * different things, and the difference is invisible from ashore: the owner would see a
+ * screen that stopped updating and no reason why.
+ */
+export interface UplinkStatus {
+  lastSentTs: number | null
+  failures: number
+  /** The relay does not know this token. Only pairing her again fixes it. */
+  rejected: boolean
+  lastError: string | null
+}
+
 export type PairScreen =
   | { state: 'idle' }
   | { state: 'showing_code'; userCode: string; expiresAt: string }
   | { state: 'awaiting_approval'; userCode: string; email: string | null; expiresAt: string }
-  | { state: 'paired'; boatId: string; email: string | null; pairedAt: string }
+  | {
+      state: 'paired'
+      boatId: string
+      email: string | null
+      pairedAt: string
+      uplink?: UplinkStatus
+    }
   | { state: 'expired' }
   | { state: 'error'; message: string }
 

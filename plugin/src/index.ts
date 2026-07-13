@@ -25,6 +25,7 @@ import { registerRoutes, setRestDeps } from './rest'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
 import { dayKey } from './time'
+import { Uplink } from './uplink'
 import { VoyageLog } from './voyagelog'
 
 const PLUGIN_ID = 'siparu'
@@ -45,6 +46,7 @@ export = (app: ServerAPI): Plugin => {
   let rollups: RollupEngine | null = null
   let query: QueryService | null = null
   let voyages: VoyageLog | null = null
+  let uplink: Uplink | null = null
   let timer: NodeJS.Timeout | null = null
   let unsubscribes: Array<() => void> = []
   // Bumped on every start/stop; a stale async init aborts instead of leaking
@@ -222,6 +224,22 @@ export = (app: ServerAPI): Plugin => {
             mapConfig: () => resolveMapConfig(app.getDataDirPath(), opts.chartsRemoteUrl),
             dataDir: () => app.getDataDirPath()
           })
+
+          // Ashore. Only started once the vessel's own recording is up, because that is
+          // the order of the promises: her history is hers whether or not anyone ever
+          // pays for the remote half, and it must not wait on a network to begin.
+          //
+          // Started even when she is not paired - it sends nothing until she is, and it
+          // means pairing her mid-passage starts the feed without a restart.
+          const up = new Uplink({
+            relayUrl: opts.relayUrl,
+            getRemote: () => opts.remote,
+            frame: () => live(),
+            debug: (msg) => app.debug(msg)
+          })
+          uplink = up
+          up.start()
+
           app.setPluginStatus('Recording - waiting for first snapshot')
         })
         .catch((err) => {
@@ -244,6 +262,7 @@ export = (app: ServerAPI): Plugin => {
       })
       unsubscribes = []
       setRestDeps(null)
+      uplink?.stop()
       if (voyages) await voyages.flush()
       if (store) await store.flush()
       state = null
@@ -251,6 +270,7 @@ export = (app: ServerAPI): Plugin => {
       rollups = null
       query = null
       voyages = null
+      uplink = null
       app.setPluginStatus('Stopped')
     },
 
@@ -265,6 +285,7 @@ export = (app: ServerAPI): Plugin => {
         app,
         relayUrl: opts?.relayUrl ?? DEFAULTS.relayUrl,
         boatName: () => opts?.boatName || String(app.getSelfPath('name') ?? ''),
+        uplinkStatus: () => uplink?.status() ?? null,
         // The vessel's MMSI or UUID urn. Typed as a plain string, but the server only
         // assigns it when the boat has one or the other, so at runtime it can be
         // undefined - which is fine, because nothing is authorised by it: it is reported
@@ -282,6 +303,11 @@ export = (app: ServerAPI): Plugin => {
             )
           })
           opts = next
+
+          // A new link is not answerable for the old one's failures: an unlink followed
+          // by a fresh pairing must not leave "rejected" on the screen of a boat that is
+          // now streaming perfectly well.
+          uplink?.reset()
         }
       })
     }

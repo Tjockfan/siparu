@@ -15,6 +15,7 @@ import type { IRouter, Request, Response } from 'express'
 import type { ServerAPI } from '@signalk/server-api'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { __resetPairingState, maskEmail, registerPairRoutes, RemoteState } from '../src/pairing'
+import type { UplinkStatus } from '../src/uplink'
 
 type Handler = (req: Request, res: Response) => void
 
@@ -34,6 +35,7 @@ interface Opts {
   boatName?: string
   vesselUrn?: string
   remote?: RemoteState
+  uplink?: UplinkStatus
   saved?: (r: RemoteState | undefined) => void
 }
 
@@ -51,6 +53,7 @@ function routes(opts: Opts = {}) {
     relayUrl: 'https://relay.example',
     boatName: () => opts.boatName ?? 'Test Vessel',
     vesselUrn: () => opts.vesselUrn ?? 'urn:mrn:imo:mmsi:123456789',
+    uplinkStatus: () => opts.uplink ?? null,
     getRemote: () => remote,
     saveRemote: async (r) => {
       remote = r
@@ -256,6 +259,37 @@ describe('pair/deny', () => {
       state: 'paired',
       boatId: PAIRED.boatId
     })
+  })
+})
+
+describe('paired is not the same as streaming', () => {
+  // The failure this guards against is silent and it is the worst one in the product:
+  // the boat says "Remote viewing - on", the owner ashore sees a screen that has not
+  // moved since Tuesday, and neither of them is told why. Whether her frames are
+  // actually landing travels with the pairing state, on the same screen.
+  it('carries the uplink state to the boat screen', async () => {
+    const handlers = routes({
+      remote: PAIRED,
+      uplink: {
+        lastSentTs: null,
+        failures: 4,
+        rejected: true,
+        lastError: 'Siparu no longer recognises this boat. Pair her again.'
+      }
+    })
+
+    expect(await call(handlers, 'GET /pair/status')).toMatchObject({
+      state: 'paired',
+      uplink: { rejected: true, failures: 4 }
+    })
+  })
+
+  it('omits it while the plugin is still starting, rather than inventing one', async () => {
+    const handlers = routes({ remote: PAIRED })
+    const status = (await call(handlers, 'GET /pair/status')) as Record<string, unknown>
+
+    expect(status.state).toBe('paired')
+    expect(status.uplink).toBeUndefined()
   })
 })
 
