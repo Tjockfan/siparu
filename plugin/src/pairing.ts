@@ -38,6 +38,17 @@ interface Deps {
   app: ServerAPI
   relayUrl: string
   boatName: () => string
+  /**
+   * Signal K's own id for this vessel: 'urn:mrn:imo:mmsi:...' when she has an MMSI, her
+   * UUID urn otherwise, and empty when the server was never told either.
+   *
+   * Reported, and deliberately NOT how she is recognised. An mmsi is public - painted on
+   * the hull, broadcast over AIS - so anyone can put it in a Signal K server, which makes
+   * it an identity she merely asserts. Recognition runs on the token she already holds
+   * (see /pair/start). This travels along so a boat can be identified in support and in
+   * the owner's own fleet list, nothing more.
+   */
+  vesselUrn: () => string
   getRemote: () => RemoteState | undefined
   saveRemote: (r: RemoteState | undefined) => Promise<void>
 }
@@ -52,12 +63,38 @@ let userCode: string | null = null
 let expiresAt: string | null = null
 let lastError: string | null = null
 
-async function relay<T>(url: string, path: string, body: unknown): Promise<T> {
+/** A relay that answered and said no. Distinct from one that never answered at all. */
+export class RelayRefused extends Error {
+  constructor(
+    readonly status: number,
+    /** The relay's machine-readable reason, when it gave one ("not_your_boat"). */
+    readonly code: string | null,
+    message: string
+  ) {
+    super(message)
+    this.name = 'RelayRefused'
+  }
+}
+
+/**
+ * `boatToken` is the boat proving she is who she says she is. The relay will only let
+ * a re-pairing land on an existing vessel when this is present and valid - an identity
+ * she merely asserts (her MMSI) is public information and proves nothing.
+ */
+async function relay<T>(
+  url: string,
+  path: string,
+  body: unknown,
+  boatToken?: string
+): Promise<T> {
   let res: Response
   try {
     res = await fetch(`${url}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(boatToken ? { authorization: `Bearer ${boatToken}` } : {})
+      },
       body: JSON.stringify(body)
     })
   } catch (e) {
@@ -70,10 +107,23 @@ async function relay<T>(url: string, path: string, body: unknown): Promise<T> {
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`relay ${path} -> ${res.status} ${text.slice(0, 120)}`)
+    let code: string | null = null
+    try {
+      code = (JSON.parse(text) as { error?: string }).error ?? null
+    } catch {
+      // Not every refusal is JSON (a proxy, a captive portal, a 502 from the edge).
+    }
+    // A refusal is not an outage, and telling them apart is the whole point of the
+    // message the skipper reads next. The relay rejecting a request means the boat's
+    // uplink WORKS - sending them to look at DNS and captive portals is a wrong
+    // diagnosis dressed up as a helpful one.
+    throw new RelayRefused(res.status, code, `relay ${path} -> ${res.status} ${text.slice(0, 120)}`)
   }
   return (await res.json()) as T
 }
+
+/** The relay refused because the claimant does not own the boat she is already linked to. */
+const NOT_YOUR_BOAT = 'That account does not own this boat. She is still linked as before.'
 
 /** o***@gmail.com - enough for the owner to recognise themselves, not enough to harvest. */
 export function maskEmail(email: string | null): string | null {
@@ -84,28 +134,32 @@ export function maskEmail(email: string | null): string | null {
 }
 
 export function registerPairRoutes(router: IRouter, deps: Deps): void {
-  const { app, relayUrl, boatName, getRemote, saveRemote } = deps
+  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote } = deps
 
   /** What the on-board screen renders. Safe to poll; never returns a secret. */
   router.get('/pair/status', (_req, res) => {
     void (async () => {
       const remote = getRemote()
-      if (remote) {
-        res.json({
-          state: 'paired',
-          boatId: remote.boatId,
-          email: remote.pairedEmail,
-          pairedAt: remote.pairedAt
-        } satisfies PairScreen)
-        return
-      }
 
-      if (lastError) {
-        res.json({ state: 'error', message: lastError } satisfies PairScreen)
-        return
-      }
+      // A pairing in progress outranks "paired": an already-linked boat can be
+      // re-paired, and during that the screen must show the new code. Reporting her as
+      // paired would hide the very thing the skipper is standing there to read.
+      if (deviceCode === null || userCode === null || expiresAt === null) {
+        if (remote) {
+          res.json({
+            state: 'paired',
+            boatId: remote.boatId,
+            email: remote.pairedEmail,
+            pairedAt: remote.pairedAt
+          } satisfies PairScreen)
+          return
+        }
 
-      if (!deviceCode || !userCode || !expiresAt) {
+        if (lastError) {
+          res.json({ state: 'error', message: lastError } satisfies PairScreen)
+          return
+        }
+
         res.json({ state: 'idle' } satisfies PairScreen)
         return
       }
@@ -152,20 +206,32 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
     })()
   })
 
-  /** "Turn on remote viewing" - asks the relay for a code to put on the screen. */
+  /**
+   * "Turn on remote viewing", and equally "re-pair her".
+   *
+   * An already-paired boat may start a new pairing without unlinking first, and she
+   * SHOULD: the token she is holding travels with this request, and it is the only
+   * thing that lets the relay put the new pairing back on the vessel that already
+   * exists. Making her unlink first would throw that proof away, and every reinstall
+   * would leave the owner another dead duplicate in her fleet.
+   */
   router.post('/pair/start', (_req, res) => {
     void (async () => {
-      if (getRemote()) {
-        res.status(409).json({ error: 'already_paired' })
-        return
-      }
       lastError = null
       try {
         const started = await relay<{
           device_code: string
           user_code: string
           expires_in: number
-        }>(relayUrl, '/pair/start', { boat_name: boatName() || null })
+        }>(
+          relayUrl,
+          '/pair/start',
+          {
+            boat_name: boatName() || null,
+            vessel_urn: vesselUrn() || null
+          },
+          getRemote()?.boatToken
+        )
 
         deviceCode = started.device_code
         userCode = started.user_code
@@ -176,7 +242,14 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
         // No code is generated at all if the relay cannot be reached - the plan is
         // explicit about this. A code the owner can type but the boat can never
         // confirm is worse than an honest error.
-        lastError = 'Cannot reach Siparu. Check the boat is online (DNS, port 443, captive portal).'
+        lastError =
+          e instanceof RelayRefused && e.status === 429
+            ? // The relay counts per IP, not per boat, and a boat on Starlink or marina
+              // wifi shares hers with everyone else behind the same CGNAT. Blaming the
+              // vessel for a neighbour's attempts would send the skipper hunting a fault
+              // that is not there.
+              'Too many pairing attempts from this network. Wait an hour and try again.'
+            : 'Cannot reach Siparu. Check the boat is online (DNS, port 443, captive portal).'
         app.error(`pair start failed: ${String(e)}`)
         res.status(502).json({ state: 'error', message: lastError } satisfies PairScreen)
       }
@@ -194,11 +267,25 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
         return
       }
       try {
+        const previous = getRemote()
         const done = await relay<{
           boat_id: string
           boat_token: string
           claimed_by_email: string | null
         }>(relayUrl, '/pair/approve', { device_code: deviceCode })
+
+        // She is already linked, and this approval points somewhere else. That means the
+        // account which typed the code does not own her, so the relay opened a boat of
+        // ITS own. Adopting it would aim this vessel's feed at a stranger's account and
+        // leave the real owner's boat dark - the hijack, arriving by the back door, in a
+        // response the boat asked for. The relay refuses this too; the boat refuses it
+        // again, because a plugin that trusts whatever comes back has no defence at all.
+        if (previous && done.boat_id !== previous.boatId) {
+          deviceCode = userCode = expiresAt = null
+          app.error(`pair approve returned a different boat (${done.boat_id}); refusing`)
+          res.status(409).json({ state: 'error', message: NOT_YOUR_BOAT } satisfies PairScreen)
+          return
+        }
 
         // Persist BEFORE reporting success. If the disk is full (Cerbo issue #46 is
         // real and filed) this throws, and the owner is told pairing failed - rather
@@ -211,13 +298,31 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
           pairedAt: new Date().toISOString()
         })
 
+        // The new token is on disk, so the one it replaces may now be retired. This is
+        // the only reason the relay left the old token alive at all: had it killed the
+        // old one at approval and the write above failed, the boat would be off the air
+        // holding a token she never managed to keep. Best effort - if it does not get
+        // through, the previous token simply lives a little longer, which is harmless
+        // and self-corrects on the next re-pairing.
+        await relay(relayUrl, '/pair/confirm', {}, done.boat_token).catch((e: unknown) => {
+          app.debug(`pair confirm failed, old token still live: ${String(e)}`)
+        })
+
         deviceCode = userCode = expiresAt = null
         res.json({ state: 'paired', boatId: done.boat_id } satisfies Partial<PairScreen>)
       } catch (e) {
         app.error(`pair approve failed: ${String(e)}`)
-        res.status(502).json({
+
+        // The relay refuses a re-pairing claimed by anyone who does not already own her,
+        // and that is not a fault to retry - it is an answer. Telling the skipper to try
+        // again would have them hammering a code that can never work, while the real
+        // cause (they typed it into the wrong account) goes unsaid.
+        const denied = e instanceof RelayRefused && e.code === 'not_your_boat'
+        if (denied) deviceCode = userCode = expiresAt = null
+
+        res.status(denied ? 409 : 502).json({
           state: 'error',
-          message: 'Could not finish pairing. Try again.'
+          message: denied ? NOT_YOUR_BOAT : 'Could not finish pairing. Try again.'
         } satisfies PairScreen)
       }
     })()
@@ -229,7 +334,20 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
         await relay(relayUrl, '/pair/deny', { device_code: deviceCode }).catch(() => {})
       }
       deviceCode = userCode = expiresAt = null
-      res.json({ state: 'idle' } satisfies PairScreen)
+
+      // Refusing a re-pairing leaves the boat exactly as she was: still linked, still
+      // streaming, on the token she already holds. Only an unlink changes that.
+      const remote = getRemote()
+      res.json(
+        remote
+          ? {
+              state: 'paired',
+              boatId: remote.boatId,
+              email: remote.pairedEmail,
+              pairedAt: remote.pairedAt
+            }
+          : { state: 'idle' }
+      )
     })()
   })
 
@@ -243,6 +361,19 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
    */
   router.post('/pair/reset', (_req, res) => {
     void (async () => {
+      const remote = getRemote()
+
+      // Forgetting the token here is not enough - it would go on working at the relay,
+      // and anyone holding a copy (an old disk image, a plotter sold with the boat)
+      // could still write to this vessel. Tell the relay to kill it, THEN forget it.
+      // Best effort: if the boat is offline the local link is still cut, which is what
+      // the person standing at the screen asked for.
+      if (remote?.boatToken) {
+        await relay(relayUrl, '/pair/unlink', {}, remote.boatToken).catch((e: unknown) => {
+          app.error(`unlink could not reach the relay, token still live there: ${String(e)}`)
+        })
+      }
+
       await saveRemote(undefined)
       deviceCode = userCode = expiresAt = null
       lastError = null

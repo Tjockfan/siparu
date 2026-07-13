@@ -265,6 +265,11 @@ export = (app: ServerAPI): Plugin => {
         app,
         relayUrl: opts?.relayUrl ?? DEFAULTS.relayUrl,
         boatName: () => opts?.boatName || String(app.getSelfPath('name') ?? ''),
+        // The vessel's MMSI or UUID urn. Typed as a plain string, but the server only
+        // assigns it when the boat has one or the other, so at runtime it can be
+        // undefined - which is fine, because nothing is authorised by it: it is reported
+        // for identification, never used to prove who she is.
+        vesselUrn: () => String(app.selfId ?? ''),
         getRemote: () => opts?.remote,
         saveRemote: async (remote) => {
           // savePluginOptions persists through plugin updates (the plan requires

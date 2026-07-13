@@ -111,6 +111,7 @@ export default function PairBand() {
           <div className="pl">
             <div className="t">Remote viewing · on</div>
             <div className="who">{data.email ?? "linked account"}</div>
+            {!confirmOff && <div className="s">Reinstalled, or on a new plotter? Pair again.</div>}
           </div>
           {confirmOff ? (
             <div className="acts">
@@ -118,9 +119,16 @@ export default function PairBand() {
               {btn("Unlink", () => act(api.pair.reset), "accent")}
             </div>
           ) : (
-            // Two taps, because this is the one that matters when a boat changes
-            // hands: it destroys the token and the previous owner stops seeing her.
-            btn("Turn off", () => setConfirmOff(true), "ghost")
+            <div className="acts">
+              {/* Without this button the only way back to a fresh code was Turn off,
+                  and unlinking throws away the token that proves she is this boat -
+                  which is exactly how an owner ends up with duplicates of her own
+                  vessel. Pairing again keeps the proof, so she stays one boat. */}
+              {btn("Pair again", () => act(api.pair.start), "ghost")}
+              {/* Two taps, because this is the one that matters when a boat changes
+                  hands: it destroys the token and the previous owner stops seeing her. */}
+              {btn("Turn off", () => setConfirmOff(true), "ghost")}
+            </div>
           )}
         </div>
       );
