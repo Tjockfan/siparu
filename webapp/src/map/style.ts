@@ -173,8 +173,26 @@ type RawLayer = {
 } & Record<string, unknown>
 
 /* Marina berth names/labels are noise on a tracking map - these were
- * exactly the "pink zone boxes" of the old raster seamark overlay. */
-const SEAMARK_DROP = new Set(['sm_berth_label', 'sm_berth_area', 'sm_berth_line', 'sm_berth'])
+ * exactly the "pink zone boxes" of the old raster seamark overlay.
+ *
+ * Overhead cables and pipelines go with them, and that is a deliberate call rather
+ * than a tidy-up. They mark air draft: a span over a waterway, and the height a mast
+ * has to pass under. That is a plotter's business and this is not a plotter - the
+ * chart says "Not for navigation" and means it. Ashore, where these mostly run, they
+ * drew loud orange and magenta lines across hillsides behind the anchorage, which is
+ * the kind of clutter that teaches a skipper to stop reading the screen.
+ *
+ * The SUBMARINE cable and pipeline layers stay. They lie on the seabed under the boat,
+ * and they are the one thing on this map that answers a question the owner actually
+ * asks it: whether it is safe to drop the anchor here. */
+const SEAMARK_DROP = new Set([
+  'sm_berth_label',
+  'sm_berth_area',
+  'sm_berth_line',
+  'sm_berth',
+  'sm_cable_overhead',
+  'sm_pipeline_overhead'
+])
 
 function brandSeamarkLayers(mode: MapMode): LayerSpecification[] {
   const raw = seamarkLayersRaw as unknown as RawLayer[]
@@ -188,10 +206,17 @@ function brandSeamarkLayers(mode: MapMode): LayerSpecification[] {
     // to its default, black, and paints unlabelled black slabs across open water. They
     // stayed hidden while the seamark archive was a small regional cut and surfaced the
     // moment it went planet-wide. A shape whose meaning we cannot state is not drawn.
+    //
+    // A pattern counts as a colour: MapLibre paints those from the sprite sheet, never
+    // from the black default. Reading the rule too narrowly cost us the five layers that
+    // are the whole point of a seamark overlay - anchorages, restricted areas, and the
+    // submarine cables and pipelines you must not drop an anchor onto - because their
+    // paint is a dashed pattern and no line-color.
     const paints = l.paint ?? {}
-    const colourless =
-      (l.type === 'fill' && !('fill-color' in paints)) || (l.type === 'line' && !('line-color' in paints))
-    if (colourless) continue
+    const unpainted =
+      (l.type === 'fill' && !('fill-color' in paints) && !('fill-pattern' in paints)) ||
+      (l.type === 'line' && !('line-color' in paints) && !('line-pattern' in paints))
+    if (unpainted) continue
     const layer: Record<string, unknown> = { ...l, source: SEAMARK_SOURCE }
     if (l.layout && Array.isArray(l.layout['text-font'])) {
       layer.layout = { ...l.layout, 'text-font': [FONT_REGULAR] }

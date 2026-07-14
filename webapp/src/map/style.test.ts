@@ -171,11 +171,14 @@ describe('makeMapStyle', () => {
   // the vendored seamark style has several, so the chart drew black slabs on open water
   // once the seamark archive went planet-wide. Every shape must state its own colour.
   it('draws no shape whose colour it has not decided', () => {
+    // Colour or pattern: MapLibre paints a patterned layer from the sprite, and only a
+    // layer with neither falls back to black - an unlabelled slab over open water.
     for (const mode of MODES) {
       for (const l of makeMapStyle(mode, HOSTED, TRACK).layers) {
         const paint = (l.paint ?? {}) as Record<string, unknown>
-        if (l.type === 'fill') expect(paint, `layer ${l.id}`).toHaveProperty('fill-color')
-        if (l.type === 'line') expect(paint, `layer ${l.id}`).toHaveProperty('line-color')
+        const decided = (kind: 'fill' | 'line') => `${kind}-color` in paint || `${kind}-pattern` in paint
+        if (l.type === 'fill') expect(decided('fill'), `layer ${l.id}`).toBe(true)
+        if (l.type === 'line') expect(decided('line'), `layer ${l.id}`).toBe(true)
       }
     }
   })
@@ -198,6 +201,24 @@ describe('makeMapStyle', () => {
     })
     it('offline', () => {
       expect(makeMapStyle('night', OFFLINE, TRACK).layers.map((l) => l.id)).toMatchSnapshot()
+    })
+  })
+
+  describe('what the seamark overlay is for', () => {
+    const ids = makeMapStyle('night', HOSTED, TRACK).layers.map((l) => l.id)
+
+    it('leaves overhead spans to the plotter', () => {
+      // Air draft is a navigator's number and this chart says it is not for navigation.
+      // Drawn, these run across the hills behind an anchorage in orange and magenta.
+      expect(ids).not.toContain('sm_cable_overhead')
+      expect(ids).not.toContain('sm_pipeline_overhead')
+    })
+
+    it('keeps what lies under her keel', () => {
+      // The one thing on this overlay the owner actually asks a question of: can the
+      // anchor go down here. Dropping these to quiet the map would cost him a cable.
+      expect(ids).toContain('sm_cable_submarine')
+      expect(ids).toContain('sm_pipeline_submarine')
     })
   })
 })
