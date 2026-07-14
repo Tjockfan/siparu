@@ -17,10 +17,21 @@ import {
   loadAisPrefs,
   saveAisPrefs,
 } from "../../lib/aisPrefs";
-import { makeMapStyle, TRACK_SOURCE, type MapMode, type TrackStyle } from "../../map/style";
+import {
+  basemapSourceId,
+  makeMapStyle,
+  MAP_ATTRIBUTION,
+  TRACK_SOURCE,
+  type MapMode,
+  type TrackStyle,
+} from "../../map/style";
 
 const DEFAULT_CENTER: [number, number] = [7.4246, 43.7384]; // Monaco (lon, lat)
 const DEFAULT_ZOOM = 8;
+
+/** How long a chart may stay blank before the map admits it. Long enough that a slow
+ *  uplink is not called broken, short enough that nobody stares at empty water. */
+const CHART_TIMEOUT_MS = 10_000;
 const LATEST_REFRESH_MS = 30_000;
 const TRACK_REFRESH_MS = 5 * 60_000;
 const TRACK_WINDOW_MS = 24 * 3600 * 1000;
@@ -151,12 +162,14 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
     let disposed = false;
     let map: maplibregl.Map | null = null;
     let modeObserver: MutationObserver | null = null;
+    let chartTimer: number | undefined;
 
     (async () => {
       ensurePmtilesProtocol();
       const charts = await getMapConfig();
       if (disposed) return;
-      if (!charts.basemap) {
+      const basemapSource = basemapSourceId(charts);
+      if (!basemapSource) {
         setChartNote("Chart unavailable - position and track only");
       }
 
@@ -167,7 +180,7 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
         style: styleFor(currentMode()),
         center: DEFAULT_CENTER,
         zoom: DEFAULT_ZOOM,
-        attributionControl: { compact: false },
+        attributionControl: { compact: false, customAttribution: MAP_ATTRIBUTION },
         dragRotate: false,
         pitchWithRotate: false,
       });
@@ -179,20 +192,27 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
         cfgRef.current.zoomPosition ?? "bottom-left"
       );
 
-      // Yellow diagnostic note if chart tiles never stream in; clear it once the first tile arrives.
+      // Yellow diagnostic note if chart tiles never stream in; clear it once the first tile
+      // arrives. Only an actual tile counts as arrival. Neither of the obvious signals can
+      // be trusted for a hosted basemap: when its TileJSON fails to load, MapLibre marks
+      // the source loaded anyway ("let's pretend it's loaded so the source will be
+      // ignored") and fires its error without a sourceId. Watching either one would clear
+      // this warning, or never raise it, on exactly the boat that needs it: the one whose
+      // uplink just died. So the question asked here is the honest one, "did a tile draw",
+      // and silence is what raises the note.
       let basemapSeen = false;
       map.on("sourcedata", (e) => {
-        if (e.sourceId === "protomaps" && e.isSourceLoaded && !basemapSeen) {
+        const drew = !!(e as { tile?: unknown }).tile;
+        if (e.sourceId === basemapSource && drew && !basemapSeen) {
           basemapSeen = true;
           setChartNote(null);
         }
       });
-      map.on("error", (e) => {
-        const sourceId = (e as { sourceId?: string }).sourceId;
-        if (sourceId === "protomaps" && !basemapSeen) {
+      chartTimer = window.setTimeout(() => {
+        if (!basemapSeen && basemapSource) {
           setChartNote("Chart tiles unreachable - position and track only");
         }
-      });
+      }, CHART_TIMEOUT_MS);
 
       // Rebuild the style when the theme (night/day) changes; thanks to diffing
       // the map is not reset. Since the track source's data is empty in the
@@ -213,6 +233,7 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
 
     return () => {
       disposed = true;
+      window.clearTimeout(chartTimer);
       modeObserver?.disconnect();
       aisMarkersRef.current.forEach((m) => m.remove());
       aisMarkersRef.current = [];

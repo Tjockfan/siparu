@@ -30,6 +30,7 @@ export interface Options {
   seasonStart: string // MM-DD
   maxStorageMB: number
   chartsRemoteUrl: string
+  chartsBasemapUrl: string
   relayUrl: string
   ports: PortEntry[]
   voyage: VoyageOptions
@@ -57,6 +58,7 @@ export const DEFAULTS: Options = {
   seasonStart: '01-01',
   maxStorageMB: 500,
   chartsRemoteUrl: 'https://tiles.siparu.app',
+  chartsBasemapUrl: 'https://tiles.openfreemap.org/planet',
   relayUrl: 'https://relay.siparu.app',
   ports: [],
   voyage: {
@@ -96,6 +98,9 @@ export function resolveOptions(raw: unknown): Options {
     chartsRemoteUrl: /^https?:\/\/\S+$/.test(c.chartsRemoteUrl ?? '')
       ? (c.chartsRemoteUrl as string).replace(/\/+$/, '')
       : DEFAULTS.chartsRemoteUrl,
+    chartsBasemapUrl: /^https?:\/\/\S+$/.test(c.chartsBasemapUrl ?? '')
+      ? (c.chartsBasemapUrl as string).replace(/\/+$/, '')
+      : DEFAULTS.chartsBasemapUrl,
     relayUrl: /^https?:\/\/\S+$/.test(c.relayUrl ?? '')
       ? (c.relayUrl as string).replace(/\/+$/, '')
       : DEFAULTS.relayUrl,
@@ -171,10 +176,17 @@ export const CONFIG_SCHEMA = {
     },
     chartsRemoteUrl: {
       type: 'string',
-      title: 'Chart tile server (advanced)',
+      title: 'Seamark and font server (advanced)',
       description:
-        'Base URL the map loads chart tiles, fonts and sprites from. Files placed in the plugin\'s "charts" data folder are served locally instead (offline charts).',
+        'Base URL the map loads seamarks, fonts and sprites from. Files placed in the plugin\'s "charts" data folder are served locally instead (offline charts).',
       default: DEFAULTS.chartsRemoteUrl
+    },
+    chartsBasemapUrl: {
+      type: 'string',
+      title: 'Basemap tile server (advanced)',
+      description:
+        'TileJSON URL for the coastline, land and place names, in OpenMapTiles schema. The default is a free, keyless, planet-wide host; any OpenMapTiles server will do. A basemap.pmtiles in the "charts" data folder overrides this and is used offline.',
+      default: DEFAULTS.chartsBasemapUrl
     },
     ports: {
       type: 'array',

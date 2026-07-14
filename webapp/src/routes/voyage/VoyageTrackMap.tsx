@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import type { TrackPoint } from "../../lib/api";
 import { ensurePmtilesProtocol, getMapConfig } from "../../map/mapRuntime";
-import { makeMapStyle, TRACK_SOURCE, type MapMode } from "../../map/style";
+import { makeMapStyle, MAP_ATTRIBUTION, TRACK_SOURCE, type MapMode } from "../../map/style";
 
 function mode(): MapMode {
   return document.documentElement.dataset.theme === "day" ? "day" : "night";
@@ -49,7 +49,7 @@ export default function VoyageTrackMap({ track }: { track: TrackPoint[] }) {
         style: styleFor(),
         center: [7.42, 43.7],
         zoom: 9,
-        attributionControl: { compact: false },
+        attributionControl: { compact: false, customAttribution: MAP_ATTRIBUTION },
         dragRotate: false,
         pitchWithRotate: false,
       });

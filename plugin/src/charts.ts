@@ -1,11 +1,16 @@
 /**
  * Chart asset resolution + safe file serving.
  *
- * The webapp map loads four kinds of assets: a basemap PMTiles, an optional
- * seamark PMTiles, glyph PBFs and a sprite sheet. Each resolves to either a
- * local file under `<dataDir>/charts/` (offline charts, dropped in by the
- * user or a future download feature) or the configured remote tile server.
- * /map-config reports the resolved URLs; the webapp never guesses.
+ * The webapp map loads a basemap, an optional seamark PMTiles, glyph PBFs and a
+ * sprite sheet. Seamarks, glyphs and sprites resolve to either a local file under
+ * `<dataDir>/charts/` (offline charts, dropped in by the user) or the configured
+ * asset server. /map-config reports the resolved URLs; the webapp never guesses.
+ *
+ * The basemap is the odd one out, because its two sources speak different tile
+ * schemas: a local `basemap.pmtiles` is a Protomaps archive, while the hosted
+ * basemap is OpenMapTiles vector tiles behind a TileJSON. They cannot be swapped
+ * for one another, so they get separate fields and exactly one is ever set. Local
+ * wins: charts already on disk cost no bandwidth and survive a dead uplink.
  *
  * Serving stays GET-only and read-only like every other route.
  */
@@ -16,12 +21,14 @@ import * as path from 'node:path'
 const MOUNT = '/plugins/siparu'
 
 export interface MapConfig {
-  /** PMTiles URL (http(s) or server-relative), null when known-unavailable. */
+  /** Local Protomaps PMTiles basemap, server-relative. Null when there is none. */
   basemap: string | null
+  /** Hosted OpenMapTiles TileJSON. Null when a local basemap is present. */
+  basemapTiles: string | null
   seamark: string | null
   /** Glyph URL template containing {fontstack}/{range} placeholders. */
   glyphs: string
-  /** Sprite base URL - the style appends the flavor name (e.g. /dark). */
+  /** Sprite base URL - the style appends the sheet name. */
   sprite: string
   /** Which assets come from the local charts folder (true) vs remote. */
   local: { basemap: boolean; seamark: boolean; fonts: boolean; sprites: boolean }
@@ -33,7 +40,7 @@ export function chartsDir(dataDir: string): string {
 
 /** Resolve every map asset to a local or remote URL. Sync fs is fine here:
  *  called once per /map-config request against at most four stat'ed paths. */
-export function resolveMapConfig(dataDir: string, remoteBaseUrl: string): MapConfig {
+export function resolveMapConfig(dataDir: string, remoteBaseUrl: string, basemapTilesUrl: string): MapConfig {
   const dir = chartsDir(dataDir)
   const has = (rel: string): boolean => {
     try {
@@ -54,7 +61,8 @@ export function resolveMapConfig(dataDir: string, remoteBaseUrl: string): MapCon
   const localFonts = hasDir('fonts')
   const localSprites = hasDir('sprites')
   return {
-    basemap: localBasemap ? `${MOUNT}/charts/basemap.pmtiles` : `${remoteBaseUrl}/basemap.pmtiles`,
+    basemap: localBasemap ? `${MOUNT}/charts/basemap.pmtiles` : null,
+    basemapTiles: localBasemap ? null : basemapTilesUrl,
     seamark: localSeamark ? `${MOUNT}/charts/seamark.pmtiles` : `${remoteBaseUrl}/seamark.pmtiles`,
     glyphs: localFonts
       ? `${MOUNT}/charts/fonts/{fontstack}/{range}.pbf`

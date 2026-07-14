@@ -311,7 +311,10 @@ export type HealthResult = {
 }
 
 export type MapConfig = {
+  /** Local Protomaps PMTiles basemap. Null when there is none. */
   basemap: string | null
+  /** Hosted OpenMapTiles TileJSON. Null when a local basemap is present. */
+  basemapTiles: string | null
   seamark: string | null
   glyphs: string
   sprite: string

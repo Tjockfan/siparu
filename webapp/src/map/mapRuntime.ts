@@ -16,6 +16,7 @@ export function ensurePmtilesProtocol(): void {
 /** If /map-config is unreachable the map runs without charts (overlays only). */
 export const NO_CHARTS: MapConfig = {
   basemap: null,
+  basemapTiles: null,
   seamark: null,
   glyphs: "",
   sprite: "",

@@ -221,7 +221,7 @@ export = (app: ServerAPI): Plugin => {
             rollupHours: async (from: number, to: number) => ({
               rows: await ru.readHourly(from, to)
             }),
-            mapConfig: () => resolveMapConfig(app.getDataDirPath(), opts.chartsRemoteUrl),
+            mapConfig: () => resolveMapConfig(app.getDataDirPath(), opts.chartsRemoteUrl, opts.chartsBasemapUrl),
             dataDir: () => app.getDataDirPath()
           })
 
