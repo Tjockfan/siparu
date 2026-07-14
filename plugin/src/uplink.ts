@@ -34,6 +34,29 @@ export interface UplinkStatus {
   lastError: string | null
 }
 
+/**
+ * What the boat's own screen is told, out of the two uplinks she has.
+ *
+ * Whichever one is carrying her. While the socket is up the POST path never sends, so its
+ * "last sent" stays null and its failure count stays frozen at whatever it last was - and
+ * reporting that would tell an owner her boat has never sent a frame, or cannot reach the
+ * relay at all, while it is in fact streaming to her perfectly. The panel is there to answer
+ * "is she getting through", and there are two ways for her to be getting through.
+ *
+ * The socket has to be CONNECTED to speak for her, not merely present: everything else - a
+ * dial in progress, a stand-off, a dead line - means the POST path is the one being relied on,
+ * and so it is the one whose troubles are worth showing.
+ */
+export function reportedStatus(
+  socket: { connected: boolean; lastFrameTs: number | null } | null | undefined,
+  post: UplinkStatus | null
+): UplinkStatus | null {
+  if (socket?.connected) {
+    return { lastSentTs: socket.lastFrameTs, failures: 0, rejected: false, lastError: null }
+  }
+  return post
+}
+
 export interface UplinkDeps {
   relayUrl: string
   getRemote: () => RemoteLink | undefined
@@ -42,6 +65,19 @@ export interface UplinkDeps {
   debug: (msg: string) => void
   /** Send interval. The product's promise is a minute; tests need it shorter. */
   intervalMs?: number
+  /**
+   * Whether the live socket is genuinely feeding the shore right now.
+   *
+   * While it is, this path has nothing to add: the socket carries a frame every couple of
+   * seconds and the relay writes them through to the database on its own schedule, so a POST
+   * a minute would be the same position, arriving later, paid for twice.
+   *
+   * It must be pessimistic. This is the path that carries her when the socket is broken, so
+   * anything short of "connected and answering" has to read as false - a live uplink that
+   * lied about its health would take the fallback down with it and the boat would go silent
+   * altogether, which is the one failure the two paths exist to prevent.
+   */
+  liveHealthy?: () => boolean
 }
 
 const DEFAULT_INTERVAL_MS = 60_000
@@ -124,6 +160,14 @@ export class Uplink {
     // Not paired: nothing to send and nobody to send it to. The timer keeps running so
     // that pairing her mid-passage starts the feed without a restart.
     if (!remote) {
+      if (!this.stopped) this.schedule(this.intervalMs)
+      return
+    }
+
+    // The socket has it covered. Keep the timer running rather than stopping this uplink: the
+    // socket drops without warning and often, and the fallback has to be already ticking when
+    // it does - not started by whoever notices.
+    if (this.deps.liveHealthy?.()) {
       if (!this.stopped) this.schedule(this.intervalMs)
       return
     }

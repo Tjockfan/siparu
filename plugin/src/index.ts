@@ -5,10 +5,14 @@
  * PUT requests. It subscribes to self paths, records history to
  * NDJSON + materialized rollups, and serves a read-only REST API.
  *
- * Runtime dependencies: none. Types come from @signalk/server-api and
- * express as devDependencies - keep every import from them `import type`,
- * a value import would crash on the boat (AppStore installs with
- * --ignore-scripts and without devDependencies).
+ * One runtime dependency: ws, for the live uplink, and it is one on purpose. It carries no
+ * install script and no dependency of its own, and its two native helpers are optional peers -
+ * which is what lets the AppStore install this plugin with --ignore-scripts and have it work.
+ * Anything with a node-gyp step in it breaks on the boat rather than here; check before adding.
+ *
+ * Everything else - @signalk/server-api, express - is types only, and stays a devDependency:
+ * keep every import from them `import type`, because a value import would crash on a boat the
+ * AppStore installed without devDependencies.
  */
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -25,7 +29,8 @@ import { registerRoutes, setRestDeps } from './rest'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
 import { dayKey } from './time'
-import { Uplink } from './uplink'
+import { LiveUplink } from './live'
+import { reportedStatus, Uplink } from './uplink'
 import { VoyageLog } from './voyagelog'
 
 const PLUGIN_ID = 'siparu'
@@ -47,6 +52,7 @@ export = (app: ServerAPI): Plugin => {
   let query: QueryService | null = null
   let voyages: VoyageLog | null = null
   let uplink: Uplink | null = null
+  let liveUplink: LiveUplink | null = null
   let timer: NodeJS.Timeout | null = null
   let unsubscribes: Array<() => void> = []
   // Bumped on every start/stop; a stale async init aborts instead of leaking
@@ -231,11 +237,25 @@ export = (app: ServerAPI): Plugin => {
           //
           // Started even when she is not paired - it sends nothing until she is, and it
           // means pairing her mid-passage starts the feed without a restart.
-          const up = new Uplink({
+          // The socket, and the minute-by-minute POST behind it. Both are started, and only
+          // one of them speaks at a time: the POST path stands down while the socket is up
+          // and carries her the moment it is not. It is not a fallback that gets switched on
+          // when something notices a failure - it is already running when the failure happens.
+          const ws = new LiveUplink({
             relayUrl: opts.relayUrl,
             getRemote: () => opts.remote,
             frame: () => live(),
             debug: (msg) => app.debug(msg)
+          })
+          liveUplink = ws
+          ws.start()
+
+          const up = new Uplink({
+            relayUrl: opts.relayUrl,
+            getRemote: () => opts.remote,
+            frame: () => live(),
+            debug: (msg) => app.debug(msg),
+            liveHealthy: () => ws.healthy()
           })
           uplink = up
           up.start()
@@ -263,6 +283,7 @@ export = (app: ServerAPI): Plugin => {
       unsubscribes = []
       setRestDeps(null)
       uplink?.stop()
+      liveUplink?.stop()
       if (voyages) await voyages.flush()
       if (store) await store.flush()
       state = null
@@ -271,6 +292,7 @@ export = (app: ServerAPI): Plugin => {
       query = null
       voyages = null
       uplink = null
+      liveUplink = null
       app.setPluginStatus('Stopped')
     },
 
@@ -285,7 +307,7 @@ export = (app: ServerAPI): Plugin => {
         app,
         relayUrl: opts?.relayUrl ?? DEFAULTS.relayUrl,
         boatName: () => opts?.boatName || String(app.getSelfPath('name') ?? ''),
-        uplinkStatus: () => uplink?.status() ?? null,
+        uplinkStatus: () => reportedStatus(liveUplink?.status(), uplink?.status() ?? null),
         // The vessel's MMSI or UUID urn. Typed as a plain string, but the server only
         // assigns it when the boat has one or the other, so at runtime it can be
         // undefined - which is fine, because nothing is authorised by it: it is reported
@@ -308,6 +330,7 @@ export = (app: ServerAPI): Plugin => {
           // by a fresh pairing must not leave "rejected" on the screen of a boat that is
           // now streaming perfectly well.
           uplink?.reset()
+          liveUplink?.reset()
         }
       })
     }

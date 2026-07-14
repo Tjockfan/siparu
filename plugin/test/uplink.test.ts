@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
-import { Uplink } from '../src/uplink'
+import { reportedStatus, Uplink, UplinkStatus } from '../src/uplink'
 
 /**
  * The uplink is the only part of the plugin that talks to the outside world on a
@@ -301,5 +301,74 @@ describe('stopping', () => {
       lastError: null
     })
     up.stop()
+  })
+})
+
+describe('while the live socket is carrying her', () => {
+  it('sends nothing: the same position, later, paid for twice', async () => {
+    const calls = relayAnswers(ok())
+    const up = uplink({ liveHealthy: () => true })
+    up.start()
+
+    await vi.advanceTimersByTimeAsync(INTERVAL * 3)
+    expect(calls).toHaveLength(0)
+
+    up.stop()
+  })
+
+  it('takes over the moment the socket stops being healthy', async () => {
+    const calls = relayAnswers(ok())
+    let live = true
+    const up = uplink({ liveHealthy: () => live })
+    up.start()
+
+    await vi.advanceTimersByTimeAsync(INTERVAL * 2)
+    expect(calls).toHaveLength(0)
+
+    // The socket dropped. The timer was still running precisely so that this needs nobody to
+    // notice it and start anything - the very next tick carries her.
+    live = false
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    expect(calls).toHaveLength(1)
+
+    up.stop()
+  })
+})
+
+describe('what the boat says about herself', () => {
+  const post = (over: Partial<UplinkStatus> = {}): UplinkStatus => ({
+    lastSentTs: null,
+    failures: 0,
+    rejected: false,
+    lastError: null,
+    ...over
+  })
+
+  it('speaks for the socket while the socket is carrying her', () => {
+    // The POST path has never sent anything - it does not need to, the socket is up. Reporting
+    // ITS state would tell an owner her boat has never sent a frame, while it is streaming to
+    // her twice a second.
+    const s = reportedStatus({ connected: true, lastFrameTs: 1_752_400_000_000 }, post())
+    expect(s?.lastSentTs).toBe(1_752_400_000_000)
+    expect(s?.lastError).toBeNull()
+  })
+
+  it('does not carry the failures of a path that is not being used', () => {
+    // She was offline; the POST path piled up failures. Then the socket came up and took over,
+    // and the POST path stopped trying - so its counter is frozen, not current. Left alone it
+    // would say "Cannot reach Siparu" forever, about a boat that is plainly getting through.
+    const stale = post({ failures: 3, lastError: 'Cannot reach Siparu. Is the boat online?' })
+    const s = reportedStatus({ connected: true, lastFrameTs: 1_752_400_000_000 }, stale)
+    expect(s?.failures).toBe(0)
+    expect(s?.lastError).toBeNull()
+  })
+
+  it('speaks for the POST path the moment the socket is not connected', () => {
+    const dialling = reportedStatus({ connected: false, lastFrameTs: null }, post({ failures: 2 }))
+    expect(dialling?.failures).toBe(2)
+  })
+
+  it('says nothing at all when the boat is not running', () => {
+    expect(reportedStatus(null, null)).toBeNull()
   })
 })
