@@ -21,8 +21,8 @@ import type { IRouter } from 'express'
 import { buildAisFeed, clampAisQuery } from './ais'
 import { chartsDir, resolveMapConfig } from './charts'
 import { CONFIG_SCHEMA, DEFAULTS, INTERNAL, Options, resolveOptions } from './config'
-import { HealthResult, LiveResult, SnapshotsQuery } from './contract'
-import { MetricsState, SUBSCRIBED_PATHS } from './metrics'
+import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQuery } from './contract'
+import { DYNAMIC_PREFIXES, MetricsState, SUBSCRIBED_PATHS } from './metrics'
 import { QueryService } from './query'
 import { registerPairRoutes } from './pairing'
 import { registerRoutes, setRestDeps } from './rest'
@@ -130,8 +130,28 @@ export = (app: ServerAPI): Plugin => {
     const snap = state.snapshot(now, false)
     return {
       ...snap,
-      data_age_s: state.lastDeltaTs === null ? null : Math.round((now - state.lastDeltaTs) / 1000)
+      data_age_s: state.lastDeltaTs === null ? null : Math.round((now - state.lastDeltaTs) / 1000),
+      paths: state.dynamicPaths(now)
     }
+  }
+
+  /**
+   * The dynamic paths this boat exposes right now, read straight from the
+   * server's model (not just what has arrived as a delta), narrowed to the
+   * families the dashboard understands. Reported live and retained nowhere:
+   * ashore it exists only while the boat is connected.
+   */
+  function inventory(): InventoryResult {
+    const available = (app.streambundle.getAvailablePaths?.() as string[] | undefined) ?? []
+    const paths: InventoryEntry[] = []
+    for (const p of available) {
+      if (!DYNAMIC_PREFIXES.some((pre) => p.startsWith(pre))) continue
+      const node = app.getSelfPath(p) as { meta?: { units?: unknown } } | null | undefined
+      const rawUnits = node && typeof node === 'object' ? node.meta?.units : undefined
+      paths.push({ path: p, units: typeof rawUnits === 'string' ? rawUnits : null })
+    }
+    paths.sort((a, b) => a.path.localeCompare(b.path))
+    return { paths }
   }
 
   const plugin: Plugin = {
@@ -188,7 +208,9 @@ export = (app: ServerAPI): Plugin => {
             {
               // Cast: server-api brands Context/Path as nominal string types.
               context: 'vessels.self' as never,
-              subscribe: SUBSCRIBED_PATHS.map((p) => ({
+              // Core paths by name, plus one wildcard per dynamic family so
+              // engine/tank/generator paths flow in without naming each one.
+              subscribe: [...SUBSCRIBED_PATHS, ...DYNAMIC_PREFIXES.map((p) => `${p}*`)].map((p) => ({
                 path: p as never,
                 period: INTERNAL.samplePeriodMs,
                 policy: 'fixed' as const
@@ -211,6 +233,7 @@ export = (app: ServerAPI): Plugin => {
 
           setRestDeps({
             live,
+            inventory,
             health,
             snapshots: (q: SnapshotsQuery) => qs.snapshots(q, Date.now()),
             voyages: async (limit: number) => vl.list(limit),

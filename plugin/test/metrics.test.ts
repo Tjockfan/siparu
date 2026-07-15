@@ -184,3 +184,62 @@ describe('position and misc fields', () => {
     expect(s.lastDeltaTs).toBe(T0)
   })
 })
+
+describe('dynamic paths (engine/tank/generator)', () => {
+  it('captures a dynamic-family path under its plain SK name', () => {
+    const s = fresh()
+    expect(s.ingest('propulsion.port.revolutions', 25.8, T0)).toBe(true)
+    expect(s.dynamicPaths(T0)['propulsion.port.revolutions']).toBe(25.8)
+  })
+
+  it('captures the tank and generator families too', () => {
+    const s = fresh()
+    s.ingest('tanks.fuel.0.currentLevel', 0.72, T0)
+    s.ingest('electrical.generators.0.revolutions', 25.0, T0)
+    const d = s.dynamicPaths(T0)
+    expect(d['tanks.fuel.0.currentLevel']).toBe(0.72)
+    expect(d['electrical.generators.0.revolutions']).toBe(25.0)
+  })
+
+  it('accepts a string gauge value (engine state)', () => {
+    const s = fresh()
+    expect(s.ingest('propulsion.port.state', 'started', T0)).toBe(true)
+    expect(s.dynamicPaths(T0)['propulsion.port.state']).toBe('started')
+  })
+
+  it('rejects non-gauge values (object, boolean, NaN) on a dynamic path', () => {
+    const s = fresh()
+    expect(s.ingest('propulsion.port.revolutions', { rpm: 1 }, T0)).toBe(false)
+    expect(s.ingest('propulsion.port.revolutions', true, T0)).toBe(false)
+    expect(s.ingest('propulsion.port.temperature', NaN, T0)).toBe(false)
+    expect(s.dynamicPaths(T0)['propulsion.port.revolutions']).toBeUndefined()
+  })
+
+  it('ignores families outside the dynamic allowlist - generators only, not all electrical', () => {
+    const s = fresh()
+    expect(s.ingest('sensors.foo.bar', 1, T0)).toBe(false)
+    expect(s.ingest('electrical.batteries.0.voltage', 12.6, T0)).toBe(false)
+    expect(s.dynamicPaths(T0)).toEqual({})
+  })
+
+  it('requires the dotted boundary - a lookalike root does not slip in', () => {
+    const s = fresh()
+    expect(s.ingest('propulsionX.revolutions', 1, T0)).toBe(false)
+    expect(s.dynamicPaths(T0)).toEqual({})
+  })
+
+  it('keeps dynamic values out of the core Snapshot', () => {
+    const s = fresh()
+    s.ingest('propulsion.port.revolutions', 25.8, T0)
+    const snap = s.snapshot(T0, false)
+    expect(snap.sog).toBeNull()
+    expect(JSON.stringify(snap)).not.toContain('propulsion')
+  })
+
+  it('resolves the freshest source per dynamic path', () => {
+    const s = fresh()
+    s.ingest('propulsion.port.revolutions', 25.0, T0, 'ecu-a')
+    s.ingest('propulsion.port.revolutions', 26.0, T0 + 1000, 'ecu-b')
+    expect(s.dynamicPaths(T0 + 2000)['propulsion.port.revolutions']).toBe(26.0)
+  })
+})

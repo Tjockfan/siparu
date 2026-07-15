@@ -93,6 +93,28 @@ export interface SnapshotsResult {
 export interface LiveResult extends Snapshot {
   /** Seconds since the newest delta touched any subscribed path; null before first delta. */
   data_age_s: number | null
+  /**
+   * Live values of dynamic Signal K paths outside the fixed core - engine,
+   * tank and generator readings a given boat happens to expose. Carried by
+   * their plain SK path name. Present on the live frame only; not written to
+   * history in this phase (the core Snapshot is what the NDJSON store holds).
+   */
+  paths?: Record<string, number | string>
+}
+
+/** One dynamic path a boat currently exposes, offered to the dashboard picker. */
+export interface InventoryEntry {
+  path: string
+  /** SK meta units (SI) when the model carries them, else null. */
+  units: string | null
+}
+
+/**
+ * The set of dynamic paths a boat exposes right now. Reported live; nothing
+ * about it is retained ashore - when the boat goes offline it is simply gone.
+ */
+export interface InventoryResult {
+  paths: InventoryEntry[]
 }
 
 export interface HealthResult {

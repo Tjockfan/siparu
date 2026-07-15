@@ -14,6 +14,7 @@ import { QueryError } from './query'
 /** Everything the routes need; wired in index.ts once start() has run. */
 export interface RestDeps {
   live(): unknown
+  inventory(): unknown
   health(): Promise<unknown>
   snapshots(q: SnapshotsQuery): Promise<unknown>
   voyages(limit: number): Promise<unknown>
@@ -59,6 +60,11 @@ export function registerRoutes(router: IRouter): void {
   router.get('/live', (_req, res) => {
     if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
     res.json(deps.live())
+  })
+
+  router.get('/inventory', (_req, res) => {
+    if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
+    res.json(deps.inventory())
   })
 
   router.get('/snapshots', (req, res) => {

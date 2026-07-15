@@ -12,5 +12,8 @@ public/
 # Local test sandbox
 .sandbox/
 
+# Local dev tooling (synthetic data feeder, not shipped)
+dev/
+
 # npm pack output
 *.tgz

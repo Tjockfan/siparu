@@ -54,6 +54,22 @@ export const SUBSCRIBED_PATHS: string[] = [
   ...Object.keys(DIRECT_PATHS)
 ]
 
+/**
+ * Dynamic path families beyond the fixed core: engine, tank and generator
+ * data a boat may expose. Subscribed by wildcard and carried on the live
+ * frame under their plain SK path name (contract LiveResult.paths). The core
+ * navigation/wind/depth paths keep their own hand-tuned handling; these ride
+ * the same source-resolution machinery but are never mixed into a Snapshot.
+ */
+export const DYNAMIC_PREFIXES = ['propulsion.', 'tanks.', 'electrical.generators.'] as const
+
+/** Core paths get bespoke handling; anything else in state is a dynamic path. */
+const CORE_PATH_SET: ReadonlySet<string> = new Set(SUBSCRIBED_PATHS)
+
+function isDynamicPath(path: string): boolean {
+  return !CORE_PATH_SET.has(path) && DYNAMIC_PREFIXES.some((p) => path.startsWith(p))
+}
+
 const STRING_FIELDS: ReadonlySet<MetricField> = new Set(['nav_state', 'ais_class'])
 const TWS_SET: ReadonlySet<string> = new Set(TWS_PATHS)
 
@@ -94,10 +110,18 @@ export class MetricsState {
     } else {
       const field = DIRECT_PATHS[path]
       const isConceptPath = TWS_SET.has(path) || (DEPTH_PATHS as readonly string[]).includes(path)
-      if (!field && !isConceptPath) return false
+      const dynamic = !field && !isConceptPath && isDynamicPath(path)
+      if (!field && !isConceptPath && !dynamic) return false
       if (field && STRING_FIELDS.has(field)) {
         if (typeof value !== 'string') return false
         stored = value
+      } else if (dynamic) {
+        // A dynamic gauge value is a number (rpm, temperature, level) or a
+        // short string (engine/generator state). Objects, booleans and the
+        // like are not gauge readings and are dropped.
+        if (typeof value === 'number' && Number.isFinite(value)) stored = value
+        else if (typeof value === 'string') stored = value
+        else return false
       } else {
         if (typeof value !== 'number' || !Number.isFinite(value)) return false
         stored = value
@@ -237,6 +261,23 @@ export class MetricsState {
       gps_satellites: this.numeric('navigation.gnss.satellites', now),
       ais_class: this.str('sensors.ais.class', now)
     }
+  }
+
+  /**
+   * Live values of the dynamic (non-core) paths, keyed by SK path name, each
+   * resolved through the same winning-source logic as the core fields. Only
+   * number/string values surface; a path with no fresh usable value is absent.
+   */
+  dynamicPaths(now: number): Record<string, number | string> {
+    const out: Record<string, number | string> = {}
+    for (const path of this.paths.keys()) {
+      if (!isDynamicPath(path)) continue
+      const r = this.resolveSource(path, now)
+      if (r && (typeof r.entry.value === 'number' || typeof r.entry.value === 'string')) {
+        out[path] = r.entry.value
+      }
+    }
+    return out
   }
 
   /** Per-path freshness + winning source, for /health micro-diagnosis. */
