@@ -12,9 +12,18 @@ const NOW = Date.UTC(2026, 0, 16, 12, 30, 0)
 const YESTERDAY_NOON = Date.UTC(2026, 0, 15, 12, 0, 0)
 const TODAY_START = Date.UTC(2026, 0, 16, 0, 0, 0)
 
-function snap(ts: number, sog: number): Snapshot {
-  return { ts, sog, lat: 43.0, lon: 6.0, nav_state: 'motoring' } as unknown as Snapshot
+function snap(ts: number, sog: number, pathValues?: Record<string, number>): Snapshot {
+  return {
+    ts,
+    sog,
+    lat: 43.0,
+    lon: 6.0,
+    nav_state: 'motoring',
+    ...(pathValues ? { path_values: pathValues } : {}),
+  } as unknown as Snapshot
 }
+
+const RPM = 'propulsion.port.revolutions'
 
 let dir: string
 let store: Store
@@ -28,11 +37,12 @@ beforeEach(async () => {
   engine = new RollupEngine(store, () => undefined)
   query = new QueryService(store, engine)
 
-  // yesterday: two hours of data; today: a morning hour + the open half hour
-  await store.append(snap(YESTERDAY_NOON, 4))
-  await store.append(snap(YESTERDAY_NOON + 3_600_000, 5))
-  await store.append(snap(TODAY_START + 9 * 3_600_000, 6)) // 09:00 today
-  await store.append(snap(NOW - 60_000, 7)) // 12:29 today
+  // yesterday: two hours of data; today: a morning hour + the open half hour.
+  // Each snapshot also carries one engine gauge, so the dynamic-path history has data.
+  await store.append(snap(YESTERDAY_NOON, 4, { [RPM]: 20 }))
+  await store.append(snap(YESTERDAY_NOON + 3_600_000, 5, { [RPM]: 30 }))
+  await store.append(snap(TODAY_START + 9 * 3_600_000, 6, { [RPM]: 25 })) // 09:00 today
+  await store.append(snap(NOW - 60_000, 7, { [RPM]: 26 })) // 12:29 today
   await store.flush()
   await engine.catchUp(NOW)
 })
@@ -108,5 +118,34 @@ describe('paging and validation', () => {
 
   it('rejects unknown bucket sizes', async () => {
     await expect(query.snapshots({ bucket: 15 as never }, NOW)).rejects.toThrow(QueryError)
+  })
+})
+
+describe('pathSeries (dynamic gauge history)', () => {
+  it('serves today raw points for one gauge', async () => {
+    const r = await query.pathSeries(RPM, { bucket: 1, order: 'asc' }, NOW)
+    expect(r.path).toBe(RPM)
+    expect(r.points.map((p) => p.last)).toEqual([25, 26]) // today only, raw
+    // A raw point is a single sample: min = max = avg = last.
+    expect(r.points[0]).toMatchObject({ ts: TODAY_START + 9 * 3_600_000, min: 25, max: 25, avg: 25, last: 25 })
+  })
+
+  it('serves hourly rollup points for one gauge, carrying the aggregate', async () => {
+    const r = await query.pathSeries(RPM, { bucket: 60, order: 'asc' }, NOW)
+    // 3 closed hours: yesterday 12 (20), yesterday 13 (30), today 09 (25)
+    expect(r.points.map((p) => p.last)).toEqual([20, 30, 25])
+    expect(r.points[0]).toMatchObject({ ts: YESTERDAY_NOON, min: 20, max: 20, avg: 20 })
+  })
+
+  it('serves the daily rollup point for one gauge', async () => {
+    const r = await query.pathSeries(RPM, { bucket: 1440, order: 'asc' }, NOW)
+    // Jan 15 day rollup: min 20, max 30, last 30
+    expect(r.points).toHaveLength(1)
+    expect(r.points[0]).toMatchObject({ min: 20, max: 30, last: 30 })
+  })
+
+  it('returns no points for a gauge the boat never reported', async () => {
+    const r = await query.pathSeries('propulsion.starboard.revolutions', { bucket: 60, order: 'asc' }, NOW)
+    expect(r.points).toEqual([])
   })
 })

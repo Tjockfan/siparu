@@ -83,7 +83,13 @@ export = (app: ServerAPI): Plugin => {
     if (!state || !store) return
     const now = Date.now()
     const snap = state.snapshot(now, true)
-    await store.append(snap)
+    // Dynamic gauge history rides the same NDJSON row, but only on the store path:
+    // the voyage engine below reads the core snapshot and has no use for it, and the
+    // live frame builds its own `paths` separately. Added here, it reaches disk and
+    // the rollups without touching either.
+    const numeric = state.numericDynamicPaths(now)
+    const stored = Object.keys(numeric).length > 0 ? { ...snap, path_values: numeric } : snap
+    await store.append(stored)
     if (voyages) await voyages.feed(snap)
     lastSnapshotTs = now
     const today = dayKey(now)
@@ -131,7 +137,8 @@ export = (app: ServerAPI): Plugin => {
     return {
       ...snap,
       data_age_s: state.lastDeltaTs === null ? null : Math.round((now - state.lastDeltaTs) / 1000),
-      paths: state.dynamicPaths(now)
+      paths: state.dynamicPaths(now),
+      path_ages: state.dynamicPathAges(now)
     }
   }
 

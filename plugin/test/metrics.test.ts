@@ -243,3 +243,57 @@ describe('dynamic paths (engine/tank/generator)', () => {
     expect(s.dynamicPaths(T0 + 2000)['propulsion.port.revolutions']).toBe(26.0)
   })
 })
+
+describe('dynamic path ages (per-gauge freshness)', () => {
+  it('reports zero age for a value read at its own timestamp', () => {
+    const s = fresh()
+    s.ingest('propulsion.port.revolutions', 25.8, T0)
+    expect(s.dynamicPathAges(T0)['propulsion.port.revolutions']).toBe(0)
+  })
+
+  it('grows as the gauge goes quiet while the clock moves on', () => {
+    const s = fresh()
+    s.ingest('propulsion.port.revolutions', 25.8, T0)
+    // Nothing more arrives on this path; two minutes pass.
+    expect(s.dynamicPathAges(T0 + 120_000)['propulsion.port.revolutions']).toBe(120)
+  })
+
+  it('carries exactly the paths dynamicPaths carries - no value, no age', () => {
+    const s = fresh()
+    s.ingest('propulsion.port.revolutions', 25.8, T0)
+    s.ingest('tanks.fuel.0.currentLevel', 0.72, T0)
+    // A rejected (non-gauge) value must leave no age behind either.
+    s.ingest('propulsion.port.temperature', NaN, T0)
+    const values = s.dynamicPaths(T0)
+    const ages = s.dynamicPathAges(T0)
+    expect(Object.keys(ages).sort()).toEqual(Object.keys(values).sort())
+    expect(ages['propulsion.port.temperature']).toBeUndefined()
+  })
+
+  it('ages the value on screen: the winning source, not the stalest one', () => {
+    const s = fresh()
+    s.ingest('propulsion.port.revolutions', 25.0, T0, 'ecu-a')
+    s.ingest('propulsion.port.revolutions', 26.0, T0 + 1000, 'ecu-b')
+    // ecu-b wins (freshest); its sample is 1s old at T0+2000, not ecu-a's 2s.
+    expect(s.dynamicPathAges(T0 + 2000)['propulsion.port.revolutions']).toBe(1)
+  })
+})
+
+describe('numeric dynamic paths (history snapshot)', () => {
+  it('keeps numeric gauges and drops string ones - a graph plots numbers', () => {
+    const s = fresh()
+    s.ingest('propulsion.port.revolutions', 25.8, T0)
+    s.ingest('tanks.fuel.0.currentLevel', 0.72, T0)
+    s.ingest('propulsion.port.state', 'started', T0) // string gauge: not for history
+    const nv = s.numericDynamicPaths(T0)
+    expect(nv['propulsion.port.revolutions']).toBe(25.8)
+    expect(nv['tanks.fuel.0.currentLevel']).toBe(0.72)
+    expect(nv['propulsion.port.state']).toBeUndefined()
+  })
+
+  it('is empty when the boat exposes no dynamic gauges', () => {
+    const s = fresh()
+    s.ingest('navigation.speedOverGround', 5.2, T0)
+    expect(s.numericDynamicPaths(T0)).toEqual({})
+  })
+})

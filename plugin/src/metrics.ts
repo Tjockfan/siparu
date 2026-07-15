@@ -280,6 +280,42 @@ export class MetricsState {
     return out
   }
 
+  /**
+   * Age in seconds of each dynamic path's on-screen value: how long ago the
+   * winning source last spoke. The key set matches dynamicPaths exactly - a
+   * path with no usable value has no age. This is what lets the shore fade a
+   * single frozen gauge on its own: the boat-wide data_age_s stays near zero
+   * as long as any subscribed path (a live GPS) is still moving, so it cannot
+   * see one instrument going quiet while the boat sails on.
+   */
+  dynamicPathAges(now: number): Record<string, number> {
+    const out: Record<string, number> = {}
+    for (const path of this.paths.keys()) {
+      if (!isDynamicPath(path)) continue
+      const r = this.resolveSource(path, now)
+      if (r && (typeof r.entry.value === 'number' || typeof r.entry.value === 'string')) {
+        out[path] = Math.round((now - r.entry.ts) / 1000)
+      }
+    }
+    return out
+  }
+
+  /**
+   * Numeric-only dynamic path values, for the history snapshot. String gauges
+   * (engine state) are dropped: history exists to be graphed and rolled up, and
+   * min/max/avg have no meaning for "started". Live display keeps strings
+   * (dynamicPaths); history does not.
+   */
+  numericDynamicPaths(now: number): Record<string, number> {
+    const out: Record<string, number> = {}
+    for (const path of this.paths.keys()) {
+      if (!isDynamicPath(path)) continue
+      const r = this.resolveSource(path, now)
+      if (r && typeof r.entry.value === 'number') out[path] = r.entry.value
+    }
+    return out
+  }
+
   /** Per-path freshness + winning source, for /health micro-diagnosis. */
   pathAges(now: number): Record<string, { last_seen_ts: number; active_source: string | null; sources: number }> {
     const out: Record<string, { last_seen_ts: number; active_source: string | null; sources: number }> = {}

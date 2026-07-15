@@ -73,6 +73,39 @@ describe('buildDayRollup', () => {
   })
 })
 
+describe('dynamic path history rollup', () => {
+  it('aggregates a dynamic gauge across an hour like a linear metric', () => {
+    const rows = [
+      snap(T0, { path_values: { 'propulsion.port.revolutions': 20 } }),
+      snap(T0 + 60_000, { path_values: { 'propulsion.port.revolutions': 30 } }),
+      snap(T0 + 120_000, { path_values: { 'propulsion.port.revolutions': 25 } }),
+    ]
+    const r = buildHourRollup('2026-01-15T12', rows)
+    expect(r.path_metrics?.['propulsion.port.revolutions']).toMatchObject({ min: 20, max: 30, avg: 25, last: 25 })
+  })
+
+  it('rolls dynamic gauges up into the day, weighting by sample count', () => {
+    const h1 = buildHourRollup('2026-01-15T12', [
+      snap(T0, { path_values: { 'tanks.fuel.0.currentLevel': 0.8 } }),
+      snap(T0 + 60_000, { path_values: { 'tanks.fuel.0.currentLevel': 0.6 } }),
+    ])
+    const h2 = buildHourRollup('2026-01-15T13', [
+      snap(T0 + 3_600_000, { path_values: { 'tanks.fuel.0.currentLevel': 0.4 } }),
+    ])
+    const d = buildDayRollup('2026-01-15', [h2, h1])
+    const m = d.path_metrics?.['tanks.fuel.0.currentLevel']
+    expect(m?.min).toBe(0.4)
+    expect(m?.max).toBe(0.8)
+    expect(m?.avg).toBeCloseTo((0.8 + 0.6 + 0.4) / 3, 6)
+    expect(m?.last).toBe(0.4)
+  })
+
+  it('leaves path_metrics absent when the boat exposes no dynamic gauges', () => {
+    const r = buildHourRollup('2026-01-15T12', [snap(T0, { sog: 5 })])
+    expect(r.path_metrics).toBeUndefined()
+  })
+})
+
 describe('buildDayRollup hour-boundary distance', () => {
   it('counts the leg between one hour\'s last fix and the next hour\'s first fix', () => {
     // ~26 kn leg crossing the boundary: 6.00 -> 6.02 lon over the 2 min gap

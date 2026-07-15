@@ -104,6 +104,32 @@ function aggregateLinear(values: number[]): NumAgg | null {
   return { min, max, avg: sum / values.length, n: values.length, last: values[values.length - 1] ?? null }
 }
 
+/** Merge already-aggregated linear buckets (hour rollups) into one. */
+function mergeLinearAggs(aggs: MetricAgg[]): NumAgg | null {
+  let min = Infinity
+  let max = -Infinity
+  let sum = 0
+  let n = 0
+  let last: number | string | null = null
+  for (const m of aggs) {
+    if (typeof m.min !== 'number' || typeof m.max !== 'number' || typeof m.avg !== 'number') continue
+    const mn = (m as NumAgg).n ?? 1
+    if (m.min < min) min = m.min
+    if (m.max > max) max = m.max
+    sum += m.avg * mn
+    n += mn
+    if (m.last !== null && m.last !== undefined) last = m.last
+  }
+  return n > 0 ? { min, max, avg: sum / n, n, last } : null
+}
+
+/** Union of dynamic path names across a set of snapshots, in first-seen order. */
+function pathKeysOf(rows: Snapshot[]): string[] {
+  const keys = new Set<string>()
+  for (const r of rows) if (r.path_values) for (const k of Object.keys(r.path_values)) keys.add(k)
+  return [...keys]
+}
+
 export function buildHourRollup(hour: string, rows: Snapshot[]): RollupHour {
   const sorted = [...rows].sort((a, b) => a.ts - b.ts)
   const metrics: Partial<Record<MetricField, MetricAgg>> = {}
@@ -112,6 +138,18 @@ export function buildHourRollup(hour: string, rows: Snapshot[]): RollupHour {
     const values = sorted.map((r) => r[field]).filter((v): v is number => typeof v === 'number')
     const agg = aggregateLinear(values)
     if (agg) metrics[field] = agg
+  }
+
+  // Dynamic gauges: each SK path a boat exposed this hour, aggregated like a linear
+  // metric. Absent (not empty) when the boat carries none, so a nav-only boat's rollup
+  // line is unchanged.
+  const path_metrics: Record<string, MetricAgg> = {}
+  for (const key of pathKeysOf(sorted)) {
+    const values = sorted
+      .map((r) => r.path_values?.[key])
+      .filter((v): v is number => typeof v === 'number')
+    const agg = aggregateLinear(values)
+    if (agg) path_metrics[key] = agg
   }
   for (const field of LAST_ONLY_FIELDS) {
     for (let i = sorted.length - 1; i >= 0; i--) {
@@ -134,7 +172,8 @@ export function buildHourRollup(hour: string, rows: Snapshot[]): RollupHour {
     distance_nm: trackDistanceNm(sorted),
     pos_first: first ? { lat: first.lat as number, lon: first.lon as number } : null,
     pos_last: last ? { lat: last.lat as number, lon: last.lon as number } : null,
-    metrics
+    metrics,
+    ...(Object.keys(path_metrics).length > 0 ? { path_metrics } : {})
   }
 }
 
@@ -170,6 +209,18 @@ export function buildDayRollup(date: string, hours: RollupHour[]): RollupDay {
     }
   }
 
+  // Dynamic gauges: merge each path's hourly aggregates into the day, weighting the
+  // average by sample count, same as the linear fields above.
+  const path_metrics: Record<string, MetricAgg> = {}
+  const dayPathKeys = new Set<string>()
+  for (const h of sorted) if (h.path_metrics) for (const k of Object.keys(h.path_metrics)) dayPathKeys.add(k)
+  for (const key of dayPathKeys) {
+    const agg = mergeLinearAggs(
+      sorted.map((h) => h.path_metrics?.[key]).filter((m): m is MetricAgg => m !== undefined)
+    )
+    if (agg) path_metrics[key] = agg
+  }
+
   const firstPos = sorted.map((h) => h.pos_first).find((p) => p !== null) ?? null
   const lastPos =
     [...sorted]
@@ -199,7 +250,8 @@ export function buildDayRollup(date: string, hours: RollupHour[]): RollupDay {
     distance_nm: distance,
     pos_first: firstPos,
     pos_last: lastPos,
-    metrics
+    metrics,
+    ...(Object.keys(path_metrics).length > 0 ? { path_metrics } : {})
   }
 }
 

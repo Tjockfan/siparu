@@ -34,9 +34,17 @@ export interface Snapshot {
   water_temp_k: number | null
   gps_satellites: number | null
   ais_class: string | null
+  /**
+   * Numeric dynamic gauge values (engine, tank, generator) captured at this
+   * snapshot, keyed by plain SK path name. Absent on a boat that exposes none.
+   * History only: written to NDJSON and rolled up so a gauge can be graphed
+   * over time. The live frame carries its own `paths` (LiveResult), which also
+   * includes string gauges; this is numbers alone, because history is graphed.
+   */
+  path_values?: Record<string, number>
 }
 
-export type MetricField = Exclude<keyof Snapshot, 'ts'>
+export type MetricField = Exclude<keyof Snapshot, 'ts' | 'path_values'>
 
 /** Per-metric aggregate inside a rollup line. Angular and string fields carry `last` only. */
 export interface MetricAgg {
@@ -58,6 +66,12 @@ export interface RollupHour {
   pos_first: { lat: number; lon: number } | null
   pos_last: { lat: number; lon: number } | null
   metrics: Partial<Record<MetricField, MetricAgg>>
+  /**
+   * Aggregates for the dynamic gauges (engine, tank, generator) seen in this
+   * period, keyed by SK path name. Absent when the boat exposes none. Each is a
+   * linear min/max/avg/last, the same shape a graph reads for the core metrics.
+   */
+  path_metrics?: Record<string, MetricAgg>
 }
 
 /** One closed UTC day, aggregated from its hourly rollups. */
@@ -71,6 +85,12 @@ export interface RollupDay {
   pos_first: { lat: number; lon: number } | null
   pos_last: { lat: number; lon: number } | null
   metrics: Partial<Record<MetricField, MetricAgg>>
+  /**
+   * Aggregates for the dynamic gauges (engine, tank, generator) seen in this
+   * period, keyed by SK path name. Absent when the boat exposes none. Each is a
+   * linear min/max/avg/last, the same shape a graph reads for the core metrics.
+   */
+  path_metrics?: Record<string, MetricAgg>
 }
 
 /** Query shape shared by GET /snapshots and the Phase-2 history RPC. */
@@ -90,6 +110,23 @@ export interface SnapshotsResult {
   clamped: boolean
 }
 
+/** One point in a single gauge's history. A raw sample has min = max = avg = last. */
+export interface PathSeriesPoint {
+  ts: number
+  min: number
+  max: number
+  avg: number
+  last: number
+}
+
+/** One dynamic gauge's history over a window, for a graph. */
+export interface PathSeriesResult {
+  path: string
+  points: PathSeriesPoint[]
+  /** True when the range was narrowed (bucket=1 clamped to today, or limit hit). */
+  clamped: boolean
+}
+
 export interface LiveResult extends Snapshot {
   /** Seconds since the newest delta touched any subscribed path; null before first delta. */
   data_age_s: number | null
@@ -100,6 +137,13 @@ export interface LiveResult extends Snapshot {
    * history in this phase (the core Snapshot is what the NDJSON store holds).
    */
   paths?: Record<string, number | string>
+  /**
+   * Age in seconds of each dynamic path's value, keyed the same as `paths`.
+   * Lets the shore fade a single frozen gauge on its own: the boat-wide
+   * `data_age_s` stays near zero while any path (a live GPS) keeps moving, so
+   * it cannot see one instrument going quiet while the boat sails on.
+   */
+  path_ages?: Record<string, number>
 }
 
 /** One dynamic path a boat currently exposes, offered to the dashboard picker. */

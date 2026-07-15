@@ -9,7 +9,17 @@
  * Bucketed rows carry the latest values seen in each bucket, so charts
  * read the same regardless of bucket size.
  */
-import { MetricField, RollupDay, RollupHour, Snapshot, SnapshotsQuery, SnapshotsResult } from './contract'
+import {
+  MetricAgg,
+  MetricField,
+  PathSeriesPoint,
+  PathSeriesResult,
+  RollupDay,
+  RollupHour,
+  Snapshot,
+  SnapshotsQuery,
+  SnapshotsResult,
+} from './contract'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
 import { dayKey, startOfUtcDay } from './time'
@@ -40,6 +50,24 @@ const ALL_FIELDS: readonly MetricField[] = [
 
 export const LIMIT_DEFAULT = 200
 export const LIMIT_MAX = 5000
+
+/**
+ * A rollup aggregate as a graph point, or nothing if this bucket did not carry the
+ * path (so flatMap drops it). A gauge added mid-history is simply absent from earlier
+ * buckets rather than a fabricated zero.
+ */
+function aggToPoint(ts: number, agg: MetricAgg | undefined): PathSeriesPoint[] {
+  if (
+    !agg ||
+    typeof agg.min !== 'number' ||
+    typeof agg.max !== 'number' ||
+    typeof agg.avg !== 'number' ||
+    typeof agg.last !== 'number'
+  ) {
+    return []
+  }
+  return [{ ts, min: agg.min, max: agg.max, avg: agg.avg, last: agg.last }]
+}
 
 function rollupToRow(r: RollupHour | RollupDay): Snapshot {
   const row = { ts: r.last_ts } as Snapshot
@@ -96,6 +124,58 @@ export class QueryService {
     rows = rows.slice(offset, offset + limit)
     if (offset + rows.length < total) clamped = true
     return { rows, clamped }
+  }
+
+  /**
+   * One dynamic gauge's history, shaped for a graph. Same bucketing as snapshots():
+   * bucket=1 reads raw (today only, clamped), the rest read rollups. A raw sample
+   * becomes a point with min = max = avg = last; a rollup carries its real aggregate,
+   * so a chart can draw a band. A path a rollup does not carry simply yields no point.
+   */
+  async pathSeries(pathName: string, q: SnapshotsQuery, now: number): Promise<PathSeriesResult> {
+    const limit = Math.min(Math.max(1, q.limit ?? LIMIT_DEFAULT), LIMIT_MAX)
+    const offset = Math.max(0, q.offset ?? 0)
+    const order = q.order ?? 'desc'
+    const to = q.to ?? now
+    let clamped = false
+
+    let points: PathSeriesPoint[]
+    if (q.bucket === 1) {
+      const todayStart = startOfUtcDay(now)
+      const from = Math.max(q.from ?? todayStart, todayStart)
+      if ((q.from ?? todayStart) < todayStart || to < todayStart) clamped = true
+      points = []
+      for (const r of await this.readRawToday(now, from, to)) {
+        const v = r.path_values?.[pathName]
+        if (typeof v === 'number') points.push({ ts: r.ts, min: v, max: v, avg: v, last: v })
+      }
+    } else if (q.bucket === 60) {
+      const from = q.from ?? 0
+      points = (await this.rollups.readHourly(from, to)).flatMap((h) =>
+        aggToPoint(h.last_ts, h.path_metrics?.[pathName])
+      )
+    } else if (q.bucket === 360) {
+      const from = q.from ?? 0
+      const byWindow = new Map<number, RollupHour>()
+      for (const h of await this.rollups.readHourly(from, to)) {
+        byWindow.set(Math.floor(h.last_ts / (6 * 3_600_000)), h) // hours ascending; latest wins
+      }
+      points = [...byWindow.values()].flatMap((h) => aggToPoint(h.last_ts, h.path_metrics?.[pathName]))
+    } else if (q.bucket === 1440) {
+      const from = q.from ?? 0
+      points = (await this.rollups.readDaily(from, to)).flatMap((d) =>
+        aggToPoint(d.last_ts, d.path_metrics?.[pathName])
+      )
+    } else {
+      throw new QueryError('BAD_BUCKET', 'bucket must be one of 1, 60, 360, 1440')
+    }
+
+    points = points.filter((p) => p.ts >= (q.bucket === 1 ? 0 : q.from ?? 0) && p.ts <= to)
+    points.sort((a, b) => (order === 'asc' ? a.ts - b.ts : b.ts - a.ts))
+    const total = points.length
+    points = points.slice(offset, offset + limit)
+    if (offset + points.length < total) clamped = true
+    return { path: pathName, points, clamped }
   }
 
   private async readRawToday(now: number, fromTs: number, toTs: number): Promise<Snapshot[]> {
