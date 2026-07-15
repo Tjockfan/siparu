@@ -12,7 +12,12 @@ const NOW = Date.UTC(2026, 0, 16, 12, 30, 0)
 const YESTERDAY_NOON = Date.UTC(2026, 0, 15, 12, 0, 0)
 const TODAY_START = Date.UTC(2026, 0, 16, 0, 0, 0)
 
-function snap(ts: number, sog: number, pathValues?: Record<string, number>): Snapshot {
+function snap(
+  ts: number,
+  sog: number,
+  pathValues?: Record<string, number>,
+  core?: Partial<Snapshot>
+): Snapshot {
   return {
     ts,
     sog,
@@ -20,6 +25,7 @@ function snap(ts: number, sog: number, pathValues?: Record<string, number>): Sna
     lon: 6.0,
     nav_state: 'motoring',
     ...(pathValues ? { path_values: pathValues } : {}),
+    ...core,
   } as unknown as Snapshot
 }
 
@@ -39,10 +45,12 @@ beforeEach(async () => {
 
   // yesterday: two hours of data; today: a morning hour + the open half hour.
   // Each snapshot also carries one engine gauge, so the dynamic-path history has data.
-  await store.append(snap(YESTERDAY_NOON, 4, { [RPM]: 20 }))
-  await store.append(snap(YESTERDAY_NOON + 3_600_000, 5, { [RPM]: 30 }))
-  await store.append(snap(TODAY_START + 9 * 3_600_000, 6, { [RPM]: 25 })) // 09:00 today
-  await store.append(snap(NOW - 60_000, 7, { [RPM]: 26 })) // 12:29 today
+  // The core snapshot also carries wind + barometer, so a Bridge gauge (which lives in the
+  // fixed Snapshot fields, not in path_values) has history to graph too.
+  await store.append(snap(YESTERDAY_NOON, 4, { [RPM]: 20 }, { wind_speed_true: 5, air_pressure_pa: 101300 }))
+  await store.append(snap(YESTERDAY_NOON + 3_600_000, 5, { [RPM]: 30 }, { wind_speed_true: 7, air_pressure_pa: 101000 }))
+  await store.append(snap(TODAY_START + 9 * 3_600_000, 6, { [RPM]: 25 }, { wind_speed_true: 6, air_pressure_pa: 101200 })) // 09:00 today
+  await store.append(snap(NOW - 60_000, 7, { [RPM]: 26 }, { wind_speed_true: 8, air_pressure_pa: 101100 })) // 12:29 today
   await store.flush()
   await engine.catchUp(NOW)
 })
@@ -147,5 +155,30 @@ describe('pathSeries (dynamic gauge history)', () => {
   it('returns no points for a gauge the boat never reported', async () => {
     const r = await query.pathSeries('propulsion.starboard.revolutions', { bucket: 60, order: 'asc' }, NOW)
     expect(r.points).toEqual([])
+  })
+})
+
+describe('pathSeries (core bridge gauge history)', () => {
+  // Wind and barometer are core Snapshot fields, not dynamic path_values. The shore asks
+  // for them by their plain SK path; the series is read from the fixed field / rollup metric.
+  it('graphs true wind from the core field, today raw', async () => {
+    const r = await query.pathSeries('environment.wind.speedTrue', { bucket: 1, order: 'asc' }, NOW)
+    expect(r.path).toBe('environment.wind.speedTrue')
+    expect(r.points.map((p) => p.last)).toEqual([6, 8]) // today only
+    expect(r.points[0]).toMatchObject({ ts: TODAY_START + 9 * 3_600_000, min: 6, max: 6, avg: 6, last: 6 })
+  })
+
+  it('graphs the barometer from hourly rollups, carrying its aggregate', async () => {
+    const r = await query.pathSeries('environment.outside.pressure', { bucket: 60, order: 'asc' }, NOW)
+    // 3 closed hours: yesterday 12 (101300), yesterday 13 (101000), today 09 (101200)
+    expect(r.points.map((p) => p.last)).toEqual([101300, 101000, 101200])
+    expect(r.points[0]).toMatchObject({ min: 101300, max: 101300, avg: 101300 })
+  })
+
+  it('graphs the barometer from the daily rollup, min/max spanning the day', async () => {
+    const r = await query.pathSeries('environment.outside.pressure', { bucket: 1440, order: 'asc' }, NOW)
+    // Jan 15: 101300 then 101000 -> min 101000, max 101300, last 101000
+    expect(r.points).toHaveLength(1)
+    expect(r.points[0]).toMatchObject({ min: 101000, max: 101300, last: 101000 })
   })
 })

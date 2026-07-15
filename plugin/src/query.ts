@@ -52,6 +52,32 @@ export const LIMIT_DEFAULT = 200
 export const LIMIT_MAX = 5000
 
 /**
+ * Core Snapshot fields a Bridge gauge can graph, keyed by the plain SK path the shore asks
+ * with. Wind and barometer live in the fixed Snapshot fields (and each rollup's `metrics`),
+ * not in the dynamic `path_values`/`path_metrics` maps - so pathSeries reads them from there
+ * instead. True wind is a concept (speedTrue with speedOverGround as fallback) already folded
+ * into `wind_speed_true`; speedTrue is its canonical name. Still read-only: this reads history
+ * the boat already recorded, exactly as the dynamic gauges do.
+ *
+ * These SK paths must stay in step with the portal's CORE_NUMERIC (format.ts), which scales
+ * exactly these paths for the axis. Add a third core gauge in both places or the shore asks for
+ * a series this never serves.
+ */
+const CORE_SERIES_FIELDS: Record<string, MetricField> = {
+  'environment.wind.speedTrue': 'wind_speed_true',
+  'environment.outside.pressure': 'air_pressure_pa'
+}
+
+/** The aggregate for a series in one rollup: a core metric is in `metrics`, a dynamic gauge in `path_metrics`. */
+function aggFor(
+  r: RollupHour | RollupDay,
+  coreField: MetricField | undefined,
+  pathName: string
+): MetricAgg | undefined {
+  return coreField ? r.metrics[coreField] : r.path_metrics?.[pathName]
+}
+
+/**
  * A rollup aggregate as a graph point, or nothing if this bucket did not carry the
  * path (so flatMap drops it). A gauge added mid-history is simply absent from earlier
  * buckets rather than a fabricated zero.
@@ -137,6 +163,7 @@ export class QueryService {
     const offset = Math.max(0, q.offset ?? 0)
     const order = q.order ?? 'desc'
     const to = q.to ?? now
+    const coreField = CORE_SERIES_FIELDS[pathName]
     let clamped = false
 
     let points: PathSeriesPoint[]
@@ -146,13 +173,13 @@ export class QueryService {
       if ((q.from ?? todayStart) < todayStart || to < todayStart) clamped = true
       points = []
       for (const r of await this.readRawToday(now, from, to)) {
-        const v = r.path_values?.[pathName]
+        const v = coreField ? r[coreField] : r.path_values?.[pathName]
         if (typeof v === 'number') points.push({ ts: r.ts, min: v, max: v, avg: v, last: v })
       }
     } else if (q.bucket === 60) {
       const from = q.from ?? 0
       points = (await this.rollups.readHourly(from, to)).flatMap((h) =>
-        aggToPoint(h.last_ts, h.path_metrics?.[pathName])
+        aggToPoint(h.last_ts, aggFor(h, coreField, pathName))
       )
     } else if (q.bucket === 360) {
       const from = q.from ?? 0
@@ -160,11 +187,11 @@ export class QueryService {
       for (const h of await this.rollups.readHourly(from, to)) {
         byWindow.set(Math.floor(h.last_ts / (6 * 3_600_000)), h) // hours ascending; latest wins
       }
-      points = [...byWindow.values()].flatMap((h) => aggToPoint(h.last_ts, h.path_metrics?.[pathName]))
+      points = [...byWindow.values()].flatMap((h) => aggToPoint(h.last_ts, aggFor(h, coreField, pathName)))
     } else if (q.bucket === 1440) {
       const from = q.from ?? 0
       points = (await this.rollups.readDaily(from, to)).flatMap((d) =>
-        aggToPoint(d.last_ts, d.path_metrics?.[pathName])
+        aggToPoint(d.last_ts, aggFor(d, coreField, pathName))
       )
     } else {
       throw new QueryError('BAD_BUCKET', 'bucket must be one of 1, 60, 360, 1440')
