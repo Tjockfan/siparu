@@ -127,6 +127,34 @@ export interface PathSeriesResult {
   clamped: boolean
 }
 
+/**
+ * The history RPC, carried on the live socket in both directions.
+ *
+ * This is the one thing the shore may say to a boat, and it is not a command: it asks her
+ * to read her own recorded history and send it back. Nothing here reaches Signal K, emits a
+ * delta or steers anything - the boat answers from her own NDJSON store, exactly as the
+ * local read-only REST /snapshots does. Everything else the shore might send is ignored,
+ * because a boat takes no command and so there is nothing else to hear.
+ *
+ * `id` pairs a reply with its request so several may be in flight at once (a chart and an
+ * export, say), and so the relay can route each answer back to the screen that asked.
+ */
+export interface HistoryRequest {
+  type: 'history'
+  id: string
+  /** The dynamic gauge to graph, by its plain SK path name. */
+  path: string
+  query: SnapshotsQuery
+}
+
+/**
+ * The boat's answer to one HistoryRequest. Either the series or a reason it could not be
+ * built (a bad bucket, say); never both. Carries the same `id` the request did.
+ */
+export type HistoryResponse =
+  | { type: 'history'; id: string; result: PathSeriesResult }
+  | { type: 'history'; id: string; error: { code: string; message: string } }
+
 export interface LiveResult extends Snapshot {
   /** Seconds since the newest delta touched any subscribed path; null before first delta. */
   data_age_s: number | null

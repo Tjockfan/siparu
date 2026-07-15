@@ -275,6 +275,10 @@ export = (app: ServerAPI): Plugin => {
             relayUrl: opts.relayUrl,
             getRemote: () => opts.remote,
             frame: () => live(),
+            // The one thing the shore may ask of her: her own recorded history for a gauge,
+            // read from the same store the local /snapshots serves. It reaches this query
+            // service and nowhere near Signal K - a read, never a command.
+            onHistoryQuery: (p, q) => qs.pathSeries(p, q, Date.now()),
             debug: (msg) => app.debug(msg)
           })
           liveUplink = ws

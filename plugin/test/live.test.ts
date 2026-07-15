@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
+import { PathSeriesResult } from '../src/contract'
 import { FRAME_EVERY_MS, LiveSocket, LiveUplink, PING_EVERY_MS } from '../src/live'
 
 /**
@@ -97,6 +98,23 @@ class FakeSocket implements LiveSocket {
   pings(): number {
     return this.sent.filter((s) => s === 'ping').length
   }
+
+  /** Only the history answers she sent - a request's reply, tagged by type. */
+  historyReplies(): Array<Record<string, unknown>> {
+    return this.sent
+      .filter((s) => s !== 'ping')
+      .map((s) => JSON.parse(s) as Record<string, unknown>)
+      .filter((m) => m && m.type === 'history')
+  }
+}
+
+/**
+ * Drain the microtask queue. The history handler answers off a promise, and the fake
+ * timers do not touch microtasks - so a resolved query's reply is one flush away, not one
+ * tick. A handful of turns covers the promise chain with room to spare.
+ */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 5; i++) await Promise.resolve()
 }
 
 /** Every socket the uplink asked for, in order. */
@@ -387,6 +405,146 @@ describe('being paired again', () => {
     expect(live.status().rejected).toBe(false)
     sockets[1].open()
     expect(live.healthy()).toBe(true)
+
+    live.stop()
+  })
+})
+
+describe('the one thing the shore may say: asking for her history', () => {
+  const SERIES: PathSeriesResult = {
+    path: 'propulsion.port.revolutions',
+    points: [{ ts: 1_752_400_000_000, min: 700, max: 900, avg: 800, last: 850 }],
+    clamped: false
+  }
+
+  it('answers from her own store, tagged with the id that asked', async () => {
+    const onHistoryQuery = vi.fn().mockResolvedValue(SERIES)
+    const { live, last } = uplink({ onHistoryQuery })
+    live.start()
+    last().open()
+
+    last().say(
+      JSON.stringify({
+        type: 'history',
+        id: 'q1',
+        path: 'propulsion.port.revolutions',
+        query: { bucket: 60 }
+      })
+    )
+    await flush()
+
+    // She read her own recorded history and sent it back. The query reached the store
+    // untouched; nothing about it went to Signal K.
+    expect(onHistoryQuery).toHaveBeenCalledWith('propulsion.port.revolutions', { bucket: 60 })
+    expect(last().historyReplies()).toEqual([{ type: 'history', id: 'q1', result: SERIES }])
+
+    live.stop()
+  })
+
+  it('sends back a reason when the store cannot build the series, rather than silence', async () => {
+    const onHistoryQuery = vi.fn().mockRejectedValue(new Error('bucket must be one of 1, 60, 360, 1440'))
+    const { live, last } = uplink({ onHistoryQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'history', id: 'q2', path: 'x', query: { bucket: 7 } }))
+    await flush()
+
+    // The failure is answered, carrying the id so the screen that asked can stop waiting.
+    // The message is fixed, not the caught error's text: that text can hold a data-dir path,
+    // and this reply crosses the wire to the shore.
+    expect(last().historyReplies()).toEqual([
+      { type: 'history', id: 'q2', error: { code: 'HISTORY_FAILED', message: 'history query failed' } }
+    ])
+
+    live.stop()
+  })
+
+  it('acts on nothing else the shore sends - a command is not a request', async () => {
+    const onHistoryQuery = vi.fn().mockResolvedValue(SERIES)
+    const { live, last } = uplink({ onHistoryQuery })
+    live.start()
+    last().open()
+
+    // Everything a hostile or broken shore might try. None of it is a history request, so
+    // none of it is acted on - the boat takes no command, and the read-only promise is that
+    // there is nothing here that could carry one.
+    last().say(JSON.stringify({ type: 'put', path: 'steering.rudderAngle', value: 0.5 }))
+    last().say(JSON.stringify({ type: 'command', name: 'reboot' }))
+    last().say(JSON.stringify({ type: 'history_result', id: 'x', result: SERIES }))
+    last().say('steer to port')
+
+    // The dangerous one, and the reason the type tag is the gate: a command wearing a
+    // request's clothes - id, path and a valid query, everything but type: 'history'. If the
+    // tag ever stopped being what decides, THIS is what would run. It pins the gate to the
+    // one field that separates a read from a command.
+    last().say(
+      JSON.stringify({ type: 'put', id: 'evil', path: 'propulsion.port.revolutions', query: { bucket: 60 } })
+    )
+    await flush()
+
+    expect(onHistoryQuery).not.toHaveBeenCalled()
+    expect(last().historyReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('does nothing with a history request when the feature is not wired', async () => {
+    const { live, last } = uplink() // no onHistoryQuery
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'history', id: 'q1', path: 'x', query: { bucket: 60 } }))
+    await flush()
+
+    expect(last().historyReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('still hears a pong after learning to hear history', () => {
+    const onHistoryQuery = vi.fn().mockResolvedValue(SERIES)
+    const { live, last } = uplink({ onHistoryQuery })
+    live.start()
+    last().open()
+
+    // The keepalive shares the message handler with history now. A pong must still clear the
+    // outstanding-ping flag, or the second keepalive would declare a live line dead.
+    vi.advanceTimersByTime(PING_EVERY_MS)
+    expect(last().pings()).toBe(1)
+    last().say('pong')
+
+    vi.advanceTimersByTime(PING_EVERY_MS)
+    expect(last().pings()).toBe(2)
+    expect(last().dead()).toBe(false)
+
+    live.stop()
+  })
+
+  it('does not answer a query on a socket she has already replaced', async () => {
+    let resolveQuery: (r: PathSeriesResult) => void = () => {}
+    const onHistoryQuery = vi.fn(
+      () => new Promise<PathSeriesResult>((res) => (resolveQuery = res))
+    )
+    const { live, sockets, last } = uplink({ onHistoryQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'history', id: 'q1', path: 'x', query: { bucket: 60 } }))
+
+    // The line breaks and she redials while the query is still reading the disk.
+    sockets[0].closedByRelay(1006)
+    vi.advanceTimersByTime(5_000)
+    expect(sockets).toHaveLength(2)
+
+    // The slow query finishes now. Its answer belongs to a socket that no longer exists, and
+    // must not be sent down the new one - a stale reply landing on a fresh connection would
+    // answer a request the new socket never made.
+    resolveQuery({ path: 'x', points: [], clamped: false })
+    await flush()
+
+    expect(sockets[0].historyReplies()).toHaveLength(0)
+    expect(sockets[1].historyReplies()).toHaveLength(0)
 
     live.stop()
   })

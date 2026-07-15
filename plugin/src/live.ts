@@ -16,6 +16,7 @@
  * fleet, and every owner would have to walk down to their boat to fix a bug that was ours.
  */
 import type { RemoteLink } from './config'
+import type { HistoryRequest, HistoryResponse, PathSeriesResult, SnapshotsQuery } from './contract'
 
 /**
  * How often a frame goes up while the socket is open.
@@ -114,6 +115,13 @@ export interface LiveDeps {
   getRemote: () => RemoteLink | undefined
   /** The live snapshot, exactly as the local dashboard reads it. */
   frame: () => unknown
+  /**
+   * Answers a shore history request from the boat's own store, the same read the local REST
+   * /snapshots serves. Absent leaves the socket answering nothing but the keepalive, exactly
+   * as it did before there was a history channel - so an old relay, or a boat wired without
+   * it, simply never grows the ear. It never reaches Signal K: it reads, it does not steer.
+   */
+  onHistoryQuery?: (path: string, query: SnapshotsQuery) => Promise<PathSeriesResult>
   debug: (msg: string) => void
   /** Injected in tests. In production this is the `ws` adapter at the bottom of the file. */
   connect?: (url: string, token: string) => LiveSocket
@@ -259,9 +267,14 @@ export class LiveUplink {
 
     sock.onMessage((data) => {
       if (gen !== this.gen) return
-      // The only thing the relay ever says. Nothing else is acted on - and there is nothing
-      // else, because the shore may not steer a boat.
-      if (data === 'pong') this.awaitingPong = false
+      if (data === 'pong') {
+        this.awaitingPong = false
+        return
+      }
+      // The one thing beyond a pong that the shore may say: asking the boat to send back her
+      // own recorded history. It is not a command - see handleHistory - and anything that is
+      // not one of these two is not acted on, because the shore may not steer a boat.
+      this.handleHistory(gen, data)
     })
 
     sock.onClose((code) => {
@@ -310,6 +323,61 @@ export class LiveUplink {
       this.deps.debug(`live uplink send failed: ${String(e)}`)
       this.kill(this.sock)
       this.closed(gen, 1006)
+    }
+  }
+
+  /**
+   * A history request from the shore, answered from the boat's own store.
+   *
+   * This is the whole of the inbound surface, and it is deliberately narrow: parse the
+   * message, and act only if it is a history request. A command, a PUT, a malformed line -
+   * anything else - is dropped in silence, because there is no other thing the shore is
+   * allowed to ask and answering would be a reply to make of a surface. The query goes to the
+   * store, never to Signal K, and the store read is already clamped (today-only for raw, a
+   * hard row cap for rollups), so a request cannot ask the boat for more than she will give.
+   */
+  private handleHistory(gen: number, data: string): void {
+    const handler = this.deps.onHistoryQuery
+    if (!handler) return
+
+    let msg: unknown
+    try {
+      msg = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (!isHistoryRequest(msg)) return
+
+    const { id, path, query } = msg
+    handler(path, query).then(
+      (result) => this.replyHistory(gen, { type: 'history', id, result }),
+      (err) => {
+        // The caught text stays here, in the debug log - it can hold a data-dir path, and the
+        // reply crosses the wire to the shore. What the shore gets is that the query failed,
+        // which is all a screen waiting on a chart needs to stop waiting.
+        this.deps.debug(`history query failed: ${String(err)}`)
+        this.replyHistory(gen, {
+          type: 'history',
+          id,
+          error: { code: 'HISTORY_FAILED', message: 'history query failed' }
+        })
+      }
+    )
+  }
+
+  /**
+   * Send a history answer, but only if it still belongs to the socket that asked. A query
+   * reads the disk while the line may drop and redial underneath it; the generation guard is
+   * what keeps a slow answer from landing on a fresh connection that never made the request.
+   */
+  private replyHistory(gen: number, msg: HistoryResponse): void {
+    if (gen !== this.gen || !this.sock) return
+    try {
+      this.sock.send(JSON.stringify(msg))
+    } catch (e) {
+      // The socket died between the query starting and its answer arriving. The close handler
+      // has the redial; here there is nothing to do but not throw inside a promise callback.
+      this.deps.debug(`history reply send failed: ${String(e)}`)
     }
   }
 
@@ -405,6 +473,25 @@ export class LiveUplink {
     this.pingTimer = null
     this.redialTimer = null
   }
+}
+
+/**
+ * Whether a parsed shore message is a history request and nothing else. Strict on purpose:
+ * the type tag is the gate that keeps a command from being read as a request, so a message
+ * missing it, or carrying a non-string path, or no query object, is not one. The query's own
+ * contents (bucket, range) are the store's to validate - it rejects a bad bucket - so they
+ * are not re-checked here.
+ */
+function isHistoryRequest(m: unknown): m is HistoryRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return (
+    o.type === 'history' &&
+    typeof o.id === 'string' &&
+    typeof o.path === 'string' &&
+    typeof o.query === 'object' &&
+    o.query !== null
+  )
 }
 
 /**
