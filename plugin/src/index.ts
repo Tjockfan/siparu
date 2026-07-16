@@ -82,12 +82,17 @@ export = (app: ServerAPI): Plugin => {
   async function writeSnapshot(): Promise<void> {
     if (!state || !store) return
     const now = Date.now()
-    const snap = state.snapshot(now, true)
+    // The horizon is what separates a record from a memory. Every field is gated on
+    // the age of its own source, so an instrument that went quiet leaves a gap here
+    // instead of a value wearing this row's timestamp: the live read below is free to
+    // keep showing the last one, but nothing measured it at `now`, and this row says
+    // it did. A voyage is built from these rows.
+    const snap = state.snapshot(now, true, INTERNAL.fabricationHorizonMs)
     // Dynamic gauge history rides the same NDJSON row, but only on the store path:
     // the voyage engine below reads the core snapshot and has no use for it, and the
     // live frame builds its own `paths` separately. Added here, it reaches disk and
     // the rollups without touching either.
-    const numeric = state.numericDynamicPaths(now)
+    const numeric = state.numericDynamicPaths(now, INTERNAL.fabricationHorizonMs)
     const stored = Object.keys(numeric).length > 0 ? { ...snap, path_values: numeric } : snap
     await store.append(stored)
     if (voyages) await voyages.feed(snap)
@@ -133,10 +138,14 @@ export = (app: ServerAPI): Plugin => {
   function live(): LiveResult {
     if (!state) throw new Error('not started')
     const now = Date.now()
+    // No horizon here, deliberately: a screen showing the last known value is
+    // doing its job, and field_ages is how it says how old that value is. The
+    // recording path is the one that may not guess (writeSnapshot).
     const snap = state.snapshot(now, false)
     return {
       ...snap,
       data_age_s: state.lastDeltaTs === null ? null : Math.round((now - state.lastDeltaTs) / 1000),
+      field_ages: state.coreFieldAges(now),
       paths: state.dynamicPaths(now),
       path_ages: state.dynamicPathAges(now)
     }

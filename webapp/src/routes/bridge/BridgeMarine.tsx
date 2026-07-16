@@ -71,7 +71,11 @@ export default function BridgeMarine() {
         <div className="t">Nav state</div>
         <div className="s">{navDisplay(d.navState)}</div>
         <div className="meta">
-          {d.snap === null ? "AWAITING FIX" : d.live ? `FIX ${d.ageSec}s · WGS84` : `STALE ${d.ageSec}s`}
+          {d.snap === null || !d.hasFix
+            ? "AWAITING FIX"
+            : d.live
+              ? `FIX ${d.ageSec}s · WGS84`
+              : `STALE ${d.ageSec}s`}
         </div>
       </div>
 

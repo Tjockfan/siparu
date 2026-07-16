@@ -76,6 +76,23 @@ export const INTERNAL = {
   samplePeriodMs: 2000,
   /** A path value older than this loses priority in fallback merges (TWS, depth). */
   staleMs: 30_000,
+  /**
+   * On the recording path only: a value whose source last spoke longer ago than
+   * this is written as null rather than standing in for a measurement nobody
+   * took. The live screen keeps showing it (last-known-wins) and ages it there.
+   *
+   * Deliberately not staleMs: 30s is the fallback-priority threshold, and at the
+   * default snapshotSeconds of 60 it would null a barometer that is merely
+   * unhurried. Two minutes is generous on purpose, because the server offers no
+   * guarantee to be precise against: subscribing with policy 'fixed' does not
+   * republish the last value every period - it buffers whatever actually arrives
+   * (bufferWithTime), so a silent source stays silent on the wire. What makes a
+   * healthy path keep reporting is the sensor itself resending its reading, which
+   * NMEA hardware does and a change-of-state source may not. So this is a
+   * deliberately loose assumption about instruments, not a tight read of a
+   * protocol: it is set to catch the sensor that died, and to let the slow one be.
+   */
+  fabricationHorizonMs: 120_000,
   /** Track segments implying speed above this are excluded from rollup distance. */
   rollupSpeedGuardKn: 80,
   /** No delta for this long -> /health reports degraded. */

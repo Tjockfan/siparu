@@ -172,6 +172,18 @@ export interface LiveResult extends Snapshot {
    * it cannot see one instrument going quiet while the boat sails on.
    */
   path_ages?: Record<string, number>
+  /**
+   * Age in seconds of each core field's value, keyed by snapshot field name.
+   * The same service `path_ages` performs for the dynamic gauges: these values
+   * are last-known-wins, so a reader that wants to say how fresh one is has to
+   * be told per field. Add the frame's own age to it before judging: this is
+   * measured on the boat, and the frame takes time to arrive.
+   *
+   * Fields with no value at all are absent, as is `wind_gust` (a window max,
+   * not a reading). Optional: a boat running an older plugin sends none, and a
+   * reader must fall back rather than treat missing as fresh.
+   */
+  field_ages?: Partial<Record<MetricField, number>>
 }
 
 /** One dynamic path a boat currently exposes, offered to the dashboard picker. */

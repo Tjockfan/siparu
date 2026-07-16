@@ -211,55 +211,80 @@ export class MetricsState {
     return lastKnown
   }
 
-  private numeric(path: string, now: number): number | null {
-    const r = this.resolveSource(path, now)
-    return r && typeof r.entry.value === 'number' ? r.entry.value : null
+  /**
+   * Whether an entry may stand for a measurement taken at `now`. With no
+   * horizon (the live path) it always may: showing the last known value is
+   * the point, and the reader ages it separately.
+   */
+  private measuredAt(entry: SourceEntry, now: number, maxAgeMs?: number): boolean {
+    return maxAgeMs === undefined || now - entry.ts <= maxAgeMs
   }
 
-  private str(path: string, now: number): string | null {
+  private numeric(path: string, now: number, maxAgeMs?: number): number | null {
     const r = this.resolveSource(path, now)
-    return r && typeof r.entry.value === 'string' ? r.entry.value : null
+    if (!r || !this.measuredAt(r.entry, now, maxAgeMs)) return null
+    return typeof r.entry.value === 'number' ? r.entry.value : null
   }
 
-  private conceptNumeric(candidates: readonly string[], now: number): number | null {
+  private str(path: string, now: number, maxAgeMs?: number): string | null {
+    const r = this.resolveSource(path, now)
+    if (!r || !this.measuredAt(r.entry, now, maxAgeMs)) return null
+    return typeof r.entry.value === 'string' ? r.entry.value : null
+  }
+
+  private conceptNumeric(candidates: readonly string[], now: number, maxAgeMs?: number): number | null {
     const r = this.resolveConcept(candidates, now)
-    return r && typeof r.entry.value === 'number' ? r.entry.value : null
+    if (!r || !this.measuredAt(r.entry, now, maxAgeMs)) return null
+    return typeof r.entry.value === 'number' ? r.entry.value : null
   }
 
   /**
    * Current state in wire shape. `flushGust: true` (snapshot writes) returns
    * and resets the gust window; false (live reads) peeks without resetting.
+   *
+   * `freshnessMs` gates every field on the age of its own winning source, and
+   * belongs to the recording path: a row's `ts` asserts that its values were
+   * measured then, so a value older than the horizon is written as null rather
+   * than fabricated. Omit it when reading live - there, last-known-wins is
+   * correct and each field carries its own age instead (fieldAges).
+   *
+   * The gust is exempt by construction: it is a max-hold over the window that
+   * just closed, so a wind sensor that stops simply contributes nothing to the
+   * next one.
    */
-  snapshot(now: number, flushGust: boolean): Snapshot {
+  snapshot(now: number, flushGust: boolean, freshnessMs?: number): Snapshot {
     const gust = this.gustAccum
     if (flushGust) this.gustAccum = null
 
     const pos = this.resolveSource(POSITION_PATH, now)
-    const posVal = pos && typeof pos.entry.value === 'object' ? pos.entry.value : null
+    const posVal =
+      pos && typeof pos.entry.value === 'object' && this.measuredAt(pos.entry, now, freshnessMs)
+        ? pos.entry.value
+        : null
 
     return {
       ts: now,
       lat: posVal?.lat ?? null,
       lon: posVal?.lon ?? null,
-      sog: this.numeric('navigation.speedOverGround', now),
-      cog: this.numeric('navigation.courseOverGroundTrue', now),
-      heading_mag: this.numeric('navigation.headingMagnetic', now),
-      heading_true: this.numeric('navigation.headingTrue', now),
-      rate_of_turn: this.numeric('navigation.rateOfTurn', now),
-      magnetic_variation: this.numeric('navigation.magneticVariation', now),
-      magnetic_deviation: this.numeric('navigation.magneticDeviation', now),
-      nav_state: this.str('navigation.state', now),
-      wind_speed_apparent: this.numeric('environment.wind.speedApparent', now),
-      wind_angle_apparent: this.numeric('environment.wind.angleApparent', now),
-      wind_speed_true: this.conceptNumeric(TWS_PATHS, now),
+      sog: this.numeric('navigation.speedOverGround', now, freshnessMs),
+      cog: this.numeric('navigation.courseOverGroundTrue', now, freshnessMs),
+      heading_mag: this.numeric('navigation.headingMagnetic', now, freshnessMs),
+      heading_true: this.numeric('navigation.headingTrue', now, freshnessMs),
+      rate_of_turn: this.numeric('navigation.rateOfTurn', now, freshnessMs),
+      magnetic_variation: this.numeric('navigation.magneticVariation', now, freshnessMs),
+      magnetic_deviation: this.numeric('navigation.magneticDeviation', now, freshnessMs),
+      nav_state: this.str('navigation.state', now, freshnessMs),
+      wind_speed_apparent: this.numeric('environment.wind.speedApparent', now, freshnessMs),
+      wind_angle_apparent: this.numeric('environment.wind.angleApparent', now, freshnessMs),
+      wind_speed_true: this.conceptNumeric(TWS_PATHS, now, freshnessMs),
       wind_gust: gust,
-      wind_direction_true: this.numeric('environment.wind.directionTrue', now),
-      air_temp_k: this.numeric('environment.outside.temperature', now),
-      air_pressure_pa: this.numeric('environment.outside.pressure', now),
-      depth: this.conceptNumeric(DEPTH_PATHS, now),
-      water_temp_k: this.numeric('environment.water.temperature', now),
-      gps_satellites: this.numeric('navigation.gnss.satellites', now),
-      ais_class: this.str('sensors.ais.class', now)
+      wind_direction_true: this.numeric('environment.wind.directionTrue', now, freshnessMs),
+      air_temp_k: this.numeric('environment.outside.temperature', now, freshnessMs),
+      air_pressure_pa: this.numeric('environment.outside.pressure', now, freshnessMs),
+      depth: this.conceptNumeric(DEPTH_PATHS, now, freshnessMs),
+      water_temp_k: this.numeric('environment.water.temperature', now, freshnessMs),
+      gps_satellites: this.numeric('navigation.gnss.satellites', now, freshnessMs),
+      ais_class: this.str('sensors.ais.class', now, freshnessMs)
     }
   }
 
@@ -301,17 +326,56 @@ export class MetricsState {
   }
 
   /**
+   * Age in seconds of each core snapshot field on screen: how long ago the
+   * source behind that field last spoke. Keyed by snapshot field name, and
+   * present only for fields that have a value at all.
+   *
+   * The counterpart of dynamicPathAges, and it exists for the same reason: a
+   * reader showing a last-known value needs to know how old it is, per field.
+   * data_age_s cannot answer that - it stays near zero while any subscribed
+   * path keeps moving, so a boat sailing on a live GPS reports a healthy age
+   * while her depth sounder has been dead for hours. `wind_gust` is absent by
+   * construction: it is a max-hold over the window, not a reading with a source.
+   */
+  coreFieldAges(now: number): Partial<Record<MetricField, number>> {
+    const out: Partial<Record<MetricField, number>> = {}
+    const age = (entry: SourceEntry): number => Math.round((now - entry.ts) / 1000)
+
+    const pos = this.resolveSource(POSITION_PATH, now)
+    if (pos && typeof pos.entry.value === 'object') {
+      out.lat = age(pos.entry)
+      out.lon = age(pos.entry)
+    }
+    for (const [path, field] of Object.entries(DIRECT_PATHS)) {
+      const r = this.resolveSource(path, now)
+      if (r) out[field] = age(r.entry)
+    }
+    const tws = this.resolveConcept(TWS_PATHS, now)
+    if (tws) out.wind_speed_true = age(tws.entry)
+    const depth = this.resolveConcept(DEPTH_PATHS, now)
+    if (depth) out.depth = age(depth.entry)
+    return out
+  }
+
+  /**
    * Numeric-only dynamic path values, for the history snapshot. String gauges
    * (engine state) are dropped: history exists to be graphed and rolled up, and
    * min/max/avg have no meaning for "started". Live display keeps strings
    * (dynamicPaths); history does not.
+   *
+   * `freshnessMs` gates each gauge on its own source's age, as snapshot() does:
+   * these ride the same recorded row under the same `ts`, so an engine that
+   * stopped reporting must leave a gap in its graph rather than a flat line at
+   * whatever it last said.
    */
-  numericDynamicPaths(now: number): Record<string, number> {
+  numericDynamicPaths(now: number, freshnessMs?: number): Record<string, number> {
     const out: Record<string, number> = {}
     for (const path of this.paths.keys()) {
       if (!isDynamicPath(path)) continue
       const r = this.resolveSource(path, now)
-      if (r && typeof r.entry.value === 'number') out[path] = r.entry.value
+      if (r && typeof r.entry.value === 'number' && this.measuredAt(r.entry, now, freshnessMs)) {
+        out[path] = r.entry.value
+      }
     }
     return out
   }

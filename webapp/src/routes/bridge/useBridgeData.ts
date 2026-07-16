@@ -2,7 +2,7 @@
  *  The marine / pastel / ios variants consume this hook; only the presentation differs. */
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import type { Snapshot, BaroTrend, HealthResult } from "../../lib/api";
+import type { LiveSnapshot, BaroTrend, HealthResult } from "../../lib/api";
 import { usePolling } from "../../lib/usePolling";
 import { depthDiagnosis, type DepthDiag } from "../../lib/depthDiag";
 import { useNow } from "../../lib/useNow";
@@ -21,10 +21,12 @@ const POLL_SLOW = 60_000;
 export type GustHours = 1 | 6 | 12 | 24;
 
 export interface BridgeData {
-  snap: Snapshot | null;
+  snap: LiveSnapshot | null;
   now: number;
   ageSec: number | null;
   live: boolean;
+  /** False when no position has ever arrived - the screen must not call that a fix. */
+  hasFix: boolean;
   hdgTrue: number | null;
   sogKn: number | null;
   cogDeg: number | null;
@@ -58,7 +60,7 @@ function downsample(arr: number[], target: number): number[] {
 }
 
 export function useBridgeData(): BridgeData {
-  const { data: snap } = usePolling<Snapshot>(api.live, POLL_FAST, [], "bridge:live");
+  const { data: snap } = usePolling<LiveSnapshot>(api.live, POLL_FAST, [], "bridge:live");
   const { data: baro } = usePolling<BaroTrend>(() => api.tools.baroTrend(3), POLL_SLOW, [], "bridge:baro");
   const { data: health } = usePolling<HealthResult>(api.health, POLL_SLOW, [], "bridge:health");
 
@@ -122,8 +124,18 @@ export function useBridgeData(): BridgeData {
     };
   }, [gustHours]);
 
-  const ageSec = snap?.ts ? Math.max(0, Math.round((now - snap.ts) / 1000)) : null;
-  const live = ageSec !== null && ageSec < 30;
+  // How long since the boat built this frame. On its own it says only that she
+  // is reachable: the frame is rebuilt on every poll whether or not anything
+  // was measured, so a GPS that died an hour ago still reads 0s through it.
+  const frameAgeSec = snap?.ts ? Math.max(0, Math.round((now - snap.ts) / 1000)) : null;
+  // The fix's own age: what the GPS last said, and when. field_ages is measured
+  // on the boat, so the frame's travel time is added on top. An older plugin
+  // sends no field_ages - then this is the frame age, exactly as before.
+  const posFieldAge = snap?.field_ages?.lat;
+  const ageSec =
+    frameAgeSec === null ? null : posFieldAge === undefined ? frameAgeSec : frameAgeSec + posFieldAge;
+  const hasFix = snap?.lat != null && snap?.lon != null;
+  const live = hasFix && ageSec !== null && ageSec < 30;
 
   const hdgTrue = radToDeg(snap?.heading_true);
   const sogKn = sogKnFiltered(snap?.sog);
@@ -182,6 +194,7 @@ export function useBridgeData(): BridgeData {
     now,
     ageSec,
     live,
+    hasFix,
     hdgTrue,
     sogKn,
     cogDeg,

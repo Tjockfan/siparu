@@ -35,7 +35,17 @@ export type Snapshot = {
   ais_class: string | null
 }
 
-export type LiveSnapshot = Snapshot & { data_age_s: number | null }
+export type LiveSnapshot = Snapshot & {
+  data_age_s: number | null
+  /**
+   * Age in seconds of each field's value, measured on the boat. Live values are
+   * last-known-wins, so this is the only thing that says whether a reading is
+   * current: data_age_s stays near zero while any path keeps moving and cannot
+   * see one instrument go quiet. Add the frame's own age before judging.
+   * Absent on an older plugin - treat missing as unknown, never as fresh.
+   */
+  field_ages?: Partial<Record<keyof Omit<Snapshot, 'ts'>, number>>
+}
 
 type MetricAgg = { min?: number; max?: number; avg?: number; last: number | string | null }
 
