@@ -6,8 +6,11 @@ dist/
 .env.*
 .DS_Store
 
-# Webapp bundle - shipped via package.json "files", not committed
-public/
+# Webapp build output - shipped via package.json "files", not committed.
+# Anchored: a bare "public/" matches at any depth, which also swallowed the
+# webapp/public source tree, so a fresh clone built a PWA with no favicon and no
+# manifest. Only the generated top-level directory belongs here.
+/public/
 
 # Local test sandbox
 .sandbox/

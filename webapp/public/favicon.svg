@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Siparu mark: the boat (solid) and the shore (outline), linked.
+       The tile is painted rather than left transparent so the tab reads the
+       same against light and dark browser chrome.
+       The outline square is inset to 5.4 units rather than drawn at 7: an SVG
+       stroke straddles its path, so a 7-unit path grows by half the stroke on
+       every side and out-measures the solid square. The mark says the two are
+       twins, so both must read 7x7 on the outside. -->
+  <rect width="32" height="32" rx="6" fill="#101214"/>
+  <rect x="5" y="12.5" width="7" height="7" fill="#e5484d"/>
+  <line x1="13.4" y1="16" x2="18.6" y2="16" stroke="#e8eaed" stroke-width="1.9" stroke-dasharray="2 1.2" opacity="0.85"/>
+  <rect x="20.8" y="13.3" width="5.4" height="5.4" fill="none" stroke="#e8eaed" stroke-width="1.6"/>
+</svg>
