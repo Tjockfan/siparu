@@ -151,6 +151,26 @@ body {
 .t-section { color: var(--accent); }
 
 /* ============================================================
+   BRAND MARK  (.sp-glyph) - the mark set beside a wordmark
+   ============================================================ */
+/* The mark's viewBox is cropped to the ink, so the box is the glyph: no dead
+   space to measure around or pull back out of layout. It is sized in em off the
+   font-size each .sp-lockup carries, which is also the size its wordmark
+   inherits. That is why the wordmark's font-size lives on the lockup and not on
+   the wordmark itself: one number per surface feeds both, so the mark tracks
+   automatically if a wordmark is ever resized, and no surface can drift into
+   rendering the brand at its own size. 0.62em lands the ink at about 0.85 of
+   cap height. Width stays auto: the viewBox is 22:7 and setting both distorts.
+   Also used outside .swiss (auth gate, loader). */
+.sp-glyph {
+  flex: none;
+  display: block;
+  height: 0.62em;
+  width: auto;
+}
+.sp-lockup { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+
+/* ============================================================
    HEADER BAR  (.head)
    ============================================================ */
 .swiss .head {
@@ -164,9 +184,9 @@ body {
   padding: calc(6px + env(safe-area-inset-top)) 16px 13px;
 }
 .swiss .head .mkwrap { display: flex; align-items: center; min-width: 0; }
+.swiss .head .sp-lockup { font-size: 19px; }
 .swiss .head .mk {
   font-family: var(--sp-font);
-  font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.02em;
   text-transform: uppercase;
@@ -219,7 +239,7 @@ body {
 }
 .swiss .head .live.is-stale { color: var(--band-muted); }
 .swiss .head .live.is-stale .dot { background: var(--band-muted); animation: none; }
-.swiss .head .live .dot { animation: ljPulse 2s ease-in-out infinite; }
+.swiss .head .live .dot { animation: spPulse 2s ease-in-out infinite; }
 .swiss .head .clk {
   font-family: var(--sp-mono);
   font-size: 13px;
@@ -245,7 +265,7 @@ body {
 }
 .swiss .head .umenu-btn:active { transform: scale(0.94); }
 
-@keyframes ljPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes spPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* ============================================================
    BOTTOM TAB BAR  (.tabbar) - Bridge
@@ -511,10 +531,10 @@ body {
     color-mix(in oklab, var(--muted) 32%, transparent) 37%,
     color-mix(in oklab, var(--muted) 18%, transparent) 63%);
   background-size: 400% 100%;
-  animation: ljShimmer 1.4s ease infinite;
+  animation: spShimmer 1.4s ease infinite;
   color: transparent !important;
 }
-@keyframes ljShimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@keyframes spShimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
 /* empty / centered message */
 .swiss .sp-empty {
@@ -662,7 +682,7 @@ body {
   background: var(--cell); border: 2px solid var(--rule);
   display: flex; flex-direction: column; max-height: 82vh;
 }
-@keyframes ljFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes spFade { from { opacity: 0; } to { opacity: 1; } }
 .swiss .sheet-head {
   display: flex; align-items: center; justify-content: space-between; padding: 15px 16px;
   border-bottom: 2px solid var(--rule);
@@ -808,21 +828,26 @@ body {
   overflow: hidden; background: var(--ink-band, #08090a);
 }
 .sp-bload.full { position: fixed; inset: 0; z-index: 50; }
+.sp-bload .sp-lockup { font-size: 21px; }
+/* Mark and wordmark carry the same animation rather than one on a wrapper: the
+   wordmark's own opacity keyframes would compound with a wrapper's. They start
+   together, so they breathe together. */
+.sp-bload .sp-glyph { animation: spBreathe 1.8s ease-in-out infinite; }
 .sp-bload .sp-bload-mk {
   font-family: var(--sp-font);
   font-weight: 700;
-  font-size: 21px;
   letter-spacing: 0.04em;
   color: var(--text);
-  animation: ljBreathe 1.8s ease-in-out infinite;
+  animation: spBreathe 1.8s ease-in-out infinite;
 }
 .sp-bload .sp-bload-mk .lt { font-weight: 300; color: var(--accent); opacity: 0.9; }
-@keyframes ljBreathe {
+@keyframes spBreathe {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .sp-bload .sp-bload-mk { animation: none; opacity: 0.85; }
+  .sp-bload .sp-glyph { animation: none; opacity: 0.85; }
 }
 
 /* ============================================================
@@ -843,7 +868,7 @@ body {
 }
 .swiss .vy-pulse {
   width: 7px; height: 7px; border-radius: 50%; background: var(--on-block); flex: none;
-  animation: ljPulse 1.4s ease-in-out infinite;
+  animation: spPulse 1.4s ease-in-out infinite;
 }
 .swiss .vy-active-grid {
   display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin-top: 12px; align-items: end;
@@ -984,7 +1009,8 @@ body {
   background: var(--ink-band, #08090a); color: var(--text, #e8eaed);
   font-family: var(--sp-font); text-align: center;
 }
-.sp-auth-mk { font-weight: 700; font-size: 21px; letter-spacing: 0.04em; }
+.sp-auth .sp-lockup { font-size: 21px; }
+.sp-auth-mk { font-weight: 700; letter-spacing: 0.04em; }
 .sp-auth-mk .lt { font-weight: 300; color: var(--accent); opacity: 0.9; }
 .sp-auth-card {
   display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -1013,7 +1039,7 @@ body {
 :root[data-theme="day"] .sp-auth-wait { color: var(--text); }
 .sp-auth-pulse {
   width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
-  animation: ljPulse 1.4s ease-in-out infinite;
+  animation: spPulse 1.4s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .sp-auth-pulse { animation: none; }

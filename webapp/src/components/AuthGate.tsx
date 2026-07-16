@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { api } from "../lib/api";
+import { BrandMark } from "./swiss/icons";
 
 /**
  * AuthGate - Signal K security is enabled and the plugin REST call returned
@@ -34,8 +35,11 @@ export default function AuthGate() {
 
   return (
     <div className="sp-auth" role="alert">
-      <span className="sp-auth-mk">
-        Siparu
+      <span className="sp-lockup">
+        <BrandMark className="sp-glyph" />
+        <span className="sp-auth-mk">
+          Siparu
+        </span>
       </span>
       <div className="sp-auth-card">
         <span className="sp-auth-kick">Sign-in required</span>

@@ -1,12 +1,12 @@
 /* Siparu - shared header band (Swiss `.head`).
- * back chevron · SIPARU wordmark · context tag · [LIVE] · [clock] · theme toggle. */
+ * back chevron · mark + SIPARU wordmark · context tag · [LIVE] · [clock] · theme toggle. */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type LiveSnapshot } from "../../lib/api";
 import { useNow } from "../../lib/useNow";
 import { usePolling } from "../../lib/usePolling";
 import { getTheme, toggleTheme, type ThemeName } from "../../lib/theme";
-import { ChevLeft, MoonIcon, SunIcon } from "./icons";
+import { BrandMark, ChevLeft, MoonIcon, SunIcon } from "./icons";
 
 type Props = {
   /** true → history back; string → navigate(path). */
@@ -85,9 +85,12 @@ export default function SwissTopBar({ back, context, live, stale, clock }: Props
             <ChevLeft size={15} />
           </button>
         )}
-        <Link to="/" className="mk" aria-label="Siparu home">
-          Siparu
-        </Link>
+        <span className="sp-lockup">
+          <BrandMark className="sp-glyph" />
+          <Link to="/" className="mk" aria-label="Siparu home">
+            Siparu
+          </Link>
+        </span>
         {context && <span className="ctx">{context}</span>}
       </div>
 

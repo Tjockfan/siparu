@@ -111,6 +111,32 @@ export const Close = (p: IconProps) => (
   </Svg>
 );
 
+/* Brand mark - the one glyph outside the line-icon set above: it keeps its own
+ * red, and it carries no size prop because each surface sizes it against its
+ * wordmark (see .sp-glyph in swiss.css). The light parts follow currentColor,
+ * so the mark inherits the wordmark's colour in both themes.
+ * The viewBox is cropped to the ink, with no dead space above or below: that
+ * lets the glyph be sized in em straight off the wordmark beside it, instead of
+ * a box whose ink filled only its middle third. The outline square is inset to
+ * 5.4 units because an SVG stroke straddles its path, so a 7-unit path would
+ * render larger on the outside than the solid square it is twinned with. */
+export const BrandMark = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 22 7" aria-hidden="true" focusable="false">
+    <rect x="0" y="0" width="7" height="7" fill="#e5484d" />
+    <line
+      x1="8.4"
+      y1="3.5"
+      x2="13.6"
+      y2="3.5"
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeDasharray="2 1.2"
+      opacity={0.85}
+    />
+    <rect x="15.8" y="0.8" width="5.4" height="5.4" fill="none" stroke="currentColor" strokeWidth={1.6} />
+  </svg>
+);
+
 /* Theme toggle icons - night/day. Same line-icon language. */
 export const MoonIcon = ({ size = 15 }: { size?: number }) => (
   <Svg size={size}>
