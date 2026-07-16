@@ -10,55 +10,19 @@
  * last value). Screens never notice.
  */
 
-export type Snapshot = {
-  ts: number
-  lat: number | null
-  lon: number | null
-  sog: number | null
-  cog: number | null
-  heading_mag: number | null
-  heading_true: number | null
-  rate_of_turn: number | null
-  magnetic_variation: number | null
-  magnetic_deviation: number | null
-  nav_state: string | null
-  wind_speed_apparent: number | null
-  wind_angle_apparent: number | null
-  wind_speed_true: number | null
-  wind_gust: number | null
-  wind_direction_true: number | null
-  air_temp_k: number | null
-  air_pressure_pa: number | null
-  depth: number | null
-  water_temp_k: number | null
-  gps_satellites: number | null
-  ais_class: string | null
-}
+// The wire shapes come from the plugin that serves this app, rather than being
+// restated here. They were restated, and they drifted: the plugin has sent
+// `paths` and `path_ages` on every frame since it learned to read engines and
+// tanks, and a copy of Snapshot that predated them meant this app typed them
+// away and threw them out twice a second. A type-only import costs nothing at
+// runtime (contract.ts declares no values, so the bundler drops the import) and
+// makes the next such addition arrive here on its own.
+import type { LiveResult, RollupHour, Snapshot } from '../../../plugin/src/contract'
 
-export type LiveSnapshot = Snapshot & {
-  data_age_s: number | null
-  /**
-   * Age in seconds of each field's value, measured on the boat. Live values are
-   * last-known-wins, so this is the only thing that says whether a reading is
-   * current: data_age_s stays near zero while any path keeps moving and cannot
-   * see one instrument go quiet. Add the frame's own age before judging.
-   * Absent on an older plugin - treat missing as unknown, never as fresh.
-   */
-  field_ages?: Partial<Record<keyof Omit<Snapshot, 'ts'>, number>>
-}
+export type { Snapshot }
 
-type MetricAgg = { min?: number; max?: number; avg?: number; last: number | string | null }
-
-type RollupHour = {
-  hour: string
-  count: number
-  first_ts: number
-  last_ts: number
-  distance_nm: number
-  pos_first: { lat: number; lon: number } | null
-  pos_last: { lat: number; lon: number } | null
-  metrics: Partial<Record<keyof Omit<Snapshot, 'ts'>, MetricAgg>>
-}
+/** The live frame, exactly as the plugin's /live returns it. */
+export type LiveSnapshot = LiveResult
 
 export class ApiError extends Error {
   status: number
