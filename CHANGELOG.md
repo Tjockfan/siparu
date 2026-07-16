@@ -11,6 +11,28 @@ base, and the REST endpoints are registered GET-only.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-07-16
+
+### Fixed
+
+- The logbook's times were the reader's own clock under a column that said UTC.
+  Two hours out in Norway, an hour in Britain, and nothing on screen to give it
+  away: the header says UTC, the number looks plausible, and the rows agree with
+  each other. At sea a log time is UTC, so an event read off this screen and
+  reported to anyone was reported at the wrong time. The rows themselves were
+  always right and are unchanged; only what the screen said about them was wrong.
+  The day window was local too, which quietly made the two daylight-saving days
+  23 and 25 hours long; a UTC day is always 24.
+- Pairing had no timeout. A marina wifi that accepts the connection and then
+  swallows it left the boat waiting eight minutes with a spinner at the helm and
+  nothing said. It now gives up after twenty seconds and says what it already knew
+  how to say: "Cannot reach Siparu. Is the boat online?" The worst case was the
+  confirm step, where the boat is already paired when the reply hangs, so the
+  skipper reads failure and starts again on a boat that is in fact linked.
+- The 0.1.3 entry claimed the engine, tank and generator gauges were "surfaced on
+  the dashboard". They are recorded and served over the API; they have no screen
+  of their own on the boat yet. The entry now says so.
+
 ## [0.1.5] - 2026-07-16
 
 ### Fixed
@@ -124,7 +146,8 @@ base, and the REST endpoints are registered GET-only.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.6
 [0.1.5]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.5
 [0.1.4]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.4
 [0.1.3]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.3
