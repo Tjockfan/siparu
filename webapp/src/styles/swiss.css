@@ -1105,6 +1105,16 @@ body {
 .swiss .pair.asking .who { color: #fff; }
 .swiss .pair.err .t { color: var(--accent); }
 
+/* The server's door is open. Not an action and not an error - a standing condition
+   that outlives every pairing state, so it reads as a rule of the room rather than a
+   notification to dismiss: marked down the edge, and left there until it is fixed. */
+.swiss .pair.warn {
+  border-top: none;
+  border-left: 3px solid var(--accent);
+  padding-left: 11px;
+}
+.swiss .pair.warn .t { color: var(--accent); }
+
 .swiss .pbtn {
   font-family: var(--sp-font);
   font-size: 10px;

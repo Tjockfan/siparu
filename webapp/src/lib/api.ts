@@ -355,7 +355,7 @@ export interface UplinkStatus {
   lastError: string | null
 }
 
-export type PairScreen =
+type PairState =
   | { state: 'idle' }
   | { state: 'showing_code'; userCode: string; expiresAt: string }
   | { state: 'awaiting_approval'; userCode: string; email: string | null; expiresAt: string }
@@ -368,6 +368,14 @@ export type PairScreen =
     }
   | { state: 'expired' }
   | { state: 'error'; message: string }
+
+/**
+ * The screen's state, plus the state of the door it stands behind. `security_off` is
+ * true when Signal K is running without security, which is its default: the pairing
+ * endpoints then answer anyone on the boat's network. It rides every state because it
+ * describes the server, not the flow.
+ */
+export type PairScreen = PairState & { security_off?: boolean }
 
 export const api = {
   live: () => http<LiveSnapshot>('/live'),

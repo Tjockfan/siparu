@@ -46,6 +46,44 @@ export type PairScreen =
   | { state: 'expired' }
   | { state: 'error'; message: string }
 
+/**
+ * What /pair/status answers: the screen's state, plus the state of the door it is
+ * standing behind. `security_off` rides every state because it describes the server,
+ * not where in the flow the skipper happens to be.
+ */
+export type PairStatus = PairScreen & { security_off?: boolean }
+
+/**
+ * True when Signal K is running with security off - which is its default, and which
+ * nothing in the setup makes you change. These routes then answer anyone who can
+ * reach the boat's network, so a stranger on the marina wifi can link this vessel to
+ * their own account while the owner's screen goes on saying "paired".
+ *
+ * Pairing is deliberately still allowed. Refusing it would stop the owner and not the
+ * intruder: on an unsecured server `GET /plugins/siparu/config` already hands over the
+ * token in one request, and the App Store will install code. The lock is not ours to
+ * fit; the warning is.
+ *
+ * Read through getLoginStatus because it is where the two strategies observably differ:
+ * tokensecurity hardcodes authenticationRequired: true, the dummy answers false.
+ * allowConfigure cannot serve here - the dummy returns a constant false, which reads
+ * identically to a locked-down server and would raise the alarm on every install.
+ * Cast because securityStrategy is absent from @signalk/server-api's types, and an
+ * unrecognised shape reads as secured rather than crying wolf.
+ */
+function securityOff(app: ServerAPI, req: unknown): boolean {
+  try {
+    const ss = (
+      app as unknown as {
+        securityStrategy?: { getLoginStatus?: (r: unknown) => { authenticationRequired?: boolean } }
+      }
+    ).securityStrategy
+    return ss?.getLoginStatus?.(req)?.authenticationRequired === false
+  } catch {
+    return false
+  }
+}
+
 interface Deps {
   app: ServerAPI
   relayUrl: string
@@ -159,7 +197,12 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
   })
 
   /** What the on-board screen renders. Safe to poll; never returns a secret. */
-  router.get('/pair/status', (_req, res) => {
+  router.get('/pair/status', (req, res) => {
+    // Every answer carries the door's state alongside the screen's, so the helm is
+    // told once, wherever the skipper is in the flow.
+    const json = (screen: PairScreen): void => {
+      res.json(securityOff(app, req) ? { ...screen, security_off: true } : screen)
+    }
     void (async () => {
       const remote = getRemote()
 
@@ -168,22 +211,22 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
       // paired would hide the very thing the skipper is standing there to read.
       if (deviceCode === null || userCode === null || expiresAt === null) {
         if (remote) {
-          res.json(paired(remote))
+          json(paired(remote))
           return
         }
 
         if (lastError) {
-          res.json({ state: 'error', message: lastError } satisfies PairScreen)
+          json({ state: 'error', message: lastError })
           return
         }
 
-        res.json({ state: 'idle' } satisfies PairScreen)
+        json({ state: 'idle' })
         return
       }
 
       if (new Date(expiresAt).getTime() <= Date.now()) {
         deviceCode = userCode = expiresAt = null
-        res.json({ state: 'expired' } satisfies PairScreen)
+        json({ state: 'expired' })
         return
       }
 
@@ -195,29 +238,29 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
         )
 
         if (poll.status === 'awaiting_boat_approval') {
-          res.json({
+          json({
             state: 'awaiting_approval',
             userCode,
             email: poll.claimed_by_email ?? null,
             expiresAt
-          } satisfies PairScreen)
+          })
           return
         }
 
         if (poll.status === 'expired' || poll.status === 'not_found' || poll.status === 'denied') {
           deviceCode = userCode = expiresAt = null
-          res.json({ state: 'expired' } satisfies PairScreen)
+          json({ state: 'expired' })
           return
         }
 
-        res.json({ state: 'showing_code', userCode, expiresAt } satisfies PairScreen)
+        json({ state: 'showing_code', userCode, expiresAt })
       } catch (e) {
         // The relay being unreachable is the single most common failure on a boat:
         // no internet, captive portal, DNS. Say so plainly instead of spinning.
-        res.json({
+        json({
           state: 'error',
           message: 'Cannot reach Siparu. Is the boat online?'
-        } satisfies PairScreen)
+        })
         app.debug(`pair status: ${String(e)}`)
       }
     })()

@@ -79,94 +79,119 @@ export default function PairBand() {
     </button>
   );
 
-  switch (data.state) {
-    case "idle":
-    case "expired":
-      return (
-        <div className="pair">
-          <div className="pl">
-            <div className="t">Remote viewing</div>
-            <div className="s">
-              {data.state === "expired"
-                ? "The code expired. Nothing was linked."
-                : "Off - this boat is not linked to an account."}
+  // The warning stands above whatever the band shows, in every state: it is about the
+  // server's door, not about where in the pairing flow she happens to be. It does not
+  // block anything - refusing to pair would stop the owner and not the intruder, who
+  // has shorter ways into an unsecured server.
+  const warning = data.security_off ? (
+    <div className="pair warn">
+      <div className="pl">
+        <div className="t">Signal K security is off</div>
+        <div className="s">
+          Anyone who can reach this network can link this boat to their account, and this
+          screen would still say she is yours. Add an admin user in Signal K, then pair.
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const band = (() => {
+    switch (data.state) {
+        case "idle":
+      case "expired":
+        return (
+          <div className="pair">
+            <div className="pl">
+              <div className="t">Remote viewing</div>
+              <div className="s">
+                {data.state === "expired"
+                  ? "The code expired. Nothing was linked."
+                  : "Off - this boat is not linked to an account."}
+              </div>
             </div>
+            {btn(data.state === "expired" ? "New code" : "Turn on", () => act(api.pair.start))}
           </div>
-          {btn(data.state === "expired" ? "New code" : "Turn on", () => act(api.pair.start))}
-        </div>
-      );
+        );
 
-    case "showing_code":
-      return (
-        <div className="pair">
-          <div className="pl">
-            <div className="t">Remote viewing · waiting</div>
-            <div className="code">{data.userCode}</div>
-            <div className="s">
-              Enter this at <b>{PORTAL}</b> · {minutesLeft(data.expiresAt)} min left
+      case "showing_code":
+        return (
+          <div className="pair">
+            <div className="pl">
+              <div className="t">Remote viewing · waiting</div>
+              <div className="code">{data.userCode}</div>
+              <div className="s">
+                Enter this at <b>{PORTAL}</b> · {minutesLeft(data.expiresAt)} min left
+              </div>
             </div>
+            {btn("Cancel", () => act(api.pair.deny), "ghost")}
           </div>
-          {btn("Cancel", () => act(api.pair.deny), "ghost")}
-        </div>
-      );
+        );
 
-    case "awaiting_approval":
-      return (
-        <div className="pair asking">
-          <div className="pl">
-            <div className="t">Someone wants to pair</div>
-            <div className="who">{data.email ?? "an account we cannot name"}</div>
-            <div className="s">Approve only if this is you. They will see where this boat is.</div>
-          </div>
-          <div className="acts">
-            {btn("Deny", () => act(api.pair.deny), "ghost")}
-            {btn("Approve", () => act(api.pair.approve), "accent")}
-          </div>
-        </div>
-      );
-
-    case "paired":
-      return (
-        // A rejected token is not a state to report calmly: the owner is watching a
-        // dead screen and only someone standing here can fix it.
-        <div className={`pair${data.uplink?.rejected ? " err" : ""}`}>
-          <div className="pl">
-            <div className="t">Remote viewing · on</div>
-            <div className="who">{data.email ?? "linked account"}</div>
-            {!confirmOff && <div className="s">{uplinkLine(data.uplink)}</div>}
-          </div>
-          {confirmOff ? (
+      case "awaiting_approval":
+        return (
+          <div className="pair asking">
+            <div className="pl">
+              <div className="t">Someone wants to pair</div>
+              <div className="who">{data.email ?? "an account we cannot name"}</div>
+              <div className="s">Approve only if this is you. They will see where this boat is.</div>
+            </div>
             <div className="acts">
-              {btn("Keep", () => setConfirmOff(false), "ghost")}
-              {btn("Unlink", () => act(api.pair.reset), "accent")}
+              {btn("Deny", () => act(api.pair.deny), "ghost")}
+              {btn("Approve", () => act(api.pair.approve), "accent")}
             </div>
-          ) : (
-            <div className="acts">
-              {/* Without this button the only way back to a fresh code was Turn off,
-                  and unlinking throws away the token that proves she is this boat -
-                  which is exactly how an owner ends up with duplicates of her own
-                  vessel. Pairing again keeps the proof, so she stays one boat. */}
-              {btn("Pair again", () => act(api.pair.start), "ghost")}
-              {/* Two taps, because this is the one that matters when a boat changes
-                  hands: it destroys the token and the previous owner stops seeing her. */}
-              {btn("Turn off", () => setConfirmOff(true), "ghost")}
-            </div>
-          )}
-        </div>
-      );
+          </div>
+        );
 
-    case "error":
-      return (
-        <div className="pair err">
-          <div className="pl">
-            <div className="t">Remote viewing · error</div>
-            <div className="s">{data.message}</div>
+      case "paired":
+        return (
+          // A rejected token is not a state to report calmly: the owner is watching a
+          // dead screen and only someone standing here can fix it.
+          <div className={`pair${data.uplink?.rejected ? " err" : ""}`}>
+            <div className="pl">
+              <div className="t">Remote viewing · on</div>
+              <div className="who">{data.email ?? "linked account"}</div>
+              {!confirmOff && <div className="s">{uplinkLine(data.uplink)}</div>}
+            </div>
+            {confirmOff ? (
+              <div className="acts">
+                {btn("Keep", () => setConfirmOff(false), "ghost")}
+                {btn("Unlink", () => act(api.pair.reset), "accent")}
+              </div>
+            ) : (
+              <div className="acts">
+                {/* Without this button the only way back to a fresh code was Turn off,
+                    and unlinking throws away the token that proves she is this boat -
+                    which is exactly how an owner ends up with duplicates of her own
+                    vessel. Pairing again keeps the proof, so she stays one boat. */}
+                {btn("Pair again", () => act(api.pair.start), "ghost")}
+                {/* Two taps, because this is the one that matters when a boat changes
+                    hands: it destroys the token and the previous owner stops seeing her. */}
+                {btn("Turn off", () => setConfirmOff(true), "ghost")}
+              </div>
+            )}
           </div>
-          <div className="acts">
-            {btn("Dismiss", () => act(api.pair.reset), "ghost")}
-            {btn("Retry", () => act(api.pair.start))}
+        );
+
+      case "error":
+        return (
+          <div className="pair err">
+            <div className="pl">
+              <div className="t">Remote viewing · error</div>
+              <div className="s">{data.message}</div>
+            </div>
+            <div className="acts">
+              {btn("Dismiss", () => act(api.pair.reset), "ghost")}
+              {btn("Retry", () => act(api.pair.start))}
+            </div>
           </div>
-        </div>
-      );
-  }
+        );
+    }
+  })();
+
+  return (
+    <>
+      {warning}
+      {band}
+    </>
+  );
 }
