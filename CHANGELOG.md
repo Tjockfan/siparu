@@ -11,6 +11,35 @@ base, and the REST endpoints are registered GET-only.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-16
+
+### Fixed
+
+- The privacy section described a smaller product than the one that shipped. It
+  promised "its current position and name, and nothing else" and that "the history
+  never leaves"; in fact a paired boat sends her whole bridge every couple of
+  seconds, including the engine, tank and generator gauges added in 0.1.3, and a
+  paired screen may ask her for one gauge's recorded history. Nothing was leaving
+  that should not have been. The description was wrong, which is its own fault:
+  anyone who read it and decided to pair decided on bad information. It now lists
+  what actually goes, what the shore may ask, and what the relay keeps.
+- "Zero runtime dependencies" was no longer true - `ws` has been one since 0.1.3 -
+  and the dashboard was called a PWA although it has no service worker. Both
+  claims are corrected rather than quietly kept.
+
+### Added
+
+- The helm says so when Signal K security is off. In that state, which is Signal K's
+  default, the pairing endpoints answer anyone who can reach the boat's network, and
+  a stranger can link her to their own account while the owner's screen still reads
+  "paired". `/pair/status` reports `security_off` and the dashboard shows it above
+  every pairing state.
+
+  It warns rather than refuses on purpose: refusing would stop the owner and not the
+  intruder, who on an unsecured server can read the token from the plugin's own
+  config in one request. Turn on Signal K security before pairing - the README says
+  how, and it is worth the minute.
+
 ## [0.1.4] - 2026-07-16
 
 ### Fixed
@@ -94,7 +123,8 @@ base, and the REST endpoints are registered GET-only.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.5
 [0.1.4]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.4
 [0.1.3]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.2
