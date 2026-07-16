@@ -115,6 +115,13 @@ let userCode: string | null = null
 let expiresAt: string | null = null
 let lastError: string | null = null
 
+/**
+ * How long the boat waits on the relay before calling it unreachable. The same 20s the
+ * uplink uses: pairing and telemetry leave over the same marginal link, and a number
+ * that differs between them would only be a second thing to be wrong.
+ */
+const RELAY_TIMEOUT_MS = 20_000
+
 /** A relay that answered and said no. Distinct from one that never answered at all. */
 export class RelayRefused extends Error {
   constructor(
@@ -139,39 +146,57 @@ async function relay<T>(
   body: unknown,
   boatToken?: string
 ): Promise<T> {
-  let res: Response
+  // Without a clock here, a marina wifi that accepts the connection and then swallows it
+  // leaves the skipper watching a spinner for eight minutes, at the helm, waiting to be
+  // told something. undici's own header timeout is 300s and does not save him. The
+  // failure path below already knew how to say this plainly; it simply had no way to fire.
+  //
+  // AbortController + setTimeout rather than AbortSignal.timeout(), matching the uplink:
+  // the latter's clock lives inside the runtime where a test's fake timers cannot reach
+  // it, and a guard that can only be tested by waiting for it in real time is a guard
+  // that stops being tested. The timeout spans the body too - a relay that sends headers
+  // and then stalls mid-JSON hangs exactly as long, and reads the same at the helm.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS)
   try {
-    res = await fetch(`${url}${path}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(boatToken ? { authorization: `Bearer ${boatToken}` } : {})
-      },
-      body: JSON.stringify(body)
-    })
-  } catch (e) {
-    // fetch() throws a bare "TypeError: fetch failed" and buries the actual reason -
-    // DNS, TLS, a captive portal, a dead uplink - in .cause. On a boat that reason IS
-    // the diagnosis, and a log line that omits it sends the owner looking at the wrong
-    // thing. Carry it up.
-    const cause = e instanceof Error && e.cause ? `: ${String(e.cause)}` : ''
-    throw new Error(`relay ${path} unreachable${cause}`)
-  }
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    let code: string | null = null
+    let res: Response
     try {
-      code = (JSON.parse(text) as { error?: string }).error ?? null
-    } catch {
-      // Not every refusal is JSON (a proxy, a captive portal, a 502 from the edge).
+      res = await fetch(`${url}${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(boatToken ? { authorization: `Bearer ${boatToken}` } : {})
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      })
+    } catch (e) {
+      // fetch() throws a bare "TypeError: fetch failed" and buries the actual reason -
+      // DNS, TLS, a captive portal, a dead uplink - in .cause. On a boat that reason IS
+      // the diagnosis, and a log line that omits it sends the owner looking at the wrong
+      // thing. Carry it up.
+      const cause = e instanceof Error && e.cause ? `: ${String(e.cause)}` : ''
+      throw new Error(`relay ${path} unreachable${cause}`)
     }
-    // A refusal is not an outage, and telling them apart is the whole point of the
-    // message the skipper reads next. The relay rejecting a request means the boat's
-    // uplink WORKS - sending them to look at DNS and captive portals is a wrong
-    // diagnosis dressed up as a helpful one.
-    throw new RelayRefused(res.status, code, `relay ${path} -> ${res.status} ${text.slice(0, 120)}`)
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      let code: string | null = null
+      try {
+        code = (JSON.parse(text) as { error?: string }).error ?? null
+      } catch {
+        // Not every refusal is JSON (a proxy, a captive portal, a 502 from the edge).
+      }
+      // A refusal is not an outage, and telling them apart is the whole point of the
+      // message the skipper reads next. The relay rejecting a request means the boat's
+      // uplink WORKS - sending them to look at DNS and captive portals is a wrong
+      // diagnosis dressed up as a helpful one.
+      throw new RelayRefused(res.status, code, `relay ${path} -> ${res.status} ${text.slice(0, 120)}`)
+    }
+    return (await res.json()) as T
+  } finally {
+    clearTimeout(timeout)
   }
-  return (await res.json()) as T
 }
 
 /** The relay refused because the claimant does not own the boat she is already linked to. */

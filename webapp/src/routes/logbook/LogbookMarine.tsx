@@ -112,9 +112,13 @@ function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
 
 function DayView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
+  // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
+  // reader's zone would label it a day early west of Greenwich.
   const dayLabel = isToday
-    ? `Today · ${new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}`
-    : new Date(dateStr).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }).replace(/,/g, "");
+    ? `Today · ${new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })}`
+    : new Date(dateStr)
+        .toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" })
+        .replace(/,/g, "");
 
   return (
     <>
@@ -169,7 +173,7 @@ function Row({ s, windUnit }: { s: Snapshot; windUnit: WindUnit }) {
   const baro = paToHPa(s.air_pressure_pa);
   return (
     <div className="lb-row">
-      <span className="tm">{p(d.getHours())}:{p(d.getMinutes())}</span>
+      <span className="tm">{p(d.getUTCHours())}:{p(d.getUTCMinutes())}</span>
       <span className="v">{fmtNum(sog, 1)}</span>
       <span className="v">{hdg === null ? "·" : Math.round(hdg) + "°"}</span>
       <span className="v">{wind}</span>

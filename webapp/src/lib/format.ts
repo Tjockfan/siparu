@@ -184,14 +184,22 @@ export const startOfLocalDay = (d: Date = new Date()): number => {
   return c.getTime();
 };
 
-/** Date input "YYYY-MM-DD" → start of local day ms. */
+/**
+ * Date input "YYYY-MM-DD" → start of that UTC day, ms.
+ *
+ * UTC, not local, because a logbook day is a UTC day: the plugin stamps rows in epoch
+ * ms and /snapshots windows on startOfUtcDay, so a local midnight would ask for a
+ * window the boat never recorded against and drag rows into the neighbouring day.
+ * It also makes every day exactly 24h, which is what the caller's dayStart + 24h
+ * assumes - on a local clock the two DST days are 23 and 25 hours long.
+ */
 export const dateInputToMs = (s: string): number => {
   const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+  return Date.UTC(y, m - 1, d, 0, 0, 0, 0);
 };
 
-/** Date → "YYYY-MM-DD" (local). */
+/** Date → "YYYY-MM-DD" (UTC), the day the logbook files that instant under. */
 export const dateToInput = (d: Date = new Date()): string => {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 };

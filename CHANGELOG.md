@@ -76,8 +76,9 @@ base, and the REST endpoints are registered GET-only.
 ### Added
 
 - Engine, tank and generator gauges. A boat's own `propulsion`, `tanks` and
-  `electrical.generators` paths are discovered and surfaced on the dashboard; no boat
-  is asked to configure which ones it has.
+  `electrical.generators` paths are discovered, recorded, and served over the API
+  (`GET /live`, `GET /inventory`); no boat is asked to configure which ones it has.
+  They have no screen of their own on the boat's dashboard yet.
 - Each gauge carries its age, and its history is recorded and rolled up on the boat, so
   a reading can be graphed over time and a stale one can be told apart from a live one.
 - A paired screen ashore may ask the boat for one gauge's recorded history. It is the

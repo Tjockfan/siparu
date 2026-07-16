@@ -5,6 +5,11 @@ data - position, speed, heading, wind, depth, and whatever engine, tank and
 generator gauges she exposes - into an on-board history with voyage detection,
 and serves it through a built-in dashboard and a read-only REST API.
 
+The dashboard shows the bridge: speed, heading, wind, depth, position, the
+logbook, voyages and the chart. The engine, tank and generator gauges are
+recorded and served over the API (`GET /live`, `GET /inventory`), but they do
+not have a screen of their own yet.
+
 ## Principles
 
 - **Read-only.** The plugin never writes to your boat: no deltas are emitted,
