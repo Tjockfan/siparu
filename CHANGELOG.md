@@ -11,8 +11,50 @@ base, and the REST endpoints are registered GET-only.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-16
+
+### Fixed
+
+- A silent instrument no longer writes its last reading into history wearing a fresh
+  timestamp. Every field is now gated on the age of its own source when a row is
+  recorded, so an instrument that stops reporting leaves a gap rather than a
+  measurement nobody took. This matters most where it is least visible: a GPS that
+  went quiet mid-passage kept logging speed, inflating hours underway and holding a
+  voyage open indefinitely. Existing history is not rewritten.
+- The dashboard read "FIX 0s" whenever the boat was reachable, because it aged the
+  frame rather than the fix. It now ages the position itself, so a frozen instrument
+  reads as stale, and a boat that has never had a position is no longer called fixed.
+
 ### Added
 
+- Live values carry the age of each reading (`field_ages` on the live frame), so a
+  single frozen gauge can be told apart from a boat whose instruments are all fine.
+  The boat-wide data age cannot see one instrument go quiet while the others report.
+
+### Changed
+
+- Displayed values are unchanged: the screen still shows the last known reading, which
+  is what a screen is for. Only the recorded history and the freshness a reading claims
+  have changed.
+- A voyage whose GPS reports zero speed briefly and then goes silent now stays open,
+  where the stale zero used to close it. Hours underway are correct either way; an open
+  voyage says the arrival is unknown rather than inventing one.
+- The on-board dashboard wears the same mark as the portal, sized off one number per
+  surface so a boat's screen and her owner's screen cannot drift apart.
+
+## [0.1.3] - 2026-07-15
+
+### Added
+
+- Engine, tank and generator gauges. A boat's own `propulsion`, `tanks` and
+  `electrical.generators` paths are discovered and surfaced on the dashboard; no boat
+  is asked to configure which ones it has.
+- Each gauge carries its age, and its history is recorded and rolled up on the boat, so
+  a reading can be graphed over time and a stale one can be told apart from a live one.
+- A paired screen ashore may ask the boat for one gauge's recorded history. It is the
+  only thing the shore may ask, and it is not a command: the boat answers from her own
+  store and takes no instruction.
+- Wind and barometer graphs, drawn from the boat's own history.
 - Live uplink. When remote viewing is paired, the plugin holds a WebSocket open to the
   relay and sends a frame every couple of seconds, so a screen ashore shows the vessel
   manoeuvring rather than a position up to a minute old.
@@ -52,5 +94,7 @@ base, and the REST endpoints are registered GET-only.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.4
+[0.1.3]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.2
