@@ -17,7 +17,33 @@ import { PortEntry, VoyageOptions } from './config'
 import { haversineNm } from './rollup'
 
 /** The subset of a snapshot the engine consumes. */
-export type VoyageRow = Pick<Snapshot, 'ts' | 'lat' | 'lon' | 'sog' | 'nav_state'>
+export type VoyageRow = Pick<Snapshot, 'ts' | 'lat' | 'lon' | 'sog' | 'nav_state' | 'path_values'>
+
+/** Cubic metres per second into litres. */
+const M3_TO_L = 1000
+
+/**
+ * The combined instantaneous fuel burn a snapshot reports, summed across every
+ * engine (`propulsion.<instance>.fuel.rate`, SI m3/s), or null when the boat
+ * reports none. Twin engines are added because a trip's fuel is the boat's, not
+ * one shaft's; the null is load-bearing - it is the difference between "burned
+ * nothing" and "cannot know", and only the second suppresses the figure.
+ */
+function engineFuelRate(pv: Snapshot['path_values']): number | null {
+  if (!pv) return null
+  let sum = 0
+  let seen = false
+  for (const path in pv) {
+    if (path.startsWith('propulsion.') && path.endsWith('.fuel.rate')) {
+      const v = pv[path]
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        sum += v
+        seen = true
+      }
+    }
+  }
+  return seen ? sum : null
+}
 
 const MS_TO_KN = 1.94384
 /** Counted as actually moving for hours_underway (0.3 kn, in m/s). */
@@ -53,18 +79,22 @@ export interface VoyageMetrics {
   hours_underway: number
   avg_sog_kn: number | null
   max_sog_kn: number | null
+  fuel_used_l: number | null
   end_lat: number | null
   end_lon: number | null
 }
 
-/** Walk snapshots in chronological order and integrate distance / time. */
+/** Walk snapshots in chronological order and integrate distance / time / fuel. */
 export function integrateMetrics(snaps: VoyageRow[]): VoyageMetrics {
   let distanceNm = 0
   let secondsUnderway = 0
   let maxSogKn = 0
+  let fuelM3 = 0
+  let sawFuel = false
   let lastLat: number | null = null
   let lastLon: number | null = null
   let lastTs: number | null = null
+  let lastFuelRate: number | null = null
   let endLat: number | null = null
   let endLon: number | null = null
 
@@ -73,6 +103,8 @@ export function integrateMetrics(snaps: VoyageRow[]): VoyageMetrics {
     const sog = s.sog
     const lat = s.lat
     const lon = s.lon
+    const fuelRate = engineFuelRate(s.path_values)
+    if (fuelRate !== null) sawFuel = true
 
     if (typeof sog === 'number') {
       const sogKn = sog * MS_TO_KN
@@ -88,10 +120,18 @@ export function integrateMetrics(snaps: VoyageRow[]): VoyageMetrics {
           const leg = haversineNm(lastLat, lastLon, lat, lon)
           if (leg >= 0 && leg < MAX_LEG_NM) distanceNm += leg
         }
+
+        // Trapezoidal over the burn rate, and only across a segment the engine
+        // reports at both ends: a half-known segment is left out, never halved.
+        // Not gated on movement - an engine idling at anchor still burns.
+        if (lastFuelRate !== null && fuelRate !== null) {
+          fuelM3 += ((lastFuelRate + fuelRate) / 2) * (dtMs / 1000)
+        }
       }
     }
 
     lastTs = ts
+    lastFuelRate = fuelRate
     if (lat !== null && lon !== null) {
       lastLat = lat
       lastLon = lon
@@ -107,6 +147,7 @@ export function integrateMetrics(snaps: VoyageRow[]): VoyageMetrics {
     hours_underway: round3(hoursUnderway),
     avg_sog_kn: avg !== null ? round2(avg) : null,
     max_sog_kn: maxSogKn > 0 ? round2(maxSogKn) : null,
+    fuel_used_l: sawFuel ? round3(fuelM3 * M3_TO_L) : null,
     end_lat: endLat,
     end_lon: endLon
   }
@@ -260,6 +301,7 @@ export async function reconcile(
         hours_underway: 0,
         avg_sog_kn: null,
         max_sog_kn: null,
+        fuel_used_l: null,
         start_port: nearestPort(row.lat, row.lon, ports),
         end_port: null,
         status: 'open'
@@ -302,6 +344,7 @@ export async function applyMetrics(
   v.hours_underway = m.hours_underway
   v.avg_sog_kn = m.avg_sog_kn
   v.max_sog_kn = m.max_sog_kn
+  v.fuel_used_l = m.fuel_used_l
   v.end_lat = m.end_lat
   v.end_lon = m.end_lon
 }

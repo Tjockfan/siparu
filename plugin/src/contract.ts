@@ -246,6 +246,13 @@ export interface Voyage {
   hours_underway: number
   avg_sog_kn: number | null
   max_sog_kn: number | null
+  /**
+   * Litres burned over the voyage, integrated from the engines' own reported
+   * `propulsion.*.fuel.rate`. Null on a boat whose engines report no fuel rate:
+   * fuel is measured off the bus, never estimated from rpm or a boat model, so
+   * where the sensor is silent there is no honest number to show.
+   */
+  fuel_used_l: number | null
   start_port: string | null
   end_port: string | null
   status: 'open' | 'closed'
