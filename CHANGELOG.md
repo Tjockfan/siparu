@@ -11,6 +11,37 @@ base, and the REST endpoints are registered GET-only.
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-07-17
+
+### Fixed
+
+- The 0.1.8 entry described a boat's screen doing things it has never been able to do. It said
+  five temperatures "were shown" as raw kelvin, that a coolant loop "read 355.1", and that a
+  wind of exactly 1.00 kn "read as a flat calm". None of that happened on a boat. The on-board
+  dashboard has no gauge panel, so nothing aboard calls the table those readings come from and
+  it is not in the bundle the boat serves at all. The screen that showed them is one that
+  depends on this package for its units, and it showed them until it bumped the version it
+  pins. The entry now says which. The bullet about a NaN reading as a hurricane was worse than
+  imprecise: it was filed under Fixed, and nothing was broken. Splitting the ladder out would
+  have introduced it, and the same change that could have prevented the guard from being there
+  put one on each door. It is now filed as what it is.
+
+  This is the third time a release of this package has claimed a screen showed something it did
+  not: 0.1.5 said the gauges were "surfaced on the dashboard", 0.1.6 shipped to correct it and
+  reintroduced the same claim in the commit that was correcting it, and 0.1.8 wrote it again.
+  The fault is the same each time: describing a defect in a table by the reading a person would
+  have seen, without checking whether anyone could see it.
+- The 0.1.7 entry counted eleven propulsion paths and then said six of them were unrecognised,
+  switching from paths to distinct last segments mid-sentence. As paths it was seven: an
+  engine's `oilTemperature` and a transmission's are two paths and one segment. It now counts
+  paths throughout, and the 0.1.8 entry names the fifth temperature it was short of.
+- The header of `units.ts` still said the boat's screen had no copy of this table and instructed
+  its own deletion at the moment the second copy went. The second copy went in 0.1.8 and the
+  paragraph stayed, contradicting that release's own notes. It now says where this actually
+  stands, including the part that is not solved: the copies are gone, but the shore reads a
+  pinned version, so the drift moved from a comment asking two files to agree to a version
+  number asking a person to remember.
+
 ## [0.1.9] - 2026-07-17
 
 ### Fixed
@@ -28,27 +59,41 @@ base, and the REST endpoints are registered GET-only.
 
 ## [0.1.8] - 2026-07-17
 
-The two readings 0.1.7 wrote down as wrong are now right, and the boat's own screen reads the
-same table the shore does.
+The gauge table this package publishes had readings wrong in it. Nothing on a boat showed them:
+the on-board dashboard has no gauge panel, so nothing here calls the table and it is not even
+in the bundle the boat serves. The screens affected are the ones that depend on this package
+for their units, and each gets the fix when it bumps the version it pins.
+
+*(These four bullets were rewritten in 0.1.10. As first published they said "were shown" and
+"read as a flat calm", which described a boat's screen doing something it has never been able
+to do. See the 0.1.10 entry.)*
 
 ### Fixed
 
-- Five of the six temperatures Signal K publishes for an engine were shown as raw kelvin with
-  no unit. The table matched a path's last segment exactly and claimed only `temperature`, so
-  `coolantTemperature`, `oilTemperature`, `intakeManifoldTemperature` and `exhaustTemperature`
-  fell through it: a coolant loop at 82 C read `355.1` under a label saying Coolant temperature.
-  `coolantPressure` and `boostPressure` did the same, printing pascals where an engine gauge
-  reads bar. The list is now taken from the schema rather than from the paths one boat happens
-  to report, which is why it hid: the boat it was written against sends the short name.
+- Five of the six temperatures Signal K publishes for an engine were unrecognised and left as
+  raw kelvin with no unit. The table matches a path's last segment exactly and claimed only
+  `temperature`, so `coolantTemperature`, `oilTemperature`, `intakeManifoldTemperature`,
+  `exhaustTemperature` and a transmission's `oilTemperature` all fell through: a caller reading
+  a coolant loop at 82 C got `355.1` to put under a label saying Coolant temperature.
+  `coolantPressure` and `boostPressure` did the same, giving pascals where an engine gauge reads
+  bar. The list is now taken from the schema rather than from the paths one boat happens to
+  report, which is why it hid: the boat this was written against sends the short name.
 - Engine load and torque, and a drive's trim, are fractions of one that the schema documents as
-  percentages. They printed as `0.7` rather than `72%`.
-- A true wind of exactly 1.00 kn read as a flat calm. The knots door divided by the knot factor
-  so the ladder could multiply it straight back, and the round trip landed at
-  0.9999999999999999, a hair under force 1. The ladder now reads knots, which is the unit
-  Beaufort is defined in.
-- A missing wind reading could have read as a hurricane. `typeof NaN` is `"number"` and every
-  comparison against NaN is false, so a NaN reaching the ladder falls off the end of it and
-  comes out force 12. It was caught by accident before, by a guard on the other door.
+  percentages. They came out `0.7` rather than `72%`.
+- `beaufortFromKn` returned force 0 for exactly 1.00 kn. It divided by the knot factor so the
+  ladder could multiply it straight back, and the round trip landed at 0.9999999999999999, a
+  hair under force 1. The ladder now reads knots, the unit Beaufort is defined in. Reachable
+  only from a caller holding a rounded figure, such as a document's table: no wind in metres per
+  second converts to exactly 1.00 kn, because no double multiplied by 1.94384 lands there.
+
+### Prevented, rather than fixed
+
+Splitting the ladder out would have let a missing reading come out as a hurricane, and it is
+listed because the trap is worth knowing rather than because anything fell into it. `typeof NaN`
+is `"number"` and every comparison against NaN is false, so a NaN reaching the ladder falls off
+the end of it and returns force 12. Both doors were guarded before, one of them by accident:
+the knots door reached the thresholds through the metres-per-second door, which checked. Each
+guards itself now, in the same change that took the shared guard away.
 
 ### Changed
 
@@ -85,18 +130,22 @@ that the next one can.
 
 ### Known
 
+*(Both were fixed in 0.1.8. Kept as written, because a changelog is a record of what was
+believed at the time, and this was true when it shipped.)*
+
 Two readings this package now owns are wrong, and both are pinned by a test that says so
 rather than quietly passing:
 
-- Signal K documents eleven propulsion paths in kelvin or pascals. Six of them are not
+- Signal K documents eleven propulsion paths in kelvin or pascals. Seven of them are not
   recognised, because the metric table matches a path's last segment exactly and claims
   only `temperature`: a coolant loop at 82 C prints `355.1`, with no unit, beside a label
   that reads Coolant temperature. The same is true of `exhaustTemperature`,
-  `oilTemperature`, `coolantPressure`, `boostPressure` and `intakeManifoldTemperature`.
-- A true wind of exactly 1.00 kn reads as a flat calm. `beaufortFromKn` divides by the
-  knot factor and `beaufort` multiplies it straight back, and the round trip lands at
-  0.9999999999999999, a hair under force 1. Measured across nine million knot values from
-  0 to 90, it is the only input affected.
+  `oilTemperature` (twice: an engine's and a transmission's), `coolantPressure`,
+  `boostPressure` and `intakeManifoldTemperature`.
+- `beaufortFromKn` returns force 0 for exactly 1.00 kn. It divides by the knot factor and
+  `beaufort` multiplies it straight back, and the round trip lands at 0.9999999999999999,
+  a hair under force 1. Measured across nine million knot values from 0 to 90, it is the
+  only input affected.
 
 Both are older than this release and neither is fixed here on purpose: this file has to be
 provably identical to the copy it was moved from before that copy can be deleted, and
@@ -237,7 +286,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.10
 [0.1.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.9
 [0.1.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.8
 [0.1.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.7

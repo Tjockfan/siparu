@@ -15,12 +15,18 @@
  * no I/O, a path and a number in and a string or a scaled number out - which is what lets it
  * live on both sides at all.
  *
- * BE HONEST ABOUT TODAY: this file was moved here from the shore, and the shore has not been
- * repointed at it yet. That takes a release, and until it happens its copy is still the one
- * drawing the shore's cells, character for character identical to this one and free to stop
- * being. The boat's own screen has no gauge panel yet and will read this when it grows one.
- * So the guarantee below is the design, not yet the state of the world. Whoever deletes the
- * second copy should delete this paragraph in the same commit, and not before.
+ * WHERE THIS ACTUALLY STANDS, because the guarantee above is worth exactly what is true. The
+ * boat's screen reads this file directly: it is in the same package, so a knot and a force 6
+ * are this file's answer aboard, today. The shore reads it as a pinned dependency, which means
+ * a fix here reaches it when someone bumps that pin and not before. Nothing forces that, and no
+ * test on either side notices if it is left behind. So the copies are gone and the drift is
+ * not: it moved from a comment asking two files to agree, to a version number asking a person
+ * to remember. That is a better place for it and it is not nowhere.
+ *
+ * One thing this file does not do yet is get drawn: the boat's dashboard has no gauge panel,
+ * so describePath and systemValue have no caller aboard and fall out of her bundle entirely.
+ * The engine and tank cells they describe exist only ashore. When that panel is built, delete
+ * this paragraph.
  */
 import type { MetricField } from './contract'
 
