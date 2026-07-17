@@ -11,6 +11,45 @@ base, and the REST endpoints are registered GET-only.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-07-17
+
+Nothing in this release changes what a boat does or what her screen shows. It exists so
+that the next one can.
+
+### Added
+
+- `units.ts`: the rules that decide which panel a Signal K path belongs under, what its
+  cell is called, and what unit it reads in. An engine reports in SI because the standard
+  says so, and a person reads bar, rpm, degrees and litres per hour. Something has to
+  convert, and until now the only thing that did lived on a screen outside this package.
+  The plugin's own dashboard has no gauge panel yet; when it grows one, it reads these,
+  rather than growing a second opinion about what 423634 Pa means.
+- `CORE_SERIES_PATHS` and `CORE_SERIES`: the two navigation gauges a boat rolls up a
+  history for, declared in one place and described in one table keyed off that
+  declaration. Adding a path without describing it, or describing one without adding it,
+  now fails the build. This replaces a paragraph in `query.ts` that asked whoever came
+  next to remember two tables in another code base, which is not a thing a paragraph can
+  enforce and did not.
+
+### Known
+
+Two readings this package now owns are wrong, and both are pinned by a test that says so
+rather than quietly passing:
+
+- Signal K documents eleven propulsion paths in kelvin or pascals. Six of them are not
+  recognised, because the metric table matches a path's last segment exactly and claims
+  only `temperature`: a coolant loop at 82 C prints `355.1`, with no unit, beside a label
+  that reads Coolant temperature. The same is true of `exhaustTemperature`,
+  `oilTemperature`, `coolantPressure`, `boostPressure` and `intakeManifoldTemperature`.
+- A true wind of exactly 1.00 kn reads as a flat calm. `beaufortFromKn` divides by the
+  knot factor and `beaufort` multiplies it straight back, and the round trip lands at
+  0.9999999999999999, a hair under force 1. Measured across nine million knot values from
+  0 to 90, it is the only input affected.
+
+Both are older than this release and neither is fixed here on purpose: this file has to be
+provably identical to the copy it was moved from before that copy can be deleted, and
+being able to delete it is the point.
+
 ## [0.1.6] - 2026-07-16
 
 ### Fixed
@@ -146,7 +185,8 @@ base, and the REST endpoints are registered GET-only.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.7
 [0.1.6]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.6
 [0.1.5]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.5
 [0.1.4]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.4
