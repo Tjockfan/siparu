@@ -13,6 +13,20 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-07-18
+
+### Added
+
+- A voyage now carries the fuel it burned. The engines report their own rate over the bus, and
+  the voyage engine integrates it across the same segments it already uses for distance, so the
+  figure is litres actually burned rather than a guess from a boat model or a curve. Twin engines
+  are summed, and an engine idling at anchor still counts, because it is still burning. A boat
+  whose engines report no rate shows no fuel at all rather than a fabricated number.
+- The expanded voyage detail reads that fuel back in whatever frame the owner picks: a total in
+  litres or US or Imperial gallons, litres per mile or miles per litre, or the average litres per
+  hour. Each frame is named in full so no single number ever stands for two quantities, and the
+  choice is remembered between sessions.
+
 ## [0.1.13] - 2026-07-17
 
 ### Added

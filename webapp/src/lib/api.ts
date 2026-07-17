@@ -230,6 +230,8 @@ export type Voyage = {
   hours_underway: number
   avg_sog_kn: number | null
   max_sog_kn: number | null
+  /** Litres burned, integrated from the engines' reported rate; null when no engine reports fuel. */
+  fuel_used_l: number | null
   start_port: string | null
   end_port: string | null
   status: 'open' | 'closed'

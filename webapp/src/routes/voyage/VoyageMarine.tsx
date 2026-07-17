@@ -1,14 +1,22 @@
 /* Voyage - auto-detected passages.
  * Brutalist layout: active-passage banner + window summary grid + voyage list.
  * Tapping a row expands it: MapLibre track map (same style as the Map tab, pan/zoom)
- * plus port/coordinate detail. Data comes from voyage/useVoyageData.ts; header + tab
- * bar from Layout. No fuel column - the backend fuel_rate data is unreliable. */
-import { useState } from "react";
+ * plus port/coordinate detail, including fuel burned when the engines report it.
+ * Data comes from voyage/useVoyageData.ts; header + tab bar from Layout. */
+import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import type { Voyage, VoyageRollup, TrackPoint } from "../../lib/api";
 import { fmtCoordDM, fmtNum } from "../../lib/format";
+import { FUEL_MODES, fuelReadout, type FuelMode } from "../../lib/fuel";
 import { useVoyageData, type StatWindow } from "./useVoyageData";
 import VoyageTrackMap from "./VoyageTrackMap";
+
+const FUEL_MODE_KEY = "siparu.fuelMode";
+
+function initFuelMode(): FuelMode {
+  const stored = localStorage.getItem(FUEL_MODE_KEY);
+  return FUEL_MODES.some((m) => m.mode === stored) ? (stored as FuelMode) : "total_l";
+}
 
 const WINDOWS: { k: StatWindow; label: string }[] = [
   { k: "today", label: "Today" },
@@ -48,6 +56,11 @@ export default function VoyageMarine() {
   const [win, setWin] = useState<StatWindow>("today");
   const [openId, setOpenId] = useState<number | null>(null);
   const [tracks, setTracks] = useState<Record<number, TrackPoint[]>>({});
+  const [fuelMode, setFuelMode] = useState<FuelMode>(initFuelMode);
+
+  useEffect(() => {
+    localStorage.setItem(FUEL_MODE_KEY, fuelMode);
+  }, [fuelMode]);
 
   const active = d.current && d.current.end_ts === null ? d.current : null;
 
@@ -102,6 +115,8 @@ export default function VoyageMarine() {
               v={v}
               open={openId === v.id}
               track={tracks[v.id]}
+              fuelMode={fuelMode}
+              onFuelMode={setFuelMode}
               onToggle={() => toggle(v.id)}
             />
           ))}
@@ -164,14 +179,19 @@ function VoyageRow({
   v,
   open,
   track,
+  fuelMode,
+  onFuelMode,
   onToggle,
 }: {
   v: Voyage;
   open: boolean;
   track: TrackPoint[] | undefined;
+  fuelMode: FuelMode;
+  onFuelMode: (m: FuelMode) => void;
   onToggle: () => void;
 }) {
   const underway = v.end_ts === null;
+  const fuel = fuelReadout(v.fuel_used_l, v.distance_nm, v.hours_underway, fuelMode);
   const span = underway ? `${hhmm(v.start_ts)} →` : `${hhmm(v.start_ts)}–${hhmm(v.end_ts!)}`;
   const avg = v.avg_sog_kn === null ? "·" : `${v.avg_sog_kn.toFixed(1)} kn`;
   const route = routeLabel(v);
@@ -224,6 +244,22 @@ function VoyageRow({
               <span className="k">Max SOG</span>
               <span className="val">{v.max_sog_kn === null ? "·" : `${v.max_sog_kn.toFixed(1)} kn`}</span>
             </div>
+            {v.fuel_used_l !== null && (
+              <div className="vy-m vy-m-fuel">
+                <span className="k">Fuel</span>
+                <span className="val">{fuel ?? "·"}</span>
+                <select
+                  className="vy-fuel-sel"
+                  value={fuelMode}
+                  aria-label="Fuel unit"
+                  onChange={(e) => onFuelMode(e.target.value as FuelMode)}
+                >
+                  {FUEL_MODES.map((m) => (
+                    <option key={m.mode} value={m.mode}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       )}
