@@ -13,6 +13,38 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+### Fixed
+
+- A tank's volume is read in litres. `capacity` and `currentVolume` arrive in cubic metres, so a
+  473 litre tank printed "0.5", which is not a rounding error so much as a different tank, and
+  `pressure` arrives in pascals and printed "350000". Twenty-seven path shapes, three metrics
+  across each of the nine tank families the standard publishes. 0.1.11 put this table on the
+  boat's own screen, so unlike the corrections before it this one is reachable aboard rather
+  than only from ashore, and it was checked in the built bundle rather than assumed.
+
+  No boat here reports any of them, which is the point: every tank on this vessel reports only
+  its level, and a level already read correctly. The table is built from the standard rather
+  than from the one engine room we can see.
+
+  The three are keyed to tanks rather than to their own segments, which for `pressure` is
+  obvious (every published pressure is pascals, but two of the thirteen are the barometer, and a
+  barometer is read in hectopascals) and for the volumes is not. Both volume words look safe to
+  claim outright. Measuring every path the standard publishes said otherwise: a bare `capacity`
+  reads the battery container the standard gives no units at all, and dresses it in litres.
+  Nothing could have drawn it. It would still have been this package saying a battery holds 473
+  litres.
+
+### Changed
+
+- Three screens on board worked out how long ago something happened three different ways, and
+  the arithmetic is now shared while the wording is not. A chart popup, a pairing band and a
+  quiet gauge each keep the voice they were written in. Two of the three read the same as they
+  did across every second of two hundred days; the pairing band changes, and every difference is
+  it adopting an answer the gauge panel had already found and written down: it no longer counts
+  to 89 seconds before finding a minute, no longer rounds a 90 second old frame up to two
+  minutes, no longer offers a sixtieth minute instead of an hour, and no longer reports a boat
+  laid up since the spring as "3611 h ago".
+
 ## [0.1.11] - 2026-07-17
 
 The gauges this plugin has recorded since 0.1.3 are on the boat's own screen. Until now the only

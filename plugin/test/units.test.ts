@@ -372,6 +372,45 @@ describe('the long paths a real boat reports', () => {
     expect(describePath('propulsion.port.transmission.gearRatio')?.sub).toBe('Gear ratio')
   })
 
+  it('reads a tank in litres, which is the only unit a tank is read in', () => {
+    // 0.473 m3 is a 473 litre tank, and unscaled it printed "0.5": not a rounding error so
+    // much as a different tank. Whole litres, like fuel.used - nobody dips a tank to a tenth.
+    expect(systemValue('tanks.fuel.0.capacity', 0.473)).toBe('473 L')
+    expect(systemValue('tanks.fuel.0.currentVolume', 0.34)).toBe('340 L')
+    expect(systemValue('tanks.freshWater.1.capacity', 1.2)).toBe('1200 L')
+    // A hand-configured server names its tanks instead of numbering them, and the instance
+    // still sits between the family and the metric, which is what the key shape is for.
+    expect(systemValue('tanks.blackWater.portForward.currentVolume', 0.089)).toBe('89 L')
+    // A chart plots the band unrounded and labels the axis on its own.
+    expect(systemNumeric('tanks.fuel.0.capacity', 0.473)).toEqual({ value: 473, unit: 'L' })
+    expect(describePath('tanks.fuel.0.capacity')).toEqual({ tab: 'tanks', label: 'Fuel 0', sub: 'Capacity' })
+  })
+
+  it('reads a tank under pressure in bar, and still leaves the barometer alone', () => {
+    // THE THIRD COLLISION, and the reason tanks are keyed by their root. Every .pressure the
+    // schema publishes is pascals, so the segment pins the quantity - but two of the thirteen
+    // are environment.*.pressure, which is a barometer, and a barometer is read in hPa. A bare
+    // `pressure` key would read 1013 hPa as "1.0 bar". So the key names the family instead.
+    expect(systemValue('tanks.gas.0.pressure', 350000)).toBe('3.5 bar')
+    expect(systemValue('tanks.fuel.portForward.pressure', 101325)).toBe('1.0 bar')
+    expect(systemNumeric('environment.outside.pressure', 101325)).toEqual({ value: 1013.25, unit: 'hPa' })
+    expect(systemValue('environment.inside.engineRoom.pressure', 101325)).toBe('101325')
+  })
+
+  it('claims these words for tanks only, and not everywhere they appear', () => {
+    // Measured across every path the schema publishes rather than argued: a bare `capacity`
+    // key reads electrical.batteries.*.capacity, a container the standard gives no units at
+    // all. No screen could have shown it - the family is not subscribed and describePath
+    // returns null - and it would still have been this file saying a battery holds 473 litres
+    // in an export the shore re-exports. The narrow key is why it does not.
+    expect(systemValue('electrical.batteries.0.capacity', 0.473)).toBe('0.5')
+    expect(systemNumeric('electrical.batteries.0.capacity', 0.473)).toEqual({ value: 0.473, unit: '' })
+    // Its real leaves carry their own names and were never at risk. Pinned because the guard
+    // above is worth nothing if it is aimed at the path that was already safe.
+    expect(systemValue('electrical.batteries.0.capacity.nominal', 18_000_000)).toBe('18000000')
+    expect(systemValue('electrical.chargers.0.currentVolume', 0.5)).toBe('0.5')
+  })
+
   it('tells three engines apart rather than folding them into one cell', () => {
     // Some boats carry three. The label comes from the path's own id, so the table never has
     // to know how many there are, and a centre engine is not a special case anybody wrote.

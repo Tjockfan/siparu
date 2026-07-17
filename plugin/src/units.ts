@@ -161,14 +161,18 @@ interface SystemMetric {
  * The metrics we know how to read. `sub: false` means the label alone is enough (a tank cell
  * says "Fuel 0" over "72%", not "Fuel 0 / Current level").
  *
- * Keys come in two shapes and are matched longest first (see lookup). One segment
- * ("temperature") claims that word on every path that ends in it, which is right for a
- * quantity the segment alone pins: a `.temperature` is always kelvin, whoever reports it. Two
- * segments ("fuel.rate") claim a family, and the fuel metrics have to be keyed that way. A
- * bare `rate` key would claim `.rate` on every path any boat ever reports - a charger's, a
- * pump's - and dress it in litres per hour on no evidence. That is exactly the accident
- * CORE_SERIES exists to prevent for the barometer's `.pressure`, further down; do not repeat it
- * here by widening a key to save a segment.
+ * Keys come in three shapes and are matched narrowest first; lookup spells them out. One
+ * segment ("temperature") claims that word on every path that ends in it, which is right for a
+ * quantity the segment alone pins: a `.temperature` is always kelvin, whoever reports it. A
+ * family key claims a family, either through the last two segments ("fuel.rate") or, where the
+ * family's instance sits in the middle of the path, through its root ("tanks.pressure").
+ *
+ * The width of a key is the decision. A bare `rate` key would claim `.rate` on every path any
+ * boat ever reports - a charger's, a pump's - and dress it in litres per hour on no evidence,
+ * and a bare `pressure` would reach the barometer and read 1013 hPa as a bar. That is exactly
+ * the accident CORE_SERIES exists to prevent, further down; do not repeat it here by widening a
+ * key to save a segment. The test is not whether a boat reports the collision today. It is
+ * whether the segment pins the reading on its own.
  *
  * `fmt` is the cell's one-line reading. `scale` and `unit` are the same conversion pulled
  * apart for a graph, which needs the number on its own to plot and the unit on its own for an
@@ -186,6 +190,20 @@ const pascals = (): SystemMetric => ({
   fmt: (pa) => `${(pa / 1e5).toFixed(1)} bar`,
   scale: (pa) => pa / 1e5,
   unit: 'bar'
+})
+
+/**
+ * A tank's worth of something, which Signal K carries in cubic metres.
+ *
+ * Whole litres, following `fuel.used` below: nobody reads a tank to a tenth of a litre, and
+ * a 473 litre tank printed unscaled reads "0.5", which is not a rounding error so much as a
+ * different tank.
+ */
+const litres = (): SystemMetric => ({
+  sub: true,
+  fmt: (m3) => `${Math.round(m3 * M3_TO_L)} L`,
+  scale: (m3) => m3 * M3_TO_L,
+  unit: 'L'
 })
 
 /** A fraction of one that the schema itself says is a percentage. Read the note on `gearRatio`. */
@@ -224,6 +242,36 @@ const SYSTEM_METRIC: Record<string, SystemMetric> = {
   boostPressure: pascals(),
 
   currentLevel: percent(false),
+
+  /**
+   * What a tank holds, how much is in it, and what it is held at.
+   *
+   * All three keyed to tanks rather than to their own segments, and the narrowness is the
+   * point in each case, though only the last one is obvious:
+   *
+   * `.pressure` plainly cannot be claimed by its segment. The schema pins the quantity - all
+   * thirteen published pressures are pascals - but not the reading: two of the thirteen are
+   * `environment.*.pressure`, and a barometer is read in hectopascals, so a bare key would put
+   * "1.0 bar" where 1013 hPa belongs. That is the accident CORE_SERIES is keyed whole to
+   * prevent, arriving from the other side.
+   *
+   * `.capacity` and `.currentVolume` look like they could be bare, and that is the trap. Every
+   * numeric leaf carrying either word is a tank's, nine families each, all cubic metres, so the
+   * segment does pin the reading and the wide key passes the test this file sets. It was
+   * measured anyway, across every path the schema publishes, and a bare `capacity` was found
+   * dressing `electrical.batteries.*.capacity` in litres: a container the standard gives no
+   * units at all, that no reading lives at, and that this package could not have shown on a
+   * screen. Nothing would ever have seen it. It would still have been this file saying a
+   * battery holds 473 litres, in a public export the shore re-exports, and the entry beside
+   * these is `gearRatio`, which is here to make exactly that argument.
+   *
+   * Tanks take a root key rather than a two-segment one because their instance sits between the
+   * family and the metric - `tanks.fuel.0.capacity` - where an engine's nests the other way
+   * round and `fuel.rate` reaches it.
+   */
+  'tanks.capacity': litres(),
+  'tanks.currentVolume': litres(),
+  'tanks.pressure': pascals(),
 
   /**
    * The three ratios the schema says out loud are percentages: each is documented
@@ -323,17 +371,31 @@ const SYSTEM_SUB: Record<string, string> = {
 const SUPPRESSED: Record<string, true> = { 'fuel.economyRate': true }
 
 /**
- * A path's entry in the tables above: its family key ("fuel.rate") first, then its last segment
- * alone ("temperature").
+ * A path's entry in the tables above, tried from the narrowest claim to the widest.
  *
- * Longest first, so a family that has claimed a word keeps it and nothing else is touched: a
- * `.rate` on a path no family claims matches neither key, falls through, and stays the plain
- * number it was. Nothing here reads the value, so a caller with only a path in hand (a chart
- * asking what to write on its axis) gets the same answer as one holding a reading.
+ * Three shapes, and the middle one is not a convenience - it is the shape of the schema:
+ *
+ *   "fuel.rate"      a family that nests its own metric, reached by the last two segments.
+ *                    `propulsion.port.fuel.rate`.
+ *   "tanks.pressure" a family whose instance sits between it and its metric, so the last two
+ *                    segments read "0.pressure" and say nothing. Reached by the root instead.
+ *                    `tanks.fuel.0.pressure`.
+ *   "temperature"    a segment that pins its own quantity wherever it appears, whoever reports
+ *                    it. This is the widest claim in the file and the bar for it is high: a
+ *                    bare `rate` key would claim a charger's and a pump's `.rate` and dress
+ *                    them in litres per hour on no evidence.
+ *
+ * Narrowest first, so a family that has claimed a word keeps it: `propulsion.port.fuel.pressure`
+ * matches "fuel.pressure" and never reaches "tanks.pressure", and a `.rate` no family claims
+ * matches nothing at all, falls through, and stays the plain number it was.
+ *
+ * Nothing here reads the value, so a caller with only a path in hand (a chart asking what to
+ * write on its axis) gets the same answer as one holding a reading.
  */
 function lookup<T>(table: { [key: string]: T }, path: string): T | undefined {
   const seg = path.split('.')
-  return table[seg.slice(-2).join('.')] ?? table[seg[seg.length - 1]!]
+  const last = seg[seg.length - 1]!
+  return table[seg.slice(-2).join('.')] ?? table[`${seg[0]}.${last}`] ?? table[last]
 }
 
 /**
