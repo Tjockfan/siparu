@@ -13,6 +13,8 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-07-17
+
 ### Fixed
 
 - A tank's volume is read in litres. `capacity` and `currentVolume` arrive in cubic metres, so a
@@ -364,6 +366,7 @@ being able to delete it is the point.
   a chart, and a GET-only REST API.
 
 [Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.11...HEAD
+[0.1.12]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.12
 [0.1.11]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.11
 [0.1.10]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.10
 [0.1.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.9
