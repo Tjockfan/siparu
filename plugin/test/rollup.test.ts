@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Snapshot } from '../src/contract'
-import { RollupEngine, buildDayRollup, buildHourRollup, haversineNm, trackDistanceNm } from '../src/rollup'
+import { RollupEngine, buildDayRollup, buildHourRollup, clampRange, haversineNm, trackDistanceNm } from '../src/rollup'
 import { Store } from '../src/store'
 
 const T0 = Date.UTC(2026, 0, 15, 12, 0, 0)
@@ -209,15 +209,53 @@ describe('RollupEngine catch-up', () => {
     await store.flush()
     await engine.catchUp(T0 + 3_600_000 + 60_000)
 
-    // Hostile "to" (JS Date max) would otherwise iterate to year 275760.
-    // Clamped to now, it returns quickly with the real data and no extra.
-    const started = performance.now()
+    // COUNTED, NOT TIMED, and the counting is the point.
+    //
+    // This used to assert the call returned inside 1000 ms, which measured the machine and not
+    // the guard. Clamped, the walk is still every month from the epoch to now: around 670 file
+    // reads that all miss. On the armv7 this product actually targets - a Cerbo GX, emulated
+    // under QEMU in CI - those misses took 1025 ms and failed an otherwise green suite on a
+    // commit that changed a comment. And the budget could not simply be raised: an UNCLAMPED
+    // walk takes seconds, so any ceiling loose enough for real hardware is loose enough to let
+    // the regression through on a fast runner. Time was never the thing being protected.
+    //
+    // The guard does two different jobs and they fail in opposite directions, so both are
+    // checked. `to` is the denial of service: unclamped it walks 3.28 million months, one file
+    // read each. `from` is a correctness guard hiding inside it: an unclamped -8.64e15 makes
+    // Date.UTC(-271821, ...) return NaN, `NaN <= toTs` is false, the loop never runs, and the
+    // query answers "no data" instantly and wrongly. The counter throws rather than returning,
+    // so a lost `to` clamp fails in a second with a sentence rather than hanging until vitest
+    // gives up.
+    const monthsToNow = (new Date().getUTCFullYear() - 1970 + 1) * 12
+    const walked: string[] = []
+    type MonthReader = { readHourlyMonth: (m: string) => Promise<unknown> }
+    const engineInternals = engine as unknown as MonthReader
+    const readMonth = engineInternals.readHourlyMonth
+    engineInternals.readHourlyMonth = (m: string) => {
+      walked.push(m)
+      if (walked.length > monthsToNow) {
+        throw new Error(`readHourly walked past ${monthsToNow} months: the range clamp is gone`)
+      }
+      return readMonth.call(engine, m)
+    }
+
     const hostile = await engine.readHourly(-8.64e15, 8.64e15)
+
+    // The DoS: bounded by the calendar, not by the machine. Same on a Cerbo and a laptop.
+    expect(walked.length).toBeGreaterThan(0)
+    expect(walked.length).toBeLessThanOrEqual(monthsToNow)
+    // The correctness half: it really did start at the epoch rather than at NaN.
+    expect(walked[0]).toBe('1970-01')
+    expect(hostile).toHaveLength(1)
+
+    engineInternals.readHourlyMonth = readMonth
     const bounded = await engine.readHourly(0, Date.now())
     expect(hostile.map((h) => h.hour)).toEqual(bounded.map((h) => h.hour))
-    expect(hostile).toHaveLength(1)
-    // A single readHourly walking to year 275760 takes seconds; clamped, ms.
-    expect(performance.now() - started).toBeLessThan(1000)
+
+    // And the guard on its own, which the walk above only shows the effect of.
+    const [from, to] = clampRange(-8.64e15, 8.64e15)
+    expect(from).toBe(0)
+    expect(to).toBeLessThanOrEqual(Date.now())
 
     // readDaily shares the same sink guard.
     expect(await engine.readDaily(-8.64e15, 8.64e15)).toHaveLength(0) // no completed day yet
