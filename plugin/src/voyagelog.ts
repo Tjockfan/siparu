@@ -82,7 +82,8 @@ export class VoyageLog {
         lat: snap.lat,
         lon: snap.lon,
         sog: snap.sog,
-        nav_state: snap.nav_state
+        nav_state: snap.nav_state,
+        path_values: snap.path_values
       })
       await this.runReconcile(snap.ts)
     })
@@ -209,7 +210,7 @@ export class VoyageLog {
     for (const key of keys) {
       for (const r of await this.store.readRaw(key)) {
         if (r.ts >= fromTs && r.ts <= toTs) {
-          out.push({ ts: r.ts, lat: r.lat, lon: r.lon, sog: r.sog, nav_state: r.nav_state })
+          out.push({ ts: r.ts, lat: r.lat, lon: r.lon, sog: r.sog, nav_state: r.nav_state, path_values: r.path_values })
         }
       }
     }

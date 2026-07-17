@@ -13,6 +13,17 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-07-18
+
+### Fixed
+
+- A voyage's fuel was always empty. The integrator reads the engine rate off each snapshot's
+  dynamic values, but the two places that hand snapshots to it, the live feed window and the disk
+  re-read, both rebuilt each row from a fixed set of fields and dropped those values on the way. So
+  the rate never arrived and every voyage reported no fuel, on a boat that was in fact reporting it.
+  Both projections now carry the dynamic values through, and the live-path equivalence tests assert
+  the integrated litres so a future projection cannot quietly drop them again.
+
 ## [0.1.14] - 2026-07-18
 
 ### Added

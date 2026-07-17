@@ -33,8 +33,38 @@ function comparable(vs: Voyage[]) {
     end_ts: v.end_ts,
     distance_nm: v.distance_nm,
     hours_underway: v.hours_underway,
+    fuel_used_l: v.fuel_used_l,
     status: v.status
   }))
+}
+
+/** A rate in litres/hour as Signal K delivers it: cubic metres per second. */
+const lph = (litresPerHour: number) => litresPerHour / 3_600_000
+
+/**
+ * A short synthetic passage whose snapshots carry engine fuel rate, moving so a
+ * voyage opens. Combined burn is a constant 60 L/h (port + starboard), so the
+ * integrated litres are the passage duration times 60 - a number both the live
+ * feed and the batch reconcile must land on, and neither did while the row
+ * projections dropped path_values on the way to the integrator.
+ */
+function fuelRows(): VoyageRow[] {
+  const t0 = Date.UTC(2026, 5, 1, 8, 0, 0)
+  const rows: VoyageRow[] = []
+  for (let i = 0; i < 12; i++) {
+    rows.push({
+      ts: t0 + i * 60_000,
+      lat: 43.68 - i * 0.002,
+      lon: 7.33 - i * 0.004,
+      sog: 3.1,
+      nav_state: 'under way using engine',
+      path_values: {
+        'propulsion.port.fuel.rate': lph(30),
+        'propulsion.starboard.fuel.rate': lph(30)
+      }
+    })
+  }
+  return rows
 }
 
 let dir: string
@@ -95,6 +125,37 @@ describe('VoyageLog', () => {
     await vlog.flush()
 
     expect(comparable(vlog.list(100).reverse())).toEqual(comparable(await batchReference(rows)))
+  })
+
+  it('integrates engine fuel through the live feed (window path)', async () => {
+    const rows = fuelRows()
+    await store.init(rows[0]!.ts)
+    const vlog = new VoyageLog(store, DEFAULTS, () => undefined)
+    await vlog.init(rows[0]!.ts)
+
+    for (const r of rows) {
+      await store.append(asSnapshot(r))
+      await vlog.feed(asSnapshot(r))
+    }
+    await vlog.flush()
+
+    const v = vlog.list(100)[0]!
+    // 60 L/h over the 11 x 60 s span = 660 s = 0.1833 h => 11 L.
+    expect(v.fuel_used_l).toBeCloseTo(11, 1)
+    expect(comparable(vlog.list(100))).toEqual(comparable(await batchReference(rows)))
+  })
+
+  it('integrates engine fuel over the disk re-read (startup replay path)', async () => {
+    const rows = fuelRows()
+    await store.init(rows[0]!.ts)
+    await writeRawFiles(rows)
+    await store.init(rows[rows.length - 1]!.ts)
+
+    const vlog = new VoyageLog(store, DEFAULTS, () => undefined)
+    await vlog.init(rows[rows.length - 1]!.ts + 60_000)
+
+    const v = vlog.list(100)[0]!
+    expect(v.fuel_used_l).toBeCloseTo(11, 1)
   })
 
   it('persists voyages across restart and resumes cleanly', async () => {
