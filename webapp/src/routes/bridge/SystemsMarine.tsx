@@ -13,24 +13,27 @@
  * measured on the shore's version and reverted there. Here the cells grow to fill their row.
  */
 import { systemPanels, type SystemGauge } from "./useSystems";
+import { ageOf } from "../../lib/age";
 import type { LiveSnapshot } from "../../lib/api";
 
 /** How stale a gauge has to be before the screen stops presenting it as current. */
 const QUIET_AFTER_S = 90;
 
 /**
- * How long a gauge has been quiet, in the coarsest unit that still says something.
+ * How long a gauge has been quiet, in the panel's own voice.
  *
- * Floors rather than rounds. Rounding overstates at exactly the moment this fires: a gauge
- * quiet for the ninety seconds that trip the threshold announced "2 MIN AGO", and one quiet
- * for 3599 seconds said "60 MIN AGO" rather than an hour. A day tier because there is no
- * ceiling on the far side - the plugin never forgets a path it has seen once, so a boat
- * wintering ashore read "3611 H AGO" and expected somebody to divide.
+ * The tiers are in lib/age now, where the chart popup and the pairing band read them too:
+ * this panel is where the floor and the day tier were worked out, and keeping them here
+ * meant the other two screens went on answering the same question differently.
+ *
+ * Upper case, and the string carries it rather than a text-transform, which is what the
+ * rest of swiss.css would do. Left as it is: the reserve this sits in was measured against
+ * the widest string this returns, and moving the case into CSS is a change to that
+ * measurement's terms rather than to the duplication this is fixing.
  */
 export function quietFor(s: number): string {
-  if (s < 3600) return `${Math.floor(s / 60)} MIN AGO`;
-  if (s < 86400) return `${Math.floor(s / 3600)} H AGO`;
-  return `${Math.floor(s / 86400)} D AGO`;
+  const { value, unit } = ageOf(s);
+  return `${value} ${unit.toUpperCase()} AGO`;
 }
 
 function Cell({ g }: { g: SystemGauge }) {

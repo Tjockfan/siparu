@@ -12,6 +12,7 @@
  */
 import { useEffect, useState } from "react";
 import { api, type PairScreen, type UplinkStatus } from "../../lib/api";
+import { ageOf } from "../../lib/age";
 import { usePolling } from "../../lib/usePolling";
 
 const PORTAL = "app.siparu.app";
@@ -20,11 +21,18 @@ function minutesLeft(expiresAt: string): number {
   return Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 60_000));
 }
 
+/**
+ * Spelled out rather than abbreviated: this one lands inside a sentence a person reads
+ * once, at the helm, to find out whether the link is working.
+ *
+ * The tiers moved to lib/age and took two answers with them. This line used to round,
+ * so a frame sent 89 seconds ago read "89s ago" and the next second read "2 min ago";
+ * and it had no day tier, so a boat whose last frame went out in the spring said
+ * "3611 h ago" under the word "Sending".
+ */
 function ago(ts: number): string {
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 90) return `${s}s ago`;
-  const m = Math.round(s / 60);
-  return m < 90 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+  const { value, unit } = ageOf((Date.now() - ts) / 1000);
+  return `${value}${unit === "s" ? "s" : ` ${unit}`} ago`;
 }
 
 /**

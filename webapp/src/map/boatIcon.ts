@@ -1,5 +1,6 @@
 /** Marker HTML builders - engine wraps these in MapLibre Marker elements.
  *  Kept as plain HTML strings so an update is just innerHTML swap. */
+import { ageOf, type AgeUnit } from "../lib/age";
 
 export interface BoatPalette {
   fill: string;
@@ -90,11 +91,17 @@ export function makeAisIcon(courseDeg: number | null, color = "#c79555"): string
     </svg>`;
 }
 
+/**
+ * A single letter per unit, because this one is read in a popup rather than a sentence.
+ *
+ * The chart's own row sits next to an absolute clock - "3m ago (14:52:07)" - in a mono
+ * key/value grid whose column is as wide as the widest value in it. Spelling out " min"
+ * here would widen every row of that popup to buy nothing a reader of a chart wants.
+ */
+const TERSE: Record<AgeUnit, string> = { s: "s", min: "m", h: "h", d: "d" };
+
 /** Format a unix-ms timestamp as a short relative duration ("12s ago", "3m ago"). */
 export function relativeAgo(tsMs: number, nowMs: number = Date.now()): string {
-  const diff = Math.max(0, Math.floor((nowMs - tsMs) / 1000));
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  const { value, unit } = ageOf((nowMs - tsMs) / 1000);
+  return `${value}${TERSE[unit]} ago`;
 }
