@@ -23,6 +23,7 @@ import {
 import { RollupEngine } from './rollup'
 import { Store } from './store'
 import { dayKey, startOfUtcDay } from './time'
+import { coreSeriesFor } from './units'
 
 const ALL_FIELDS: readonly MetricField[] = [
   'lat',
@@ -50,23 +51,6 @@ const ALL_FIELDS: readonly MetricField[] = [
 
 export const LIMIT_DEFAULT = 200
 export const LIMIT_MAX = 5000
-
-/**
- * Core Snapshot fields a Bridge gauge can graph, keyed by the plain SK path the shore asks
- * with. Wind and barometer live in the fixed Snapshot fields (and each rollup's `metrics`),
- * not in the dynamic `path_values`/`path_metrics` maps - so pathSeries reads them from there
- * instead. True wind is a concept (speedTrue with speedOverGround as fallback) already folded
- * into `wind_speed_true`; speedTrue is its canonical name. Still read-only: this reads history
- * the boat already recorded, exactly as the dynamic gauges do.
- *
- * These SK paths must stay in step with the portal's CORE_NUMERIC (format.ts), which scales
- * exactly these paths for the axis. Add a third core gauge in both places or the shore asks for
- * a series this never serves.
- */
-const CORE_SERIES_FIELDS: Record<string, MetricField> = {
-  'environment.wind.speedTrue': 'wind_speed_true',
-  'environment.outside.pressure': 'air_pressure_pa'
-}
 
 /** The aggregate for a series in one rollup: a core metric is in `metrics`, a dynamic gauge in `path_metrics`. */
 function aggFor(
@@ -153,17 +137,23 @@ export class QueryService {
   }
 
   /**
-   * One dynamic gauge's history, shaped for a graph. Same bucketing as snapshots():
+   * One gauge's history, shaped for a graph. Same bucketing as snapshots():
    * bucket=1 reads raw (today only, clamped), the rest read rollups. A raw sample
    * becomes a point with min = max = avg = last; a rollup carries its real aggregate,
    * so a chart can draw a band. A path a rollup does not carry simply yields no point.
+   *
+   * A core gauge (wind, barometer) is filed in the fixed Snapshot fields rather than the
+   * dynamic `path_values`/`path_metrics` maps, so it is fetched from `metrics` instead;
+   * `units.ts` says which paths those are and which field each lands in. Still read-only
+   * either way: this reads back history the boat already recorded, exactly as a dynamic
+   * gauge does, and asks Signal K for nothing.
    */
   async pathSeries(pathName: string, q: SnapshotsQuery, now: number): Promise<PathSeriesResult> {
     const limit = Math.min(Math.max(1, q.limit ?? LIMIT_DEFAULT), LIMIT_MAX)
     const offset = Math.max(0, q.offset ?? 0)
     const order = q.order ?? 'desc'
     const to = q.to ?? now
-    const coreField = CORE_SERIES_FIELDS[pathName]
+    const coreField = coreSeriesFor(pathName)?.field
     let clamped = false
 
     let points: PathSeriesPoint[]
