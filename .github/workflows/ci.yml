@@ -35,6 +35,41 @@ jobs:
           # promise the README makes, and it is the one that has to hold.
           ! grep -rnE "handleMessage|nmea2000out|nmea0183out|registerPutHandler|registerActionHandler|registerDeltaInputHandler|emitPropertyValue|putSelfPath" plugin/src
 
+      - name: Read-only proof - no write method leaves the plugin
+        run: |
+          # The step above watches the door the server-api opens. It is not the only
+          # door: the boat's Signal K answers HTTP on the same host this plugin runs
+          # on, so `fetch(url, { method: 'PUT' })` writes to the vessel without
+          # naming a single symbol that step greps for. The webapp has been held to
+          # this check since the beginning; the plugin never was.
+          #
+          # PUT is how Signal K takes a write, so the plugin has no use for it, nor
+          # for PATCH or DELETE. POST is left out on purpose and is not an oversight:
+          # pairing and telemetry are POSTs, and the step below is what holds them to
+          # the relay's address rather than the boat's.
+          #
+          # Case-insensitive because fetch() uppercases the method for us, so a
+          # lowercase 'put' is the same request with a lowercase spelling.
+          #
+          # What this and the step below can and cannot do, since a guard nobody can
+          # see the edge of gets trusted past it: between them they read the verb and
+          # the address, and a write needs both, so defeating them takes hiding both
+          # at once. That is not a line anybody writes by accident, and accident is
+          # the whole threat here - anyone who can edit plugin/src can edit this file
+          # too. These steps are how we catch ourselves, not how we stop an attacker.
+          offenders=$(grep -rniE "method: *['\"]?(PUT|PATCH|DELETE)" plugin/src) || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: Read-only proof - the plugin never addresses the vessel's own API
+        run: |
+          # A write has to be aimed at the boat, and the boat's REST lives under
+          # /signalk/v1|v2/api on the loopback this plugin shares with her. Naming
+          # that address is the one thing every write to the vessel has in common,
+          # whatever verb it eventually uses, so nothing here may name it. The relay
+          # is reached through config's relayUrl and lives on the public internet.
+          offenders=$(grep -rniE "/signalk/v[0-9]+/api|localhost:[0-9]+|127\.0\.0\.1|\[::1\]" plugin/src) || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
       - name: GET-only REST - pairing is the only exception, and it is named
         run: |
           # rest.ts stays GET-only. The four pairing routes move the plugin's own
