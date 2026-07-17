@@ -436,15 +436,20 @@ body {
   margin-left: 0.3em;
 }
 
-.swiss .c-sog { justify-content: space-between; }
-.swiss .c-sog .n { font-size: 104px; }
+/* The value is centred in the space under its label, not pinned to the floor. space-between
+ * parks the number at the bottom edge and leaves the top of a tall cell empty - a spreadsheet
+ * pushed to the bottom rather than a gauge. On a phone the cells are short enough that it
+ * barely shows; on a tall iPad cell it is the whole "too much whitespace" complaint. The
+ * label stays a top heading; margin-block:auto floats the value in what is left. */
+.swiss .c-sog { justify-content: flex-start; }
+.swiss .c-sog .n { font-size: 104px; margin-block: auto; }
 .swiss .c-state {
   /* A solid red fill read as an "alarm" (Anchored is a safe state) -
      reduced to a thin red accent, neutral background. */
   background: var(--cell);
   color: var(--text);
   border-left: 2px solid var(--accent);
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 .swiss .c-state .t { color: var(--accent); }
 .swiss .c-state .s {
@@ -453,6 +458,9 @@ body {
   font-size: 30px;
   line-height: 0.92;
   letter-spacing: -0.01em;
+  /* The state and its fix line are one thought and stay together: margin-top:auto on the
+     state and margin-bottom:auto on the fix line push the pair to the centre as a block,
+     rather than centring the state alone and stranding the fix line at the floor. */
   margin-top: auto;
   /* If Anchored/Underway/Moored doesn't fit the narrow cell, break onto 2 lines at a soft hyphen. */
   overflow-wrap: break-word;
@@ -463,13 +471,18 @@ body {
   font-size: 10px;
   color: var(--accent-soft);
   margin-top: 8px;
+  margin-bottom: auto;
   letter-spacing: 0.02em;
 }
 /* Every matrix cell is the same kind of thing - one reading, one number - so it gets one
  * rule. Twenty hand-written px literals used to live here, one per named box, which is what
  * a picture costs: a new reading meant picking a size for it by hand. */
-.swiss .grid .matrix > .c { justify-content: space-between; }
+.swiss .grid .matrix > .c { justify-content: flex-start; }
 .swiss .grid .matrix .n { font-size: 46px; }
+/* Centre the number in the space below the label. Direct child only, so the composite cells
+ * keep their own layout: baro's number is nested in .left, and gust has a sparkline and a
+ * window selector instead of a bare number - neither matches, both are left alone. */
+.swiss .grid .matrix > .c > .n { margin-block: auto; }
 .swiss .c-depth .meta {
   font-family: var(--sp-mono);
   font-size: 10px;
