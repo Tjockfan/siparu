@@ -32,7 +32,7 @@ export const ChevLeft = (p: IconProps) => (
   </Svg>
 );
 
-export const TelemetryIcon = (p: IconProps) => (
+export const InstrumentsIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 17a8 8 0 0 1 16 0" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" />
     <path d="M12 17l4.5-5" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" />

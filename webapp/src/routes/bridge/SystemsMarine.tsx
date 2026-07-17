@@ -18,6 +18,21 @@ import type { LiveSnapshot } from "../../lib/api";
 /** How stale a gauge has to be before the screen stops presenting it as current. */
 const QUIET_AFTER_S = 90;
 
+/**
+ * How long a gauge has been quiet, in the coarsest unit that still says something.
+ *
+ * Floors rather than rounds. Rounding overstates at exactly the moment this fires: a gauge
+ * quiet for the ninety seconds that trip the threshold announced "2 MIN AGO", and one quiet
+ * for 3599 seconds said "60 MIN AGO" rather than an hour. A day tier because there is no
+ * ceiling on the far side - the plugin never forgets a path it has seen once, so a boat
+ * wintering ashore read "3611 H AGO" and expected somebody to divide.
+ */
+export function quietFor(s: number): string {
+  if (s < 3600) return `${Math.floor(s / 60)} MIN AGO`;
+  if (s < 86400) return `${Math.floor(s / 3600)} H AGO`;
+  return `${Math.floor(s / 86400)} D AGO`;
+}
+
 function Cell({ g }: { g: SystemGauge }) {
   const quiet = g.ageS !== null && g.ageS >= QUIET_AFTER_S;
   return (
@@ -35,7 +50,7 @@ function Cell({ g }: { g: SystemGauge }) {
       {/* An instrument that has gone quiet says so and keeps its last reading. Blanking it would
           throw away the only thing it knows, and a boat at anchor with a cold engine is not a
           fault. */}
-      {quiet && <div className="meta">{g.ageS! < 3600 ? `${Math.round(g.ageS! / 60)} MIN AGO` : `${Math.round(g.ageS! / 3600)} H AGO`}</div>}
+      {quiet && <div className="sy-age">{quietFor(g.ageS!)}</div>}
     </div>
   );
 }

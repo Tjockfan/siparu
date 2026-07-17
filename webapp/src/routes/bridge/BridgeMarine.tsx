@@ -67,7 +67,7 @@ export default function BridgeMarine() {
   return (
     <>
     {panels.length > 0 && (
-      <nav className="sy-tabs" aria-label="Dashboard panels">
+      <nav className="sy-tabs" aria-label="Instrument panels">
         {[{ key: "bridge", name: "Bridge" }, ...panels.map((p) => ({ key: p.key as string, name: p.name }))].map((t) => (
           <button
             key={t.key}

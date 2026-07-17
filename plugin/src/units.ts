@@ -22,11 +22,6 @@
  * test on either side notices if it is left behind. So the copies are gone and the drift is
  * not: it moved from a comment asking two files to agree, to a version number asking a person
  * to remember. That is a better place for it and it is not nowhere.
- *
- * One thing this file does not do yet is get drawn: the boat's dashboard has no gauge panel,
- * so describePath and systemValue have no caller aboard and fall out of her bundle entirely.
- * The engine and tank cells they describe exist only ashore. When that panel is built, delete
- * this paragraph.
  */
 import type { MetricField } from './contract'
 

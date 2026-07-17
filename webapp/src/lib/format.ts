@@ -94,49 +94,6 @@ export const fmtVariation = (rad: number | null | undefined): string => {
   return `${Math.abs(deg).toFixed(1)}°${hemi}`;
 };
 
-/**
- * SignalK unit -> "human" unit conversion (for the Logbook+ table).
- * Returns: { value, units, digits } - a displayable form (deg/knot/°C/hPa)
- * to show in place of the original value/units.
- */
-export type Converted = { value: number | string | boolean | null; units: string | null; digits: number };
-
-export function convertByUnit(
-  value: number | string | boolean | null,
-  units: string | null | undefined,
-): Converted {
-  if (value === null || value === undefined || typeof value !== "number" || !units) {
-    return { value, units: units ?? null, digits: 2 };
-  }
-  switch (units) {
-    case "rad":
-      return { value: ((value * 180) / Math.PI + 360) % 360, units: "°", digits: 1 };
-    case "rad/s":
-      return { value: (value * 180) / Math.PI, units: "°/s", digits: 2 };
-    case "m/s":
-      return { value: value * 1.94384, units: "kn", digits: 2 };
-    case "K":
-      return { value: value - 273.15, units: "°C", digits: 1 };
-    case "Pa":
-      return { value: value / 100, units: "hPa", digits: 1 };
-    case "ratio":
-      return { value: value * 100, units: "%", digits: 1 };
-    case "Hz":
-      // engine revolutions are usually Hz; 1 Hz = 60 RPM
-      return { value: value * 60, units: "RPM", digits: 0 };
-    case "m":
-      return { value, units: "m", digits: 2 };
-    case "m3":
-      return { value: value * 1000, units: "L", digits: 1 };
-    case "m3/s":
-      return { value: value * 3600 * 1000, units: "L/h", digits: 2 };
-    case "s":
-      return { value, units: "s", digits: 0 };
-    default:
-      return { value, units, digits: 2 };
-  }
-}
-
 /** Stringify a numeric value to the given digits. Other types are stringified. */
 export const fmtValue = (v: unknown, digits = 2): string => {
   if (v === null || v === undefined) return "·";

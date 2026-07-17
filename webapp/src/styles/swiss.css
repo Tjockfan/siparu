@@ -1188,6 +1188,26 @@ body {
    cold engine at anchor is the normal case, and a blank cell asks a question that a faded one
    answers. */
 .swiss .sy-grid .c.quiet .sy-n { color: var(--muted); }
+/* When it last spoke, on the label's line and out of the reading's way.
+   Out of the flow deliberately. As a third flex child it pushed the reading up, so one quiet
+   cell put a row's numbers on two lines: measured at 390px, 13px of drift in the flow and 0
+   out of it. Bottom right was measured too and is worse - it lands on the number itself.
+   Its own class rather than `.meta`, which looks shared and is not: every rule defining it is
+   scoped to a bridge cell this is not, so it rendered at the UA's 16px in full --text, louder
+   than the reading it qualifies. */
+.swiss .sy-grid .c .sy-age {
+  position: absolute;
+  right: 14px;
+  top: 13px;
+  font-family: var(--sp-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+/* Room for the marker to sit in, and it has to fit the widest one there is: "59 MIN AGO" runs
+   62px, and a reserve cut to the common "6 MIN AGO" put the label's last word under it by a
+   pixel. Measured against every string quietFor() can return, not the one in front of me. */
+.swiss .sy-grid .c.quiet .t { padding-right: 68px; }
 .swiss .sy-none {
   padding: 24px 16px;
   font-size: 12px;

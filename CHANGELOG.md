@@ -6,10 +6,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The plugin is read-only by design. No release will ever add a write path to the vessel:
-`handleMessage`, PUT requests and NMEA 2000 output do not appear anywhere in this code
-base, and the REST endpoints are registered GET-only.
+`handleMessage`, PUT requests and NMEA 2000 output do not appear anywhere in this code base.
+The REST endpoints are GET-only but for the four pairing routes, which move this plugin's own
+state when somebody taps approve at the helm and send nothing to the boat. CI proves both on
+every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
+
+## [0.1.11] - 2026-07-17
+
+The gauges this plugin has recorded since 0.1.3 are on the boat's own screen. Until now the only
+screen that drew them was one you open from ashore, which is a strange place for it to be the
+only place, and it is what issue #1 asked for.
+
+### Added
+
+- Engine, generator and tank panels on the on-board dashboard, built from the paths on the live
+  frame. Nothing counts anything: a boat with three engines gets three sets of readings, a boat
+  with nine tanks gets nine cells, and a boat that reports neither never sees a tab strip at
+  all. A tank fitted next winter gets a cell without a release from us, because there is no list
+  of her equipment here to fall out of date.
+- A gauge quiet for ninety seconds fades and says how long it has been, keeping its last
+  reading. A cold engine at anchor is the normal case rather than a fault, and a cell that
+  vanishes is indistinguishable from an instrument that was never fitted.
+
+### Changed
+
+- The bottom bar's first tab reads Instruments rather than Telemetry. It was named for what it
+  carried when it carried four readings. Not Dashboard, which is what this README and this
+  package call the whole app: a tab of that name would sit inside itself, next to the logbook it
+  contains. The other three tabs are a logbook, a voyage and a map, and this one is her
+  instruments.
+- The unit table this package has published since 0.1.7 reaches a boat for the first time in
+  this release. Nothing on board called it before, so it was tree-shaken out of the bundle she
+  serves, and the corrections in 0.1.8 (five temperatures left as raw kelvin, two pressures as
+  raw pascals, three ratios) only ever landed on a screen ashore. They now land on both, from
+  one table.
+- The header of `units.ts` said the boat's dashboard had no gauge panel and that this file's
+  readings "fall out of her bundle entirely", and told whoever built that panel to delete the
+  paragraph. This release builds it. The paragraph is gone, and the build says so: the table is
+  in the chunk she serves.
+
+### Removed
+
+- A second unit table in the webapp, unused by anything and reading a pascal as hectopascals
+  where the table this package publishes reads bar. It had no callers, so it broke nothing. It
+  was waiting for the next person to open that file and believe it.
 
 ## [0.1.10] - 2026-07-17
 
@@ -286,7 +328,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.11...HEAD
+[0.1.11]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.11
 [0.1.10]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.10
 [0.1.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.9
 [0.1.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.8

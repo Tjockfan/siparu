@@ -6,9 +6,11 @@ generator gauges she exposes - into an on-board history with voyage detection,
 and serves it through a built-in dashboard and a read-only REST API.
 
 The dashboard shows the bridge: speed, heading, wind, depth, position, the
-logbook, voyages and the chart. The engine, tank and generator gauges are
-recorded and served over the API (`GET /live`, `GET /inventory`), but they do
-not have a screen of their own yet.
+logbook, voyages and the chart. Engine, tank and generator gauges have panels of
+their own, built from what she reports rather than from a list: a boat with three
+engines gets three sets of readings, and a boat with no generator gets no
+generator tab. The same gauges are also served over the API (`GET /live`,
+`GET /inventory`).
 
 ## Principles
 

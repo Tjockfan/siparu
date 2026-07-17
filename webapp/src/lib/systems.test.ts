@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LiveSnapshot } from "./api";
 import { systemPanels } from "../routes/bridge/useSystems";
+import { quietFor } from "../routes/bridge/SystemsMarine";
 
 /**
  * The boat draws the panels her own frame justifies.
@@ -126,5 +127,32 @@ describe("systemPanels", () => {
     expect(panels).toHaveLength(1);
     expect(panels[0]!.gauges).toHaveLength(1);
     expect(panels[0]!.gauges[0]!.value).toBe("started");
+  });
+});
+
+/**
+ * Every boundary, not the middle of a band: a test sitting at "5 minutes" stays green while the
+ * tier it is testing moves underneath it. Each pair below is the last second of one unit and
+ * the first of the next.
+ */
+describe("how long a gauge has been quiet", () => {
+  it("counts from the second the threshold fires, without rounding up to it", () => {
+    // 90s is the threshold itself. Rounding said "2 MIN AGO" for a gauge quiet for ninety
+    // seconds, which overstates by a third at the exact moment a person first reads it.
+    expect(quietFor(90)).toBe("1 MIN AGO");
+    expect(quietFor(119)).toBe("1 MIN AGO");
+    expect(quietFor(120)).toBe("2 MIN AGO");
+  });
+
+  it("turns minutes into hours at the hour, not at sixty minutes", () => {
+    expect(quietFor(3599)).toBe("59 MIN AGO");
+    expect(quietFor(3600)).toBe("1 H AGO");
+  });
+
+  it("turns hours into days at the day, so a boat laid up does not report in hundreds", () => {
+    expect(quietFor(86399)).toBe("23 H AGO");
+    expect(quietFor(86400)).toBe("1 D AGO");
+    // A path is never evicted once seen, so this is reachable, and it is the reason for the tier.
+    expect(quietFor(13_000_000)).toBe("150 D AGO");
   });
 });
