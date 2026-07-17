@@ -13,6 +13,29 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-07-17
+
+### Added
+
+- A wide screen carries two instrument panels at once. The dashboard is a panel now, and on a
+  tablet held landscape or a laptop it splits into two: the bridge and one system side by side,
+  each with its own tab row, so an owner can watch the engine and the wind without switching
+  between them. The pair is a URL parameter (`?a=bridge&b=engine`), which means it survives a
+  reload and can be copied from one screen to another. Below the split width there is one panel
+  and the second choice waits in the address, so turning the tablet upright and back brings the
+  pair back rather than losing it. Each panel reads its column count from its own width, not the
+  window's, so a half-width panel lays out like the narrow screen it is the size of. A choice
+  that no longer resolves, an engine that stopped reporting this session, collapses its panel
+  rather than showing a second bridge in its place.
+
+### Changed
+
+- The engine, generator and tank panels fill the height they are given the way the bridge does.
+  A system with a handful of gauges used to pack them at the top of the panel and leave a slab
+  of dark beneath; now the rows stretch to take the space and the reading sits centred in its
+  cell. A system reporting a single gauge gets a single tall cell, which is the honest shape of
+  one reading rather than a screen that broke.
+
 ## [0.1.12] - 2026-07-17
 
 ### Fixed
@@ -365,7 +388,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.13...HEAD
+[0.1.13]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.13
 [0.1.12]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.12
 [0.1.11]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.11
 [0.1.10]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.10
