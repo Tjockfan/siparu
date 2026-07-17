@@ -45,15 +45,19 @@ export const MS_TO_KN = 1.94384
 export const SOG_VALID_KN = 0.4
 
 /**
- * Beaufort, from true wind only.
+ * The scale itself, on the knots it is written in.
  *
- * These thresholds are the scale, for every screen that reads this package. The same gust
- * cannot be a 6 on the bridge and a 7 in the owner's hand: the moment those two disagree,
- * neither can be trusted.
+ * Private, and the only place the thresholds appear. Both doors below come through here, so a
+ * document and a dashboard cannot end up disagreeing about what a force 6 is.
+ *
+ * It reads knots because that is the unit Beaufort is defined in. That sounds like a detail and
+ * was a bug: this used to live on the metres-per-second door, and the knots door reached it by
+ * dividing by the knot factor so it could be multiplied straight back. The round trip does not
+ * always land where it started - (1/1.94384)*1.94384 is 0.9999999999999999 - so a wind of
+ * exactly 1.00 kn came out a flat calm. One input in nine million, and the kind that turns up in
+ * a document rather than off an instrument, because a document holds rounded numbers.
  */
-export function beaufort(ms: number | null | undefined): number | null {
-  if (typeof ms !== 'number' || Number.isNaN(ms)) return null
-  const kn = ms * MS_TO_KN
+function forceFromKn(kn: number): number {
   if (kn < 1) return 0
   if (kn <= 3) return 1
   if (kn <= 6) return 2
@@ -70,13 +74,26 @@ export function beaufort(ms: number | null | undefined): number | null {
 }
 
 /**
- * Beaufort from knots, for a table that already holds knots.
+ * Beaufort, from true wind only, in the metres per second Signal K delivers.
  *
- * It calls beaufort() rather than repeating the thresholds, so a document and a dashboard
- * cannot end up disagreeing about what a force 6 is, which is the whole reason they are pinned.
+ * The same gust cannot be a 6 on the bridge and a 7 in the owner's hand: the moment those two
+ * disagree, neither can be trusted.
  */
-export const beaufortFromKn = (kn: number | null | undefined): number | null =>
-  typeof kn === 'number' ? beaufort(kn / MS_TO_KN) : null
+export function beaufort(ms: number | null | undefined): number | null {
+  return typeof ms !== 'number' || Number.isNaN(ms) ? null : forceFromKn(ms * MS_TO_KN)
+}
+
+/**
+ * Beaufort from knots, for a table that already holds them.
+ *
+ * The NaN guard is not decoration. `typeof NaN === 'number'`, and every comparison against NaN
+ * is false, so a NaN walking into the ladder falls off the end of it and comes out force 12: a
+ * missing reading printed as a hurricane. This used to be covered by accident, because the
+ * kelvin-door guard caught it on the way through.
+ */
+export function beaufortFromKn(kn: number | null | undefined): number | null {
+  return typeof kn !== 'number' || Number.isNaN(kn) ? null : forceFromKn(kn)
+}
 
 /**
  * The dynamic system paths, grouped and read once, for every screen that draws them.
@@ -136,12 +153,71 @@ interface SystemMetric {
  * apart for a graph, which needs the number on its own to plot and the unit on its own for an
  * axis - `fmt` bakes them together and rounds, and a chart must not round the band it draws.
  */
+const kelvin = (): SystemMetric => ({
+  sub: true,
+  fmt: (k) => `${(k - 273.15).toFixed(1)} °C`,
+  scale: (k) => k - 273.15,
+  unit: '°C'
+})
+
+const pascals = (): SystemMetric => ({
+  sub: true,
+  fmt: (pa) => `${(pa / 1e5).toFixed(1)} bar`,
+  scale: (pa) => pa / 1e5,
+  unit: 'bar'
+})
+
+/** A fraction of one that the schema itself says is a percentage. Read the note on `gearRatio`. */
+const percent = (sub: boolean): SystemMetric => ({
+  sub,
+  fmt: (r) => `${Math.round(r * 100)}%`,
+  scale: (r) => r * 100,
+  unit: '%'
+})
+
 const SYSTEM_METRIC: Record<string, SystemMetric> = {
   revolutions: { sub: true, fmt: (hz) => `${Math.round(hz * 60)} rpm`, scale: (hz) => hz * 60, unit: 'rpm' },
-  temperature: { sub: true, fmt: (k) => `${(k - 273.15).toFixed(1)} °C`, scale: (k) => k - 273.15, unit: '°C' },
-  oilPressure: { sub: true, fmt: (pa) => `${(pa / 1e5).toFixed(1)} bar`, scale: (pa) => pa / 1e5, unit: 'bar' },
   runTime: { sub: true, fmt: (s) => `${Math.round(s / 3600)} h`, scale: (s) => s / 3600, unit: 'h' },
-  currentLevel: { sub: false, fmt: (r) => `${Math.round(r * 100)}%`, scale: (r) => r * 100, unit: '%' },
+
+  /**
+   * Every temperature the schema carries in kelvin, not just the one called `temperature`.
+   *
+   * This table matches a last segment exactly, so for a long time it claimed `temperature` and
+   * silently let the other five through to the unknown-metric fallback: a coolant loop at 82 C
+   * printed "355.1", no unit, under a label reading Coolant temperature. Nobody caught it because
+   * the boat it was written against reports the short name.
+   *
+   * Enumerated rather than matched by suffix. A `/Temperature$/` rule would be shorter and would
+   * be the same mistake in a new coat: it would claim a segment no schema has published yet, on
+   * evidence of nothing but its spelling.
+   */
+  temperature: kelvin(),
+  oilTemperature: kelvin(),
+  coolantTemperature: kelvin(),
+  intakeManifoldTemperature: kelvin(),
+  exhaustTemperature: kelvin(),
+
+  /** The same, for pressure. `transmission.oilPressure` is already caught by its last segment. */
+  oilPressure: pascals(),
+  coolantPressure: pascals(),
+  boostPressure: pascals(),
+
+  currentLevel: percent(false),
+
+  /**
+   * The three ratios the schema says out loud are percentages: each is documented
+   * "0<=ratio<=1, 1 is 100%".
+   *
+   * `transmission.gearRatio` is NOT here and must never be, which is the whole reason these are
+   * listed one by one instead of a rule saying "ratio means percent". Its unit is `ratio` too,
+   * but the schema calls it "engine rotations per propeller shaft rotation": a 2.5:1 gearbox is
+   * 2.5, and a screen that read it as 250% would be inventing a reading. It falls through to the
+   * plain-number fallback and prints "2.5", which is exactly right, so there is nothing to fix
+   * and something to protect.
+   */
+  engineLoad: percent(true),
+  engineTorque: percent(true),
+  trimState: percent(true),
 
   // The fuel family, keyed by family for the reason above: an engine has more than one rate.
   'fuel.rate': {

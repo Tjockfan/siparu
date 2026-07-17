@@ -83,26 +83,22 @@ describe('beaufort', () => {
     expect(beaufortFromKn(undefined)).toBeNull()
   })
 
-  /**
-   * A KNOWN DEFECT, pinned rather than fixed, for the same reason as the temperatures below.
-   *
-   * beaufortFromKn divides by the knot factor and beaufort multiplies it straight back, and the
-   * round trip does not always land where it started: (1/1.94384)*1.94384 is 0.9999999999999999,
-   * which is under the force-1 threshold. Measured over nine million knot values from 0 to 90,
-   * exactly one disagrees with the ladder applied directly, and it is a wind of exactly 1.00 kn
-   * reading as a flat calm.
-   *
-   * Nobody is misread by it in practice: a wind instrument does not report exactly 1.00000000 kn.
-   * It is recorded here because the fix (apply the ladder to the knots it was handed) would make
-   * this file disagree with the copy it was moved from, and this slice has to be provably a
-   * no-op against that copy. Fix it where the second copy is deleted, not here.
-   */
-  it('drops a wind of exactly one knot to a calm, which the ladder itself does not', () => {
-    expect(beaufortFromKn(1)).toBe(0)
-    expect(beaufort(1 / 1.94384)).toBe(0)
-    // One boundary either side, to show the defect is the round trip and not the scale.
+  it('does not drop a wind of exactly one knot to a calm', () => {
+    // It used to. The knots door divided by the knot factor so the ladder could multiply it
+    // straight back, and (1/1.94384)*1.94384 is 0.9999999999999999, a hair under force 1. The
+    // ladder now reads knots, which is the unit Beaufort is defined in, and nothing round trips.
+    expect(beaufortFromKn(1)).toBe(1)
     expect(beaufortFromKn(0.99)).toBe(0)
     expect(beaufortFromKn(1.01)).toBe(1)
+  })
+
+  it('calls a missing reading nothing, rather than a hurricane', () => {
+    // typeof NaN === "number" and every comparison against NaN is false, so a NaN that reaches
+    // the ladder falls off the end of it and comes out force 12. The guard used to be borrowed
+    // from the other door; now each has its own.
+    expect(beaufortFromKn(NaN)).toBeNull()
+    expect(beaufort(NaN)).toBeNull()
+    expect(beaufortFromKn(undefined)).toBeNull()
   })
 })
 
@@ -279,35 +275,47 @@ describe('the long paths a real boat reports', () => {
   })
 
   /**
-   * A KNOWN GAP, pinned as it is rather than as it should be.
+   * Every temperature and pressure the schema publishes, not just the ones the boat this was
+   * written against happens to report.
    *
-   * SYSTEM_METRIC keys off the last segment EXACTLY, so it claims `temperature` and misses
-   * every other temperature Signal K documents. Checked against @signalk/path-metadata rather
-   * than from memory: of the eleven propulsion paths the standard carries in kelvin or pascals,
-   * six are unclaimed - oilTemperature, coolantTemperature, coolantPressure, boostPressure,
-   * intakeManifoldTemperature, exhaustTemperature. Each falls through to the unknown-metric
-   * fallback and prints raw SI with no unit, so a coolant loop at 82 C reads "355.1" beside a
-   * label that says Coolant temperature.
-   *
-   * This is the fuel-rate bug again (a running engine that read "0.0") wearing a different
-   * segment, and it is fixed in one place now rather than two, which is what this file is for.
-   * It is deliberately NOT fixed in the same commit that moved the physics here: the move has
-   * to be provably a no-op against the copy it was moved from, or the slice that exists to stop
-   * two screens disagreeing would itself be the thing that made them disagree.
-   *
-   * When it is fixed, these assertions fail. That is the point of them. Do not "correct" them
-   * to keep a suite green - change them to the reading a person would say out loud.
+   * The list is taken from @signalk/path-metadata rather than from memory. It used to be one
+   * `temperature` key, and the other five went out to the unknown-metric fallback as raw SI: a
+   * coolant loop at 82 C read "355.1", no unit, under a label saying Coolant temperature. It is
+   * the fuel-rate bug (a running engine reading "0.0") wearing a different segment, and it hid
+   * for the same reason: the boat on the bench does not report these paths.
    */
-  it('does not yet read the temperatures Signal K documents beside the one it claims', () => {
-    expect(systemValue('propulsion.portEngine.exhaustTemperature', 623.15)).toBe('623.1')
-    expect(systemValue('electrical.generators.0.coolantTemperature', 355.15)).toBe('355.1')
-    expect(systemValue('propulsion.port.oilTemperature', 363.15)).toBe('363.1')
-    expect(systemValue('propulsion.port.boostPressure', 101325)).toBe('101325')
-    // The one it does claim, for contrast: same quantity, same kelvin, one segment shorter.
+  it('reads every temperature the schema publishes, not only the short one', () => {
     expect(systemValue('propulsion.port.temperature', 355.15)).toBe('82.0 °C')
-    // And a transmission's oil pressure is read, because its last segment is one the table
-    // already claims. The gap is the segment's spelling, not the path's depth.
+    expect(systemValue('propulsion.portEngine.exhaustTemperature', 623.15)).toBe('350.0 °C')
+    expect(systemValue('electrical.generators.0.coolantTemperature', 355.15)).toBe('82.0 °C')
+    expect(systemValue('propulsion.port.oilTemperature', 363.15)).toBe('90.0 °C')
+    expect(systemValue('propulsion.port.intakeManifoldTemperature', 313.15)).toBe('40.0 °C')
+    // A transmission's is read too: its last segment is one the table claims, and the depth of
+    // the path was never what the lookup was matching.
+    expect(systemValue('propulsion.port.transmission.oilTemperature', 363.15)).toBe('90.0 °C')
+  })
+
+  it('reads every pressure the schema publishes, in the bar an engine gauge shows', () => {
+    expect(systemValue('propulsion.port.oilPressure', 423634)).toBe('4.2 bar')
+    expect(systemValue('propulsion.port.coolantPressure', 101325)).toBe('1.0 bar')
+    expect(systemValue('propulsion.port.boostPressure', 180000)).toBe('1.8 bar')
     expect(systemValue('propulsion.port.transmission.oilPressure', 3.5e5)).toBe('3.5 bar')
+    expect(systemValue('propulsion.port.fuel.pressure', 350000)).toBe('3.5 bar')
+  })
+
+  it('reads the ratios the schema calls percentages, and leaves the one it does not alone', () => {
+    // THE SECOND COLLISION, and the reason these are enumerated rather than ruled. engineLoad,
+    // engineTorque and trimState are each documented "0<=ratio<=1, 1 is 100%", so they are
+    // percentages and read as one. gearRatio carries the same `ratio` unit and is documented
+    // "engine rotations per propeller shaft rotation": a 2.5:1 gearbox is 2.5, and a rule saying
+    // "ratio means percent" would put 250% on the screen. It falls through to the plain number,
+    // which is the correct reading, so this assertion protects a gap rather than closing one.
+    expect(systemValue('propulsion.port.engineLoad', 0.72)).toBe('72%')
+    expect(systemValue('propulsion.port.engineTorque', 0.45)).toBe('45%')
+    expect(systemValue('propulsion.port.drive.trimState', 0.3)).toBe('30%')
+    expect(systemValue('propulsion.port.transmission.gearRatio', 2.5)).toBe('2.5')
+    expect(systemNumeric('propulsion.port.transmission.gearRatio', 2.5)).toEqual({ value: 2.5, unit: '' })
+    expect(describePath('propulsion.port.transmission.gearRatio')?.sub).toBe('Gear ratio')
   })
 
   it('tells three engines apart rather than folding them into one cell', () => {

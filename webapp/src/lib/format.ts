@@ -1,4 +1,14 @@
-/** Unit/format helpers for the Logbook UI. */
+/**
+ * Unit/format helpers for the Logbook UI.
+ *
+ * The gauge physics is not here. It is in the plugin that serves this app (`units.ts`), and so
+ * is anything the shore also reads: a knot is the same length ashore, and a force 6 has to be a
+ * force 6 on both screens or neither is worth looking at. What is left below is this screen's
+ * own presentation.
+ */
+import { beaufortFromKn, MS_TO_KN, SOG_VALID_KN } from "../../../plugin/src/units";
+
+export { SOG_VALID_KN };
 
 export const formatTs = (ms: number) => {
   const d = new Date(ms);
@@ -16,14 +26,7 @@ export const radToDeg = (r: number | null | undefined) =>
   r === null || r === undefined ? null : ((r * 180) / Math.PI + 360) % 360;
 
 export const msToKnots = (v: number | null | undefined) =>
-  v === null || v === undefined ? null : v * 1.94384;
-
-/**
- * Pier/anchor noise threshold. While moored/anchored, small movements
- * produce SOG in the 0.1–0.3 kt range and random COG on the GPS. Below
- * this value SOG/COG is meaningless - we return null.
- */
-export const SOG_VALID_KN = 0.4;
+  v === null || v === undefined ? null : v * MS_TO_KN;
 
 /** SignalK SOG (m/s) → knots; null when < SOG_VALID_KN. */
 export const sogKnFiltered = (sog_ms: number | null | undefined): number | null => {
@@ -145,23 +148,11 @@ export const fmtValue = (v: unknown, digits = 2): string => {
   return String(v);
 };
 
-/** Knots → Beaufort scale (0-12). */
-export const knotToBeaufort = (kn: number | null | undefined): number | null => {
-  if (kn === null || kn === undefined || Number.isNaN(kn)) return null;
-  if (kn < 1) return 0;
-  if (kn <= 3) return 1;
-  if (kn <= 6) return 2;
-  if (kn <= 10) return 3;
-  if (kn <= 16) return 4;
-  if (kn <= 21) return 5;
-  if (kn <= 27) return 6;
-  if (kn <= 33) return 7;
-  if (kn <= 40) return 8;
-  if (kn <= 47) return 9;
-  if (kn <= 55) return 10;
-  if (kn <= 63) return 11;
-  return 12;
-};
+/**
+ * Knots to Beaufort. The scale itself is in the plugin, so the boat and the shore cannot come
+ * to disagree about what a gale is: this is the same function under the name this screen calls it.
+ */
+export const knotToBeaufort = beaufortFromKn;
 
 /** DM for a single position coordinate. */
 export const fmtCoordDM = (

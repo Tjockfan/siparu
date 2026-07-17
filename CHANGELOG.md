@@ -11,6 +11,43 @@ base, and the REST endpoints are registered GET-only.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-07-17
+
+The two readings 0.1.7 wrote down as wrong are now right, and the boat's own screen reads the
+same table the shore does.
+
+### Fixed
+
+- Five of the six temperatures Signal K publishes for an engine were shown as raw kelvin with
+  no unit. The table matched a path's last segment exactly and claimed only `temperature`, so
+  `coolantTemperature`, `oilTemperature`, `intakeManifoldTemperature` and `exhaustTemperature`
+  fell through it: a coolant loop at 82 C read `355.1` under a label saying Coolant temperature.
+  `coolantPressure` and `boostPressure` did the same, printing pascals where an engine gauge
+  reads bar. The list is now taken from the schema rather than from the paths one boat happens
+  to report, which is why it hid: the boat it was written against sends the short name.
+- Engine load and torque, and a drive's trim, are fractions of one that the schema documents as
+  percentages. They printed as `0.7` rather than `72%`.
+- A true wind of exactly 1.00 kn read as a flat calm. The knots door divided by the knot factor
+  so the ladder could multiply it straight back, and the round trip landed at
+  0.9999999999999999, a hair under force 1. The ladder now reads knots, which is the unit
+  Beaufort is defined in.
+- A missing wind reading could have read as a hurricane. `typeof NaN` is `"number"` and every
+  comparison against NaN is false, so a NaN reaching the ladder falls off the end of it and
+  comes out force 12. It was caught by accident before, by a guard on the other door.
+
+### Changed
+
+- The boat's own screen no longer keeps its own copy of the Beaufort scale, the anchor-swing
+  speed threshold or the knot factor. It reads the same `units.ts` the shore does. They agreed
+  to the character, and there was nothing but distance keeping them that way.
+
+### Not fixed, and deliberately
+
+`transmission.gearRatio` carries the same `ratio` unit as engine load and is not a percentage:
+the schema calls it "engine rotations per propeller shaft rotation", so a 2.5:1 gearbox is 2.5.
+It reads as a plain number, which is correct. It is the reason the ratios above are listed one
+by one rather than covered by a rule saying ratio means percent.
+
 ## [0.1.7] - 2026-07-17
 
 Nothing in this release changes what a boat does or what her screen shows. It exists so
@@ -185,7 +222,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.8
 [0.1.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.7
 [0.1.6]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.6
 [0.1.5]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.5
