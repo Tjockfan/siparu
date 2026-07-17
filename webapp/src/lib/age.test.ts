@@ -106,30 +106,38 @@ describe("the three voices that read the same ladder", () => {
  * What the pairing band used to say, and why it no longer says it.
  *
  * The other two screens are an exact no-op across every second from zero to two hundred
- * days. This one is not, and every difference is it adopting an answer the gauge panel
- * had already worked out and written down for itself alone. Pinned so the change is a
- * record rather than a thing that happened.
+ * days. This one is not, and the difference that matters is in the only stretch it can
+ * reach: the band reads a timestamp refreshed every two seconds by the socket or every
+ * sixty by the POST behind it, and a refresh that fails sends uplinkLine down another
+ * branch, so this line lives in its first minute or so and never sees an hour.
+ *
+ * That bound is why the rounding was the bug rather than a detail. Everything above the
+ * minute here is the shared ladder answering for a screen that will not ask.
  */
 describe("the pairing band, which is the one screen this changed", () => {
-  it("no longer counts to 89 seconds before finding a minute", () => {
-    // Was "60s ago" through "89s ago", then jumped straight to "2 min ago".
+  it("counts a first minute, which it never used to say at all", () => {
+    // Was "60s ago" through "89s ago", then straight to "2 min ago". Against a sixty
+    // second interval that put "2 min" on a boat that was still on schedule; now "1 min"
+    // is a little late and "2 min" is a frame she missed.
     expect(asBand(60)).toBe("1 min ago");
     expect(asBand(89)).toBe("1 min ago");
-  });
-
-  it("no longer rounds a stale frame up to the next minute", () => {
-    // Was "2 min ago" at 90 seconds.
     expect(asBand(90)).toBe("1 min ago");
+    expect(asBand(120)).toBe("2 min ago");
   });
 
-  it("no longer announces a sixtieth minute instead of an hour", () => {
-    // Was "60 min ago".
+  it("still counts seconds where it spends its life", () => {
+    expect(asBand(0)).toBe("0s ago");
+    expect(asBand(59)).toBe("59s ago");
+  });
+
+  /**
+   * Past anything this screen can reach, and pinned anyway: sharing one ladder means the
+   * band inherits tiers it will not use, and inheriting them is cheaper than a fourth
+   * opinion about what an hour is. It reads correctly if the branch above it ever moves.
+   */
+  it("carries the tiers above it correctly, though it cannot reach them", () => {
     expect(asBand(3599)).toBe("59 min ago");
     expect(asBand(3600)).toBe("1 h ago");
-  });
-
-  it("no longer asks the reader to divide a season into hours", () => {
-    // Was "3611 h ago", under the word "Sending".
     expect(asBand(3611 * 3600)).toBe("150 d ago");
   });
 });

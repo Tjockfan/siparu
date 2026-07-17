@@ -39,11 +39,14 @@ every commit, and a fifth write route fails the build.
 - Three screens on board worked out how long ago something happened three different ways, and
   the arithmetic is now shared while the wording is not. A chart popup, a pairing band and a
   quiet gauge each keep the voice they were written in. Two of the three read the same as they
-  did across every second of two hundred days; the pairing band changes, and every difference is
-  it adopting an answer the gauge panel had already found and written down: it no longer counts
-  to 89 seconds before finding a minute, no longer rounds a 90 second old frame up to two
-  minutes, no longer offers a sixtieth minute instead of an hour, and no longer reports a boat
-  laid up since the spring as "3611 h ago".
+  did across every second of two hundred days.
+
+  The pairing band changes, and only where it is read: it counts a first minute now. The line
+  reports a frame that is refreshed every two seconds over the socket, or every sixty by the
+  POST that stands in for it, so its whole domain is the first minute or so. It used to round,
+  and so it went from "89s ago" straight to "2 min ago" without ever saying one minute, which
+  against a sixty second interval put "2 min" on a boat that was still on schedule. Now "1 min"
+  is a little late and "2 min" is a frame she missed.
 
 ## [0.1.11] - 2026-07-17
 

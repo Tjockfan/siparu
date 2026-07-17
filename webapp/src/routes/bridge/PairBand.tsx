@@ -25,10 +25,18 @@ function minutesLeft(expiresAt: string): number {
  * Spelled out rather than abbreviated: this one lands inside a sentence a person reads
  * once, at the helm, to find out whether the link is working.
  *
- * The tiers moved to lib/age and took two answers with them. This line used to round,
- * so a frame sent 89 seconds ago read "89s ago" and the next second read "2 min ago";
- * and it had no day tier, so a boat whose last frame went out in the spring said
- * "3611 h ago" under the word "Sending".
+ * What this line can actually say is bounded by the cadence it reads, which is worth
+ * knowing before reading anything into a number here. The timestamp is refreshed every
+ * two seconds while the socket is up and every sixty by the POST that stands in when it
+ * is not, and a refresh that fails takes uplinkLine to a different branch entirely. So
+ * this counts seconds and the first minute or so, and the tiers above that are the
+ * ladder's, not this screen's.
+ *
+ * The first minute is the part that had to be right and was not: this used to round, so
+ * it printed "89s ago" and then jumped to "2 min ago" without ever saying one. Against a
+ * sixty second interval that made the minute tier meaningless - "2 min" arrived while she
+ * was still on schedule - where now "1 min" is a little late and "2 min" is a frame she
+ * missed.
  */
 function ago(ts: number): string {
   const { value, unit } = ageOf((Date.now() - ts) / 1000);
