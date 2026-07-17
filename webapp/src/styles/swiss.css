@@ -1146,3 +1146,91 @@ body {
   .swiss .pair .acts { justify-content: flex-end; }
   .swiss .pair .code { font-size: 26px; }
 }
+
+/* ============================================================
+   SYSTEM PANELS - engine, generator, tanks. Drawn from the frame.
+   ============================================================ */
+
+/* Flex, not grid, and the reason is measured rather than stylistic. The number of cells is the
+   boat's business: two on a sailing boat, thirty on a motor yacht with three engines. Grid has
+   no per-item grow, so any count that is not a multiple of the column count leaves the last
+   row's unfilled tracks showing this container's background - on the shore's build that read as
+   a 1023px slab across the screen and was reverted. Flex items grow into their own row.
+
+   The 158px basis is chosen against the narrowest phone rather than as a round number: two
+   cells and a gap fit inside 390px and then grow to fill it, so a phone reads two columns and
+   not one very long list. min(..., 100%) rather than a bare basis so a narrower screen still
+   cannot be overflowed by it. */
+.swiss .sy-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--ink-band);
+}
+.swiss .sy-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-content: flex-start;
+  min-height: 100%;
+}
+.swiss .sy-grid .c {
+  flex: 1 1 min(158px, 100%);
+  min-height: 88px;
+  justify-content: space-between;
+}
+.swiss .sy-n {
+  font-size: clamp(22px, 7vw, 34px);
+  line-height: 1;
+  margin-top: auto;
+}
+/* An instrument that has gone quiet keeps its reading and loses its confidence. Not hidden: a
+   cold engine at anchor is the normal case, and a blank cell asks a question that a faded one
+   answers. */
+.swiss .sy-grid .c.quiet .sy-n { color: var(--muted); }
+.swiss .sy-none {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--cell);
+}
+
+/* The bridge grid is hidden rather than unmounted while a system panel is up, so its sparklines
+   and the gust window keep their state and the screen does not flash on the way back. `hidden`
+   alone would not do it: the UA rule for [hidden] loses to `.swiss .grid`'s display. */
+.swiss .grid[hidden] { display: none; }
+
+/* The panel row. It is drawn only when the boat has something to put in it, so a sailing boat
+   with no engine and no generator never sees a tab strip at all - the screen she gets is the
+   screen she always had. */
+.swiss .sy-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--ink-band);
+  padding: 0 0 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 0 0 auto;
+}
+.swiss .sy-tabs::-webkit-scrollbar { display: none; }
+.swiss .sy-tab {
+  flex: 1 1 auto;
+  min-width: max-content;
+  appearance: none;
+  border: 0;
+  background: var(--cell);
+  color: var(--muted);
+  font-family: var(--sp-font);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  padding: 11px 14px;
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 0.2s, box-shadow 0.2s;
+}
+.swiss .sy-tab.on {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--text);
+}

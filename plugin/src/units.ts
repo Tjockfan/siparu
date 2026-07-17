@@ -120,6 +120,26 @@ export interface SystemReading {
   sub: string | null
 }
 
+/**
+ * The order the panels are drawn in, and what they are called.
+ *
+ * Here rather than on a screen because there are two screens and a tab that reads Engine aboard
+ * and Engines ashore is the same failure as a cell that reads 4.2 bar aboard and 4.3 ashore,
+ * only louder. The order is a judgement about what an owner reaches for first and it is the
+ * same judgement in both places.
+ *
+ * Which of these a given boat actually gets is not decided here and cannot be: a panel exists
+ * if she reports something that falls in it. A motorboat has no wind and a sailing boat may have
+ * no generator, and neither is a case anybody writes.
+ */
+export const SYSTEM_TABS: readonly SystemTab[] = ['engine', 'generator', 'tanks']
+
+export const SYSTEM_TAB_NAMES: Record<SystemTab, string> = {
+  engine: 'Engine',
+  generator: 'Generator',
+  tanks: 'Tanks'
+}
+
 /** camelCase or a bare word into a sentence: `oilPressure` -> "Oil pressure", `port` -> "Port". */
 function humanize(s: string): string {
   const spaced = s.replace(/([a-z])([A-Z])/g, '$1 $2')

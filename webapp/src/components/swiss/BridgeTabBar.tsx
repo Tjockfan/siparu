@@ -1,4 +1,4 @@
-/* Siparu - Bridge bottom tab bar (Swiss). Telemetry · Logbook · Voyage · Map.
+/* Siparu - Bridge bottom tab bar (Swiss). Dashboard · Logbook · Voyage · Map.
  * The active tab indicator slides between tabs via layoutId. 200ms snap
  * easing, no overshoot. */
 import { NavLink } from "react-router-dom";
@@ -7,7 +7,7 @@ import { ease } from "../../lib/motion";
 import { TelemetryIcon, LogbookIcon, MapIcon, VoyageIcon } from "./icons";
 
 const TABS = [
-  { to: "/", end: true, label: "Telemetry", Icon: TelemetryIcon },
+  { to: "/", end: true, label: "Dashboard", Icon: TelemetryIcon },
   { to: "/logbook", end: false, label: "Logbook", Icon: LogbookIcon },
   { to: "/voyage", end: false, label: "Voyage", Icon: VoyageIcon },
   { to: "/map", end: false, label: "Map", Icon: MapIcon },

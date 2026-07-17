@@ -4,6 +4,8 @@
 import { useState } from "react";
 import AnimatedNumber from "../../components/AnimatedNumber";
 import Sparkline from "../../components/swiss/Sparkline";
+import SystemsMarine from "./SystemsMarine";
+import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
 import { depthDiagLabel } from "../../lib/depthDiag";
 import { useBridgeData, type GustHours } from "./useBridgeData";
@@ -48,6 +50,15 @@ function navDisplay(s: string): string {
 export default function BridgeMarine() {
   const d = useBridgeData();
   const [baroOpen, setBaroOpen] = useState(false);
+
+  // The panels this boat justifies, worked out from what she is saying. Bridge is always here:
+  // she has a position whether or not she has an engine. The rest appear because she reports
+  // them, in the package's order, and there is no list of them anywhere to maintain.
+  const panels = systemPanels(d.snap);
+  const [tab, setTab] = useState("bridge");
+  // A panel can go away: the plugin restarts, or an engine that was never started this session
+  // stops being on the frame. Falling back rather than rendering a tab that no longer exists.
+  const live = panels.some((p) => p.key === tab) ? tab : "bridge";
   const loading = d.snap === null;
   const trend = baroTrend(d.baroDelta);
   const lat = d.snap?.lat ?? null;
@@ -55,7 +66,23 @@ export default function BridgeMarine() {
 
   return (
     <>
-    <div className="grid">
+    {panels.length > 0 && (
+      <nav className="sy-tabs" aria-label="Dashboard panels">
+        {[{ key: "bridge", name: "Bridge" }, ...panels.map((p) => ({ key: p.key as string, name: p.name }))].map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={`sy-tab${live === t.key ? " on" : ""}`}
+            aria-current={live === t.key ? "page" : undefined}
+            onClick={() => setTab(t.key)}
+          >
+            {t.name}
+          </button>
+        ))}
+      </nav>
+    )}
+    {live !== "bridge" && <SystemsMarine snap={d.snap} tab={live} />}
+    <div className="grid" hidden={live !== "bridge"}>
       {/* SOG - hero */}
       <div className="c c-sog">
         <div className="t">SOG · <span className="sub">Knots</span></div>
