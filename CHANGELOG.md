@@ -11,6 +11,21 @@ base, and the REST endpoints are registered GET-only.
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-07-17
+
+### Fixed
+
+- Grey water was labelled "Waste water". Signal K's path is `wasteWater` and its own description
+  reads "Waste water tank (grey water)", so the schema itself concedes the path name is not the
+  word. On board it is worse than a mismatch: black water is waste too, so a gauge labelled Waste
+  water asks a question instead of answering one, and a tank is a thing somebody pumps out at a
+  particular hour in a particular marina. It reads Grey water now. Every other family the schema
+  publishes (fresh water, black water, fuel, lubrication, live well, bait well, gas, ballast)
+  already read correctly from their own path and are untouched.
+- A hand-named tank read its id raw: `tanks.fuel.portForward` came out "Fuel portForward". Named
+  ids are camelCase like every other Signal K segment and are now read like one, "Fuel port
+  forward". Instance numbers off the bus are unaffected and still read "Fuel 0".
+
 ## [0.1.8] - 2026-07-17
 
 The two readings 0.1.7 wrote down as wrong are now right, and the boat's own screen reads the
@@ -222,7 +237,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.9
 [0.1.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.8
 [0.1.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.7
 [0.1.6]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.6

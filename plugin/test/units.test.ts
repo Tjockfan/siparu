@@ -274,6 +274,60 @@ describe('the long paths a real boat reports', () => {
     expect(systemValue('tanks.blackWater.0.currentLevel', 0.34)).toBe('34%')
   })
 
+  it('names every tank family the schema publishes, the way the quay does', () => {
+    // The whole published set, checked against @signalk/path-metadata rather than guessed. A
+    // tank is not only fresh water: grey and black are the two a person actually plans a day
+    // around, and a fishing boat's live well is a tank like any other.
+    const label = (family: string) => describePath(`tanks.${family}.0.currentLevel`)?.label
+    expect(label('freshWater')).toBe('Fresh water 0')
+    expect(label('blackWater')).toBe('Black water 0')
+    expect(label('fuel')).toBe('Fuel 0')
+    expect(label('lubrication')).toBe('Lubrication 0')
+    expect(label('liveWell')).toBe('Live well 0')
+    expect(label('baitWell')).toBe('Bait well 0')
+    expect(label('gas')).toBe('Gas 0')
+    expect(label('ballast')).toBe('Ballast 0')
+  })
+
+  it('calls grey water grey, because the schema will not and a marina does', () => {
+    // Signal K's path is `wasteWater` and its own description is "Waste water tank (grey water)":
+    // the parenthesis is the schema conceding the path name is not the word. On board, black is
+    // waste too, so "Waste water" over a gauge is a question rather than an answer.
+    expect(describePath('tanks.wasteWater.0.currentLevel')?.label).toBe('Grey water 0')
+    expect(describePath('tanks.wasteWater.1.currentLevel')?.label).toBe('Grey water 1')
+    // And it is a rename, not a reroute: same tab, same physics, same cell as any other tank.
+    expect(describePath('tanks.wasteWater.0.currentLevel')?.tab).toBe('tanks')
+    expect(systemValue('tanks.wasteWater.0.currentLevel', 0.42)).toBe('42%')
+  })
+
+  it('counts nothing: a boat with eight fuel tanks gets eight cells', () => {
+    // No family here knows how many of anything there are. Some boats carry four tanks, some
+    // carry nine, and the one being written against carries two.
+    const labels = Array.from({ length: 8 }, (_, i) => describePath(`tanks.fuel.${i}.currentLevel`)?.label)
+    expect(labels).toEqual(['Fuel 0', 'Fuel 1', 'Fuel 2', 'Fuel 3', 'Fuel 4', 'Fuel 5', 'Fuel 6', 'Fuel 7'])
+    expect(new Set(labels).size).toBe(8)
+    // Three engines and two generators, same rule, no case written for either.
+    expect(['port', 'centre', 'starboard'].map((e) => describePath(`propulsion.${e}.revolutions`)?.label)).toEqual([
+      'Port',
+      'Centre',
+      'Starboard'
+    ])
+    expect([0, 1].map((g) => describePath(`electrical.generators.${g}.runTime`)?.label)).toEqual([
+      'Generator 0',
+      'Generator 1'
+    ])
+  })
+
+  it('reads a hand-named tank as words, and leaves a bus instance number alone', () => {
+    // A number off the bus is what the gauge says; "Fuel zero" helps nobody. A named id is
+    // camelCase like every other Signal K segment and gets read like one.
+    expect(describePath('tanks.fuel.portForward.currentLevel')?.label).toBe('Fuel port forward')
+    expect(describePath('tanks.freshWater.aft.currentLevel')?.label).toBe('Fresh water aft')
+    expect(describePath('electrical.generators.main.runTime')?.label).toBe('Generator main')
+    expect(describePath('tanks.fuel.0.currentLevel')?.label).toBe('Fuel 0')
+    expect(describePath('tanks.fuel.12.currentLevel')?.label).toBe('Fuel 12')
+  })
+
   /**
    * Every temperature and pressure the schema publishes, not just the ones the boat this was
    * written against happens to report.

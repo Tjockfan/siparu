@@ -316,9 +316,44 @@ function lookup<T>(table: { [key: string]: T }, path: string): T | undefined {
 }
 
 /**
- * Which tab a path belongs to and how to label it, or null for a path no tab claims. The
- * families are deliberately narrow: `electrical.generators.*` is a generator, but the rest of
- * `electrical.*` (batteries, inverters) is not a gauge this package knows how to read.
+ * What a family of tanks is called on board, where the schema's own word for it is not.
+ *
+ * Only one entry, and it earns itself. Signal K calls grey water `wasteWater` and its own
+ * description reads "Waste water tank (grey water)", so the parenthesis is the schema admitting
+ * the path name is not what anyone says. On a boat "waste water" is ambiguous - black is waste
+ * too - and grey is not. A tank is a thing a person pumps out in a marina at a particular hour,
+ * and the cell has to name it the way the notice on the quay does.
+ *
+ * Every other family reads correctly from its own segment (freshWater, blackWater, fuel,
+ * lubrication, liveWell, baitWell, gas, ballast - the whole published set, verified against the
+ * schema), so there is nothing else here and nothing to keep in step.
+ */
+const TANK_FAMILY: Record<string, string> = { wasteWater: 'Grey water' }
+
+/**
+ * A tank or generator's own id, as a person would read it.
+ *
+ * Almost always an instance number off the bus, and humanize leaves digits exactly as they came,
+ * so "Fuel 0" needs no special case here and does not get one. A hand-configured server can name
+ * them instead, and then the id is camelCase like every other Signal K segment and wants the same
+ * reading: `tanks.fuel.portForward` is the port forward fuel tank, not the "portForward" one.
+ *
+ * Lowercased because it follows a word rather than opening one.
+ */
+function unitId(id: string): string {
+  return humanize(id).toLowerCase()
+}
+
+/**
+ * Which tab a path belongs to and how to label it, or null for a path no tab claims.
+ *
+ * Nothing here counts anything. A boat with three engines, two generators and nine tanks is not
+ * a case anybody wrote: the label comes out of the path's own id, so the families do not know
+ * how many of anything there are, and a boat that grows a fourth fuel tank tomorrow gets a
+ * fourth cell without this file hearing about it.
+ *
+ * The families are deliberately narrow: `electrical.generators.*` is a generator, but the rest
+ * of `electrical.*` (batteries, inverters) is not a gauge this package knows how to read.
  */
 export function describePath(path: string): SystemReading | null {
   if (lookup(SUPPRESSED, path)) return null
@@ -332,10 +367,11 @@ export function describePath(path: string): SystemReading | null {
     return { tab: 'engine', label: humanize(seg[1]!), sub }
   }
   if (path.startsWith('electrical.generators.') && seg.length >= 4) {
-    return { tab: 'generator', label: `Generator ${seg[2]}`, sub }
+    return { tab: 'generator', label: `Generator ${unitId(seg[2]!)}`, sub }
   }
   if (path.startsWith('tanks.') && seg.length >= 4) {
-    return { tab: 'tanks', label: `${humanize(seg[1]!)} ${seg[2]}`, sub }
+    const family = TANK_FAMILY[seg[1]!] ?? humanize(seg[1]!)
+    return { tab: 'tanks', label: `${family} ${unitId(seg[2]!)}`, sub }
   }
   return null
 }
