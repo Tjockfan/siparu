@@ -37,6 +37,7 @@ export interface BridgeData {
   baroHPa: number | null;
   baroDelta: number | null;
   airC: number | null;
+  waterC: number | null;
   depth: number | null;
   /** Micro-diagnosis for why depth shows "·" (no sensor / gone silent). */
   depthDiag: DepthDiag;
@@ -172,6 +173,7 @@ export function useBridgeData(): BridgeData {
     28,
   );
   const airC = kToC(snap?.air_temp_k);
+  const waterC = kToC(snap?.water_temp_k);
   const depth = snap?.depth ?? null;
   const depthDiag = depthDiagnosis(depth, health?.paths);
 
@@ -205,6 +207,7 @@ export function useBridgeData(): BridgeData {
     baroHPa,
     baroDelta,
     airC,
+    waterC,
     depth,
     depthDiag,
     navState,

@@ -313,20 +313,92 @@ body {
 /* ============================================================
    TELEMETRY - brutalist modular grid
    ============================================================ */
+/* The bridge is laid out from what the boat actually reports, so the cell count is hers to
+ * choose and no picture of it can be drawn here. What used to live at this line was a
+ * `grid-template-areas` map naming five rows for exactly eight cells: a boat with no wind
+ * instrument still owned a wind box, and adding a reading meant redrawing the map by hand.
+ *
+ * Two tiers, and both are flex on purpose. Grid was measured and rejected: a grid has no
+ * per-item grow, so any cell count that is not a multiple of the column count leaves trailing
+ * tracks painting the container. The shore learned this at 1023px (portal.css:474-489) and
+ * reverted it. Here the container is DARKER than a cell, so the same defect reads as black
+ * void on a night bridge - harder to catch, same bug. Flex grows every item, so the count
+ * stops mattering, which is the entire point.
+ *
+ * Measured at every count from 13 readings down to 1, both engines, phone and iPad: bare
+ * glass stays at 0.0-2.3%, which is where the eight-cell picture sat (1.2%). Deleting the map
+ * and stopping there reads 39-65%. See dev/verify/bridge_hole.py.
+ */
 .swiss .grid {
   flex: 1;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   background: var(--ink-band);
   gap: 2px;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1.42fr 0.86fr 0.98fr 0.98fr 0.6fr;
-  grid-template-areas:
-    "sog sog state"
-    "hdg cog state"
-    "wind wind wind"
-    "baro baro baro"
-    "depth pos pos";
   min-height: 0;
+}
+/* The band answers "where is she and what is she doing" - the question you ask before any
+ * other. Weights, not positions: a member she does not report is not rendered, and grow
+ * spreads her share over the rest. No arithmetic and no table of fallbacks to keep in sync. */
+.swiss .grid .band {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: stretch;
+  gap: 2px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+/* Everything else she reports, equal cells, wrapping. */
+.swiss .grid .matrix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex: 2 1 0;
+  min-height: 0;
+  align-content: stretch;
+}
+/* A tier with no members is not rendered at all, and then the survivor takes the glass.
+ * `display: none` would NOT do: :only-child counts a hidden sibling, and the empty tier kept
+ * its share and painted 58-72% of the bridge black. The rule that says "no box for a reading
+ * she does not send" has to hold for the box that holds the boxes. */
+.swiss .grid > .band:only-child,
+.swiss .grid > .matrix:only-child,
+.swiss .grid > .c-quiet:only-child { flex: 1 1 auto; }
+
+/* The diagnosis a boat with no instruments on the bus gets instead of a blank screen. Not an
+ * alarm: a quiet panel alongside is a normal state, and painting it red would teach the crew
+ * to ignore red. */
+.swiss .c-quiet { justify-content: center; gap: 10px; }
+.swiss .c-quiet .meta {
+  font-family: var(--sp-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 42ch;
+}
+
+/* Weights carry the composition; the basis stops the weights from lying on a phone. The 1B
+ * design was drawn at 1440px, where SOG's 2/5 share is 576px. On a 390px phone that same
+ * share is 148px, and a 104px "8.4" does not fit in it: measured, 14px of the number was
+ * clipped away by .c's overflow:hidden, silently. Position was worse - its label and coords
+ * sit in a row, and 86px of the longitude was cut off. So the band wraps: it keeps the
+ * weights where there is room for them and stacks where there is not. min() rather than a
+ * bare basis, because a bare 200px would lay a 200px cell into a narrower pane and push the
+ * bridge off the phone - the same floor the matrix needs. */
+.swiss .grid .band > .c-sog { flex: 2 1 min(200px, 100%); }
+.swiss .grid .band > .c-state { flex: 1 1 min(100px, 100%); }
+.swiss .grid .band > .c-pos { flex: 2 1 min(200px, 100%); }
+/* min() is load-bearing, not decoration: a bare 158px basis lays a 158px cell into a pane
+ * narrower than that and drags the bridge sideways off the phone.
+ *
+ * The basis IS the column count - flex has no --cols to set - and the count decides how tall
+ * the cells end up. Measured with ten matrix readings: at 158px an iPad Air picks five
+ * columns, so ten cells land in two rows and each cell is 341px tall with a 46px number in
+ * it. One step up and the same iPad picks four columns, three rows, 221px. The phone must
+ * keep 158: at 210 it drops to a single column, which is a list, not a bridge. */
+.swiss .grid .matrix > .c { flex: 1 1 min(158px, 100%); min-width: 0; }
+@media (min-width: 600px) {
+  .swiss .grid .matrix > .c { flex-basis: min(210px, 100%); }
 }
 .swiss .c {
   background: var(--cell);
@@ -364,10 +436,9 @@ body {
   margin-left: 0.3em;
 }
 
-.swiss .c-sog { grid-area: sog; justify-content: space-between; }
+.swiss .c-sog { justify-content: space-between; }
 .swiss .c-sog .n { font-size: 104px; }
 .swiss .c-state {
-  grid-area: state;
   /* A solid red fill read as an "alarm" (Anchored is a safe state) -
      reduced to a thin red accent, neutral background. */
   background: var(--cell);
@@ -394,11 +465,11 @@ body {
   margin-top: 8px;
   letter-spacing: 0.02em;
 }
-.swiss .c-hdg { grid-area: hdg; justify-content: space-between; }
-.swiss .c-cog { grid-area: cog; justify-content: space-between; }
-.swiss .c-hdg .n, .swiss .c-cog .n { font-size: 52px; }
-.swiss .c-depth { grid-area: depth; justify-content: space-between; }
-.swiss .c-depth .n { font-size: 46px; }
+/* Every matrix cell is the same kind of thing - one reading, one number - so it gets one
+ * rule. Twenty hand-written px literals used to live here, one per named box, which is what
+ * a picture costs: a new reading meant picking a size for it by hand. */
+.swiss .grid .matrix > .c { justify-content: space-between; }
+.swiss .grid .matrix .n { font-size: 46px; }
 .swiss .c-depth .meta {
   font-family: var(--sp-mono);
   font-size: 10px;
@@ -407,52 +478,28 @@ body {
   white-space: pre-line; /* deliberate "\n" break in the label (narrow cell) */
 }
 
-/* wind - dark band, sparkline */
-.swiss .c-wind {
-  grid-area: wind;
-  background: var(--ink-band);
-  color: var(--chrome-text);
-  flex-direction: row;
-  align-items: center;
-  gap: 16px;
-  padding: 13px 16px;
+/* Wind used to be ONE cell carrying five readings, a sparkline and a window selector on a
+ * dark band. That box could not answer the only question this layout asks of a cell - "does
+ * she report this?" - because she can report true wind and no apparent angle, gusts and no
+ * direction. Four readings, four cells, four independent answers. The dark band went with it:
+ * a matrix cell is a matrix cell, and the tier is the composition now. */
+.swiss .c-gust {
+  /* Gust carries a sparkline and its 1/6/12/24h window selector, so it asks for two cells'
+     worth of width. That is a weight, not a position: in a narrow pane it wraps like
+     everything else, and min() stops it laying a 316px cell into a 200px pane. */
+  flex: 2 1 min(316px, 100%);
 }
-.swiss .c-wind .t { color: var(--band-muted); }
-.swiss .c-wind .left {
-  display: flex; flex-direction: column; justify-content: center;
-  gap: 6px; flex: none;
-}
-.swiss .c-wind .n { color: var(--chrome-text); font-size: 50px; }
-.swiss .c-wind .mid {
-  display: flex; flex-direction: column; justify-content: center; gap: 5px;
-  font-family: var(--sp-mono); font-size: 11px; color: var(--band-muted);
-  letter-spacing: 0.02em; flex: none;
-}
-.swiss .c-wind .mid b { color: var(--chrome-text); font-weight: 600; }
-.swiss .c-wind .gust {
-  flex: 1; display: flex; flex-direction: column; justify-content: center;
-  align-items: flex-end; gap: 6px; min-width: 0;
-}
-.swiss .c-wind .gust .lab {
+.swiss .c-gust .lab {
   font-family: var(--sp-mono); font-size: 10px; color: var(--accent-soft); letter-spacing: 0.03em;
-  text-align: right;
 }
-.swiss .c-wind .gust .lab b { color: var(--chrome-text); }
+.swiss .c-gust .lab b { color: var(--text); }
 .swiss .spark { display: block; width: 100%; max-width: 220px; height: 42px; }
 
-/* Narrow phones (<=410px): the wind band with its three columns is the tightest
-   row - the design was born on a wide device, so give it breathing room here to
-   avoid horizontal overflow (390px iPhones are real). */
 @media (max-width: 410px) {
   .swiss .c-state .s { font-size: 27px; }
   .swiss .grid .c-pos .coords { font-size: 13.5px; white-space: nowrap; }
-
-  .swiss .c-wind { gap: 10px; padding: 12px 12px; }
-  .swiss .c-wind .n { font-size: 40px; }
-  .swiss .c-wind .mid { font-size: 10px; }
   .swiss .spark { max-width: 150px; }
   .swiss .gustseg button { padding: 4px 7px; font-size: 9px; }
-  .swiss .c-baro .left .n { font-size: 44px; }
 }
 
 /* gust window selector (1/6/12/24h) - segmented, on dark band */
@@ -466,11 +513,10 @@ body {
 .swiss .gustseg button.on { background: var(--accent); color: var(--on-accent); }
 
 /* baro - cell band, sparkline */
-.swiss .c-baro { grid-area: baro; flex-direction: row; align-items: center; gap: 16px; }
+.swiss .c-baro { flex-direction: row; align-items: center; gap: 16px; }
 .swiss .c-baro .left {
   display: flex; flex-direction: column; justify-content: center; gap: 6px; flex: none;
 }
-.swiss .c-baro .n { font-size: 48px; }
 .swiss .c-baro .trend {
   font-family: var(--sp-mono); font-size: 11px; color: var(--muted); font-weight: 500;
 }
@@ -515,7 +561,7 @@ body {
 .swiss .sheet:has(.baro-pop) .sheet-head { border-bottom-color: var(--accent); }
 
 /* position */
-.swiss .c-pos { grid-area: pos; flex-direction: row; align-items: center; gap: 16px; }
+.swiss .c-pos { flex-direction: row; align-items: center; gap: 16px; }
 .swiss .c-pos .t { flex: none; }
 .swiss .c-pos .coords {
   margin-left: auto; text-align: right;
