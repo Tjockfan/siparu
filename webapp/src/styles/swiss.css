@@ -122,25 +122,6 @@ body {
    (Sheet/UserMenu) don't suffer a containing-block shift. */
 .sp-screen.sp-leaving { transform: translateX(100%); }
 
-/* ============================================================
-   DESKTOP / WEB - phone frame (device mockup)
-   Only in a normal browser tab (display-mode: browser) + wide screen.
-   PWA standalone (phone/iPad home screen) and narrow screens are UNAFFECTED - stay full-screen.
-   #root becomes the phone body; transform makes it the containing block, so
-   .sp-screen + all portalled position:fixed children (UserMenu/Splash/Sheet)
-   anchor to the frame and don't escape. 390x844 = real device size (screenH=844).
-   ============================================================ */
-/* Wide browser: keep content in a phone-width center column. Real
-   tablet/desktop layouts are a later phase - for now honest and usable. */
-@media (display-mode: browser) and (min-width: 760px) {
-  body { display: grid; place-items: stretch; justify-content: center; }
-  #root {
-    width: min(480px, 100vw);
-    border-left: 1.5px solid var(--rule);
-    border-right: 1.5px solid var(--rule);
-  }
-}
-
 .swiss [hidden] { display: none !important; }
 
 /* tabular figures default for numeric readouts */
