@@ -10,23 +10,36 @@
  * other reading, equal cells. A tier with no members is not rendered - see swiss.css, where
  * the survivor takes the glass.
  *
+ * The dashboard is a panel, and on a wide screen there are two of them side by side: the
+ * bridge and one system at once, each with its own tab row, each driven by a URL param
+ * (?a=bridge&b=engine) so the pair survives a reload and can be shared ashore. A panel picks
+ * its layout from its OWN width, not the window's, through a container query - so a half-width
+ * pane on an iPad takes the narrow layout a phone would. Below the split threshold there is one
+ * panel; the second param stays in the URL, so turning the iPad back brings the pair back.
+ *
  * Live SignalK (2s) via useBridgeData; SOG/Depth animate, gust+baro sparklines, skeleton on
  * load. Loading is NOT absence: until the first frame lands every cell is drawn as a skeleton,
  * because "she has not told us yet" and "she does not have one" are different sentences and
  * only the second one may remove a box.
  */
 import { useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import AnimatedNumber from "../../components/AnimatedNumber";
 import Sparkline from "../../components/swiss/Sparkline";
 import SystemsMarine from "./SystemsMarine";
 import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
 import { depthDiagLabel } from "../../lib/depthDiag";
-import { useBridgeData, type GustHours } from "./useBridgeData";
+import { useBridgeData, type BridgeData, type GustHours } from "./useBridgeData";
+import { useMediaQuery } from "../../lib/useMediaQuery";
 import BaroPopup from "./BaroPopup";
 import PairBand from "./PairBand";
 
 const GUST_WINDOWS: GustHours[] = [1, 6, 12, 24];
+
+// A wide screen carries two panels; below this it carries one. The pane, not the window, then
+// decides each panel's density (see swiss.css, @container pane).
+const SPLIT_QUERY = "(min-width: 1000px)";
 
 function deg(v: number | null): string {
   return v === null ? "·" : String(Math.round(v));
@@ -61,18 +74,9 @@ function navDisplay(s: string): string {
   return NAV_HYPHEN[s] ?? titleCase(s);
 }
 
-export default function BridgeMarine() {
-  const d = useBridgeData();
-  const [baroOpen, setBaroOpen] = useState(false);
-
-  // The panels this boat justifies, worked out from what she is saying. Bridge is always here:
-  // she has a position whether or not she has an engine. The rest appear because she reports
-  // them, in the package's order, and there is no list of them anywhere to maintain.
-  const panels = systemPanels(d.snap);
-  const [tab, setTab] = useState("bridge");
-  // A panel can go away: the plugin restarts, or an engine that was never started this session
-  // stops being on the frame. Falling back rather than rendering a tab that no longer exists.
-  const live = panels.some((p) => p.key === tab) ? tab : "bridge";
+// The band and matrix for the bridge tab, built from what the boat is saying. Pulled out of the
+// panel so the same instruments can be drawn on either side of a split.
+function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void }) {
   const loading = d.snap === null;
   const trend = baroTrend(d.baroDelta);
   const lat = d.snap?.lat ?? null;
@@ -191,7 +195,7 @@ export default function BridgeMarine() {
   }
   if (has(d.baroHPa)) {
     matrix.push(
-      <div className="c c-baro tap" key="baro" onClick={() => setBaroOpen(true)} role="button" aria-label="Barometer detail">
+      <div className="c c-baro tap" key="baro" onClick={onBaro} role="button" aria-label="Barometer detail">
         <div className="left">
           <div className="t">Baro · <span className="sub">hPa</span></div>
           <div className={`n${loading ? " skel" : ""}`}>{d.baroHPa === null ? "·" : Math.round(d.baroHPa)}</div>
@@ -239,24 +243,7 @@ export default function BridgeMarine() {
   }
 
   return (
-    <>
-    {panels.length > 0 && (
-      <nav className="sy-tabs" aria-label="Instrument panels">
-        {[{ key: "bridge", name: "Bridge" }, ...panels.map((p) => ({ key: p.key as string, name: p.name }))].map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`sy-tab${live === t.key ? " on" : ""}`}
-            aria-current={live === t.key ? "page" : undefined}
-            onClick={() => setTab(t.key)}
-          >
-            {t.name}
-          </button>
-        ))}
-      </nav>
-    )}
-    {live !== "bridge" && <SystemsMarine snap={d.snap} tab={live} />}
-    <div className="grid" hidden={live !== "bridge"}>
+    <div className="grid">
       {band.length > 0 && <div className="band">{band}</div>}
       {matrix.length > 0 && <div className="matrix">{matrix}</div>}
       {/* A boat reporting nothing at all is the one case the rule cannot answer by removing a
@@ -274,8 +261,88 @@ export default function BridgeMarine() {
         </div>
       )}
     </div>
-    <PairBand />
-    {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
+  );
+}
+
+// One panel: its own tab row, and beneath it the bridge or one system. A container query lives
+// on .sp-pane (swiss.css), so the panel reads its layout off its own width.
+function DashPanel({
+  tab,
+  tabs,
+  d,
+  onTab,
+  onBaro,
+}: {
+  tab: string;
+  tabs: { key: string; name: string }[];
+  d: BridgeData;
+  onTab: (key: string) => void;
+  onBaro: () => void;
+}) {
+  return (
+    <div className="sp-pane">
+      {tabs.length > 1 && (
+        <nav className="sy-tabs" aria-label="Instrument panels">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              className={`sy-tab${tab === t.key ? " on" : ""}`}
+              aria-current={tab === t.key ? "page" : undefined}
+              onClick={() => onTab(t.key)}
+            >
+              {t.name}
+            </button>
+          ))}
+        </nav>
+      )}
+      {tab === "bridge" ? (
+        <BridgeInstruments d={d} onBaro={onBaro} />
+      ) : (
+        <SystemsMarine snap={d.snap} tab={tab} />
+      )}
+    </div>
+  );
+}
+
+export default function BridgeMarine() {
+  const d = useBridgeData();
+  const [baroOpen, setBaroOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const wide = useMediaQuery(SPLIT_QUERY);
+
+  // The panels this boat justifies, worked out from what she is saying. Bridge is always here:
+  // she has a position whether or not she has an engine. The rest appear because she reports
+  // them, in the package's order, and there is no list of them anywhere to maintain.
+  const panels = systemPanels(d.snap);
+  const tabs = [{ key: "bridge", name: "Bridge" }, ...panels.map((p) => ({ key: p.key as string, name: p.name }))];
+  const valid = (k: string | null) => (k && tabs.some((t) => t.key === k) ? k : null);
+
+  const a = valid(params.get("a")) ?? "bridge";
+  // The right panel exists only on a wide screen. An explicit b that no longer resolves (the
+  // engine that stopped reporting this session) collapses the panel rather than falling back to
+  // the bridge, because two bridges reads as a bug. With no b at all, a wide screen opens the
+  // first system beside the bridge, so the dashboard is two-up by default where there is room.
+  const bParam = params.get("b");
+  const b = wide ? (bParam !== null ? valid(bParam) : (panels[0]?.key ?? null)) : null;
+  const twoUp = b !== null;
+
+  const setSide = (side: "a" | "b", key: string) => {
+    const next = new URLSearchParams(params);
+    next.set(side, key);
+    setParams(next, { replace: true });
+  };
+
+  return (
+    <>
+      <div className={`sp-dash${twoUp ? " split" : ""}`}>
+        <DashPanel tab={a} tabs={tabs} d={d} onTab={(k) => setSide("a", k)} onBaro={() => setBaroOpen(true)} />
+        {twoUp && (
+          <DashPanel tab={b} tabs={tabs} d={d} onTab={(k) => setSide("b", k)} onBaro={() => setBaroOpen(true)} />
+        )}
+      </div>
+      <PairBand />
+      {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
     </>
   );
 }

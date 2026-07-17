@@ -310,6 +310,33 @@ body {
  * glass stays at 0.0-2.3%, which is where the eight-cell picture sat (1.2%). Deleting the map
  * and stopping there reads 39-65%. See dev/verify/bridge_hole.py.
  */
+/* The dashboard is one panel, or two side by side on a wide screen. The pair is a URL param,
+ * so it survives a reload and can be shared; the split is one media query, because "is there
+ * room for two panels" is a question about the window. Below the threshold .sp-dash is a single
+ * column and the second panel is simply not mounted - its param waits in the URL. */
+.swiss .sp-dash {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+@media (min-width: 1000px) {
+  .swiss .sp-dash.split { flex-direction: row; }
+}
+/* A panel is the container each cell reads its width from (container-type), NOT the window: a
+ * half-width pane must lay out like the narrow screen it is the size of. inline-size, not size:
+ * size would need a definite height and collapse the flex fill to zero. */
+.swiss .sp-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+  container-name: pane;
+}
+
 .swiss .grid {
   flex: 1;
   display: flex;
@@ -378,7 +405,11 @@ body {
  * it. One step up and the same iPad picks four columns, three rows, 221px. The phone must
  * keep 158: at 210 it drops to a single column, which is a list, not a bridge. */
 .swiss .grid .matrix > .c { flex: 1 1 min(158px, 100%); min-width: 0; }
-@media (min-width: 600px) {
+/* The step up is asked of the PANE, not the window: a half-width panel on a split iPad is
+   1180/2, which is a phone, and must take the phone's basis or its four glyphs land in a cell
+   341px tall. .sp-pane carries container-type, so this resolves against the panel a cell sits
+   in - full width when there is one panel, half when there are two. */
+@container pane (min-width: 600px) {
   .swiss .grid .matrix > .c { flex-basis: min(210px, 100%); }
 }
 .swiss .c {
@@ -1211,18 +1242,26 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  align-content: flex-start;
+  /* Fill the panel the way the bridge does: the rows stretch to take the height the pane gives
+   * them, rather than packing at the top and leaving a slab of dark below - the same "too much
+   * whitespace" the bridge answered, seen here when a system has a handful of gauges in a tall
+   * split pane. A system with one gauge gets one tall cell, which is the honest shape of "she
+   * reports one thing", not a bug. */
+  align-content: stretch;
   min-height: 100%;
 }
 .swiss .sy-grid .c {
   flex: 1 1 min(158px, 100%);
   min-height: 88px;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
+/* Centre the reading in the space under its label instead of pinning it to the floor: in a
+ * tall cell space-between parks the number at the bottom and leaves the middle empty, which is
+ * the same spreadsheet-pushed-down look the bridge cells were taken off. */
 .swiss .sy-n {
   font-size: clamp(22px, 7vw, 34px);
   line-height: 1;
-  margin-top: auto;
+  margin-block: auto;
 }
 /* An instrument that has gone quiet keeps its reading and loses its confidence. Not hidden: a
    cold engine at anchor is the normal case, and a blank cell asks a question that a faded one
