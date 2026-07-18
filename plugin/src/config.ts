@@ -101,6 +101,40 @@ export const INTERNAL = {
 
 export const KN_TO_MS = 0.514444
 
+/**
+ * MM-DD that exists on a calendar. The regex alone let "99-99" through, which
+ * Date.UTC silently normalised years into the future - season statistics went
+ * empty with no error anywhere. 02-29 is allowed: the season-window code
+ * resolves it against each actual year.
+ */
+export function isCalendarMonthDay(s: string): boolean {
+  const m = /^(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return false
+  const month = Number(m[1])
+  const day = Number(m[2])
+  if (month < 1 || month > 12) return false
+  const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return day >= 1 && day <= (daysInMonth[month - 1] ?? 0)
+}
+
+/**
+ * The relay URL carries the boat token as a Bearer header, so it must not be
+ * plain http - except toward loopback, which is how `wrangler dev` is reached.
+ * Anything else falls back to the default rather than sending the credential
+ * in clear text.
+ */
+export function safeRelayUrl(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || !/^https?:\/\/\S+$/.test(raw)) return undefined
+  try {
+    const u = new URL(raw)
+    if (u.protocol === 'https:') return raw.replace(/\/+$/, '')
+    const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]' || u.hostname === '::1'
+    return u.protocol === 'http:' && loopback ? raw.replace(/\/+$/, '') : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export function resolveOptions(raw: unknown): Options {
   const c = (raw ?? {}) as Partial<Options>
   const v = (c.voyage ?? {}) as Partial<VoyageOptions>
@@ -110,7 +144,7 @@ export function resolveOptions(raw: unknown): Options {
     boatName: typeof c.boatName === 'string' ? c.boatName.trim() : DEFAULTS.boatName,
     snapshotSeconds: num(c.snapshotSeconds, DEFAULTS.snapshotSeconds, 10),
     maxSogKnots: num(c.maxSogKnots, DEFAULTS.maxSogKnots, 1),
-    seasonStart: /^\d{2}-\d{2}$/.test(c.seasonStart ?? '') ? (c.seasonStart as string) : DEFAULTS.seasonStart,
+    seasonStart: isCalendarMonthDay(c.seasonStart ?? '') ? (c.seasonStart as string) : DEFAULTS.seasonStart,
     maxStorageMB: num(c.maxStorageMB, DEFAULTS.maxStorageMB, 10),
     chartsRemoteUrl: /^https?:\/\/\S+$/.test(c.chartsRemoteUrl ?? '')
       ? (c.chartsRemoteUrl as string).replace(/\/+$/, '')
@@ -118,9 +152,7 @@ export function resolveOptions(raw: unknown): Options {
     chartsBasemapUrl: /^https?:\/\/\S+$/.test(c.chartsBasemapUrl ?? '')
       ? (c.chartsBasemapUrl as string).replace(/\/+$/, '')
       : DEFAULTS.chartsBasemapUrl,
-    relayUrl: /^https?:\/\/\S+$/.test(c.relayUrl ?? '')
-      ? (c.relayUrl as string).replace(/\/+$/, '')
-      : DEFAULTS.relayUrl,
+    relayUrl: safeRelayUrl(c.relayUrl) ?? DEFAULTS.relayUrl,
     // Round-trip only. The plugin wrote this; the user never types it, and a
     // half-formed one is worse than none - a boatToken without a boatId cannot
     // stream anywhere, it can only confuse the screen into saying "paired".
@@ -137,7 +169,14 @@ export function resolveOptions(raw: unknown): Options {
       ? c.ports
           .filter(
             (p): p is PortEntry =>
-              !!p && typeof p.name === 'string' && typeof p.latitude === 'number' && typeof p.longitude === 'number'
+              !!p &&
+              typeof p.name === 'string' &&
+              typeof p.latitude === 'number' &&
+              Number.isFinite(p.latitude) &&
+              Math.abs(p.latitude) <= 90 &&
+              typeof p.longitude === 'number' &&
+              Number.isFinite(p.longitude) &&
+              Math.abs(p.longitude) <= 180
           )
           .map((p) => ({ ...p, radiusNm: num(p.radiusNm, 4.0, 0.01) }))
       : [],
@@ -181,7 +220,8 @@ export const CONFIG_SCHEMA = {
       type: 'string',
       title: 'Season start (MM-DD)',
       description: 'Start of your boating season, used for season statistics.',
-      default: DEFAULTS.seasonStart
+      default: DEFAULTS.seasonStart,
+      pattern: '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
     },
     maxStorageMB: {
       type: 'number',
@@ -202,7 +242,7 @@ export const CONFIG_SCHEMA = {
       type: 'string',
       title: 'Basemap tile server (advanced)',
       description:
-        'TileJSON URL for the coastline, land and place names, in OpenMapTiles schema. The default is a free, keyless, planet-wide host; any OpenMapTiles server will do. A basemap.pmtiles in the "charts" data folder overrides this and is used offline.',
+        'TileJSON URL for the coastline, land and place names, in OpenMapTiles schema. The default is a free, keyless, planet-wide host - which, like any tile server, receives the requesting IP address and the tile coordinates being viewed, and those reveal approximately where the boat is, even with remote viewing off. Drop a basemap.pmtiles into the "charts" data folder to keep the chart fully offline, or point this at your own OpenMapTiles server.',
       default: DEFAULTS.chartsBasemapUrl
     },
     ports: {
@@ -215,8 +255,8 @@ export const CONFIG_SCHEMA = {
         required: ['name', 'latitude', 'longitude'],
         properties: {
           name: { type: 'string', title: 'Name' },
-          latitude: { type: 'number', title: 'Latitude' },
-          longitude: { type: 'number', title: 'Longitude' },
+          latitude: { type: 'number', title: 'Latitude', minimum: -90, maximum: 90 },
+          longitude: { type: 'number', title: 'Longitude', minimum: -180, maximum: 180 },
           radiusNm: {
             type: 'number',
             title: 'Radius (NM)',

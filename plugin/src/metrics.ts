@@ -66,8 +66,25 @@ export const DYNAMIC_PREFIXES = ['propulsion.', 'tanks.', 'electrical.generators
 /** Core paths get bespoke handling; anything else in state is a dynamic path. */
 const CORE_PATH_SET: ReadonlySet<string> = new Set(SUBSCRIBED_PATHS)
 
+/**
+ * The same discipline the relay applies to what a boat sends (its telemetry
+ * sanitiser), applied where the data first lands. A compromised or misbehaving
+ * bus member can emit arbitrary strings and invent paths; without these caps a
+ * multi-megabyte string rides the uplink before the relay can truncate it, and
+ * the path map grows without bound.
+ */
+const TEXT_MAX = 32
+const MAX_DYNAMIC_PATHS = 64
+const PATH_MAX_LEN = 128
+const PATH_RE = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$/
+
 function isDynamicPath(path: string): boolean {
-  return !CORE_PATH_SET.has(path) && DYNAMIC_PREFIXES.some((p) => path.startsWith(p))
+  return (
+    !CORE_PATH_SET.has(path) &&
+    path.length <= PATH_MAX_LEN &&
+    PATH_RE.test(path) &&
+    DYNAMIC_PREFIXES.some((p) => path.startsWith(p))
+  )
 }
 
 const STRING_FIELDS: ReadonlySet<MetricField> = new Set(['nav_state', 'ais_class'])
@@ -114,14 +131,16 @@ export class MetricsState {
       if (!field && !isConceptPath && !dynamic) return false
       if (field && STRING_FIELDS.has(field)) {
         if (typeof value !== 'string') return false
-        stored = value
+        stored = value.slice(0, TEXT_MAX)
       } else if (dynamic) {
         // A dynamic gauge value is a number (rpm, temperature, level) or a
         // short string (engine/generator state). Objects, booleans and the
         // like are not gauge readings and are dropped.
         if (typeof value === 'number' && Number.isFinite(value)) stored = value
-        else if (typeof value === 'string') stored = value
+        else if (typeof value === 'string') stored = value.slice(0, TEXT_MAX)
         else return false
+        // A path never seen before claims a slot; a full table takes no new ones.
+        if (!this.paths.has(path) && this.dynamicPathCount() >= MAX_DYNAMIC_PATHS) return false
       } else {
         if (typeof value !== 'number' || !Number.isFinite(value)) return false
         stored = value
@@ -293,6 +312,12 @@ export class MetricsState {
    * resolved through the same winning-source logic as the core fields. Only
    * number/string values surface; a path with no fresh usable value is absent.
    */
+  private dynamicPathCount(): number {
+    let n = 0
+    for (const path of this.paths.keys()) if (isDynamicPath(path)) n++
+    return n
+  }
+
   dynamicPaths(now: number): Record<string, number | string> {
     const out: Record<string, number | string> = {}
     for (const path of this.paths.keys()) {

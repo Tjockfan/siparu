@@ -97,7 +97,7 @@ export function registerRoutes(router: IRouter): void {
     deps
       .health()
       .then((h) => res.json(h))
-      .catch((err) => sendError(res, 500, 'INTERNAL', String(err)))
+      .catch((err) => sendInternal(res, err))
   })
 
   const asyncGet = (path: string, handler: (d: RestDeps, req: Request) => Promise<unknown>) => {
