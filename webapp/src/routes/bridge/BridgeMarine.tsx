@@ -32,7 +32,7 @@ import MapMarine from "../map/MapMarine";
 import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
 import { depthDiagLabel } from "../../lib/depthDiag";
-import { useBridgeData, type BridgeData, type GustHours } from "./useBridgeData";
+import { useBridgeData, bridgeHasReading, type BridgeData, type GustHours } from "./useBridgeData";
 import { useMediaQuery } from "../../lib/useMediaQuery";
 import BaroPopup from "./BaroPopup";
 import PairBand from "./PairBand";
@@ -315,24 +315,30 @@ export default function BridgeMarine() {
   const wide = useMediaQuery(WIDE_QUERY);
   const openBaro = () => setBaroOpen(true);
 
-  // The panels this boat justifies, worked out from what she is saying. Bridge is always here:
-  // she has a position whether or not she has an engine. The rest appear because she reports
-  // them, in the package's order, and there is no list of them anywhere to maintain. The board
-  // draws every one; the phone's tab row offers the same set one at a time.
+  // The sections this boat justifies, worked out from what she is saying. The systems come from
+  // the plugin's own path families; the bridge is one more section on the same footing, present
+  // when she reports any nav or environment reading and absent when she does not, so a boat that
+  // sends only an engine has no empty bridge. The one exception is a boat reporting nothing at
+  // all: the bridge stays as the single section so the screen can name why (see BridgeInstruments'
+  // quiet cell) rather than going blank. There is no list of any of this to maintain.
   const panels = systemPanels(d.snap);
+  const loading = d.snap === null;
+  const showBridge = loading || bridgeHasReading(d) || panels.length === 0;
 
   // The board shows everything at once, so there is nothing to pick and no param to keep. The
-  // sections are the panels above, bridge first, each at its natural height in a column that
-  // scrolls when she reports more than fits; the chart sits in a fixed pane beside it.
+  // sections are the panels above, bridge first when present, each at its natural height in a
+  // column that scrolls when she reports more than fits; the chart sits in a fixed pane beside it.
   if (wide) {
     return (
       <>
         <div className="sp-dash sp-board">
           <div className="sp-cols">
-            <section className="sp-sec">
-              <h2 className="sp-sec-h">Bridge</h2>
-              <BridgeInstruments d={d} onBaro={openBaro} />
-            </section>
+            {showBridge && (
+              <section className="sp-sec">
+                <h2 className="sp-sec-h">Bridge</h2>
+                <BridgeInstruments d={d} onBaro={openBaro} />
+              </section>
+            )}
             {panels.map((p) => (
               <section className="sp-sec" key={p.key}>
                 <h2 className="sp-sec-h">{p.name}</h2>
@@ -350,12 +356,15 @@ export default function BridgeMarine() {
     );
   }
 
-  // Phone: one panel with a tab row. The tab is a URL param so it survives a reload and can be
-  // shared; a tab that no longer resolves (a system that went quiet this session) falls back to
-  // the bridge rather than showing an empty panel.
-  const tabs = [{ key: "bridge", name: "Bridge" }, ...panels.map((p) => ({ key: p.key as string, name: p.name }))];
+  // Phone: one panel with a tab row, the same sections one at a time. The tab is a URL param so it
+  // survives a reload and can be shared; a tab that no longer resolves (a system that went quiet,
+  // or the bridge on a boat that only reports an engine) falls back to the first tab there is.
+  const tabs = [
+    ...(showBridge ? [{ key: "bridge", name: "Bridge" }] : []),
+    ...panels.map((p) => ({ key: p.key as string, name: p.name })),
+  ];
   const valid = (k: string | null) => (k && tabs.some((t) => t.key === k) ? k : null);
-  const a = valid(params.get("a")) ?? "bridge";
+  const a = valid(params.get("a")) ?? tabs[0]?.key ?? "bridge";
   const setTab = (key: string) => {
     const next = new URLSearchParams(params);
     next.set("a", key);

@@ -51,6 +51,31 @@ export interface BridgeData {
   baroSeries: number[];
 }
 
+/**
+ * Whether the bridge has a single reading to draw. It mirrors the cells BridgeInstruments guards
+ * with has(), and lives here beside the derivations it reads so the two cannot drift: a field
+ * added to the bridge is added in this file, next to this list. The board shows the bridge as a
+ * section when this is true and drops it otherwise, the same way it drops a system a boat does not
+ * report, so a boat that sends only an engine gets no empty bridge above it.
+ */
+export function bridgeHasReading(d: BridgeData): boolean {
+  return (
+    d.sogKn !== null ||
+    (d.snap?.nav_state ?? null) !== null ||
+    (d.snap?.lat ?? null) !== null ||
+    (d.snap?.lon ?? null) !== null ||
+    d.cogDeg !== null ||
+    d.hdgTrue !== null ||
+    d.twsKn !== null ||
+    d.twdDeg !== null ||
+    d.awaDeg !== null ||
+    d.baroHPa !== null ||
+    d.airC !== null ||
+    d.waterC !== null ||
+    d.depth !== null
+  );
+}
+
 /** Downsamples an array to at most `target` points at even intervals. */
 function downsample(arr: number[], target: number): number[] {
   if (arr.length <= target) return arr;

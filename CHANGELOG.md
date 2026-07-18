@@ -13,6 +13,17 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-07-18
+
+### Fixed
+
+- A boat that reports only an engine, and no position, wind or depth, no longer shows an empty
+  bridge above its systems on the board. The bridge is now a section on the same footing as the
+  others: drawn when she reports any nav or environment reading and absent when she does not, so it
+  cannot claim she is alongside with the instruments off while her engine is plainly turning. It
+  stays as the sole section only when she reports nothing at all, so the screen can still name why
+  rather than going blank.
+
 ## [0.1.17] - 2026-07-18
 
 ### Changed
