@@ -59,6 +59,21 @@ while they watch her.
 So before you pair, add an admin user in Signal K (Security > Users). It takes a
 minute and it is the difference between a boat you share and a boat you leak.
 
+## The chart, and where its tiles come from
+
+The dashboard's chart draws its coastline and place names from a basemap tile
+server. The default is a free, keyless, planet-wide host, and like any tile
+server it receives the requesting IP address and the tile coordinates being
+viewed. Those coordinates are roughly where the boat is: opening the chart
+reveals her approximate position to that host, whether or not remote viewing is
+on, and whether or not she is paired.
+
+To keep the chart fully offline, drop a `basemap.pmtiles` file into the plugin's
+`charts` data folder; the chart then loads from it and asks no third party for
+anything. The basemap server can also be pointed at your own OpenMapTiles host
+in the plugin's advanced settings. The seamark overlay, fonts and sprites are
+served from Siparu's own host by default and can be redirected the same way.
+
 ## REST API
 
 Mounted at `/plugins/siparu`:

@@ -13,6 +13,30 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+### Security
+
+- The relay token is no longer kept in the plugin's options, where Signal K
+  serves it over `GET /plugins/<id>/config` to anyone on the boat's network when
+  security is off. It lives in a `0600` file under the plugin's data directory,
+  which no route serves. A boat paired under an older build is migrated at start.
+- "Turn off remote viewing" while the relay is unreachable no longer drops the
+  only token that can revoke itself. The disowned token is kept and retried until
+  the relay confirms it dead, and the on-board screen says so meanwhile.
+
+### Added
+
+- Per-field caps at ingest, mirroring the relay's telemetry sanitiser: string
+  values are truncated, dynamic path names must fit the Signal K grammar, and the
+  number of dynamic paths is bounded.
+
+### Changed
+
+- `seasonStart` is validated against the calendar, so a typo like `99-99` falls
+  back to the default instead of silently emptying the season statistics; the
+  admin form carries the same pattern. Named-port coordinates must sit on the
+  globe. The relay URL falls back to the default unless it is `https` (or points
+  at loopback for local development), so the boat token never rides plain http.
+
 ## [0.1.18] - 2026-07-18
 
 ### Fixed
@@ -451,7 +475,12 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.18...HEAD
+[0.1.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.18
+[0.1.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.17
+[0.1.16]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.16
+[0.1.15]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.15
+[0.1.14]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.14
 [0.1.13]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.13
 [0.1.12]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.12
 [0.1.11]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.11

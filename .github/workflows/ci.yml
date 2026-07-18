@@ -88,6 +88,23 @@ jobs:
             | grep -vE "'/pair/(start|approve|deny|reset)'") || true
           [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
 
+      - name: PWA shell - the static assets index.html names are in the clean checkout
+        run: |
+          # The favicon and manifest were once ignored by a bare `public/` line in
+          # .gitignore: they lived on the maintainer's disk and a fresh clone built
+          # without them. Publishing worked only by luck. This asserts that every
+          # static asset the entry HTML references (the ./-relative ones Vite copies
+          # from public/, not the /src module entry) is actually tracked, so a clone -
+          # and therefore the package - carries it.
+          missing=0
+          for asset in $(grep -oE '(href|src)="\./[^"]+"' webapp/index.html | sed -E 's/.*"\.\/([^"]+)"/\1/'); do
+            if [ ! -f "webapp/public/$asset" ]; then
+              echo "index.html references ./$asset but webapp/public/$asset is not in the checkout"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
       - name: License gate - no Leaflet/CARTO/OpenSeaMap remnants
         run: |
           ! grep -rin "leaflet\|cartocdn\|openseamap" plugin/src webapp/src ui/src
