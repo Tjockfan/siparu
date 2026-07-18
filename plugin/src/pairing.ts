@@ -102,9 +102,9 @@ interface Deps {
   vesselUrn: () => string
   getRemote: () => RemoteState | undefined
   saveRemote: (r: RemoteState | undefined) => Promise<void>
-  /** A disowned token the relay has not yet revoked; kept until it answers. */
-  getPendingUnlink: () => PendingUnlink | undefined
-  setPendingUnlink: (p: PendingUnlink | undefined) => Promise<void>
+  /** Disowned tokens the relay has not yet revoked; kept until it answers. */
+  getPendingUnlinks: () => PendingUnlink[]
+  addPendingUnlink: (p: PendingUnlink) => Promise<void>
 }
 
 /**
@@ -213,7 +213,7 @@ export function maskEmail(email: string | null): string | null {
 }
 
 export function registerPairRoutes(router: IRouter, deps: Deps): void {
-  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus, getPendingUnlink, setPendingUnlink } =
+  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus, getPendingUnlinks, addPendingUnlink } =
     deps
 
   const paired = (remote: RemoteState): PairScreen => ({
@@ -231,7 +231,7 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
     const json = (screen: PairScreen): void => {
       const status: PairStatus = { ...screen }
       if (securityOff(app, req)) status.security_off = true
-      if (getPendingUnlink()) status.revoke_pending = true
+      if (getPendingUnlinks().length > 0) status.revoke_pending = true
       res.json(status)
     }
     void (async () => {
@@ -462,7 +462,7 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
             app.debug('unlink: the relay already considers that token dead')
           } else {
             app.error(`unlink could not reach the relay; keeping the token to retry: ${String(e)}`)
-            await setPendingUnlink({ boatToken: remote.boatToken, since: new Date().toISOString() })
+            await addPendingUnlink({ boatToken: remote.boatToken, since: new Date().toISOString() })
           }
         }
       }
@@ -471,36 +471,44 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
       deviceCode = userCode = expiresAt = null
       lastError = null
       res.json({ state: 'idle' } satisfies PairScreen)
-    })()
+    })().catch((e: unknown) => {
+      // A disk write in here (saveRemote, addPendingUnlink) can throw - a full Cerbo
+      // partition is a filed issue. Without this the request hangs to timeout and the
+      // rejection is unhandled; answer with an error the screen can show instead.
+      app.error(`pair reset failed: ${String(e)}`)
+      if (!res.headersSent) res.status(500).json({ state: 'error', message: 'Could not turn off remote viewing.' } satisfies PairScreen)
+    })
   })
 }
 
 /**
- * Deliver an unlink the relay never heard. Called at plugin start and on a slow
+ * Deliver the unlinks the relay never heard. Called at plugin start and on a slow
  * interval after that: the boat that was offline when her owner said "off" is
  * exactly the boat that will be online again later, and the revocation must not
- * depend on anyone remembering to press anything twice.
+ * depend on anyone remembering to press anything twice. Every parked token is
+ * tried on each pass, independently, so one that keeps failing does not hold up
+ * the others.
  */
-export async function retryPendingUnlink(
+export async function retryPendingUnlinks(
   relayUrl: string,
-  getPending: () => PendingUnlink | undefined,
-  clear: () => Promise<void>,
+  getPending: () => PendingUnlink[],
+  clear: (boatToken: string) => Promise<void>,
   log: (msg: string) => void
 ): Promise<void> {
-  const pending = getPending()
-  if (!pending) return
-  try {
-    await relay(relayUrl, '/pair/unlink', {}, pending.boatToken)
-    await clear()
-    log('pending unlink delivered: the relay has revoked the old token')
-  } catch (e) {
-    if (e instanceof RelayRefused && e.status === 401) {
-      // The relay no longer knows that token - revoked by a later pairing, or
-      // never confirmed. Either way there is nothing left to kill.
-      await clear()
-      log('pending unlink resolved: the relay no longer knows that token')
-    } else {
-      log(`pending unlink still undelivered, will retry: ${String(e)}`)
+  for (const pending of getPending()) {
+    try {
+      await relay(relayUrl, '/pair/unlink', {}, pending.boatToken)
+      await clear(pending.boatToken)
+      log('pending unlink delivered: the relay has revoked the old token')
+    } catch (e) {
+      if (e instanceof RelayRefused && e.status === 401) {
+        // The relay no longer knows that token - revoked by a later pairing, or
+        // never confirmed. Either way there is nothing left to kill.
+        await clear(pending.boatToken)
+        log('pending unlink resolved: the relay no longer knows that token')
+      } else {
+        log(`pending unlink still undelivered, will retry: ${String(e)}`)
+      }
     }
   }
 }

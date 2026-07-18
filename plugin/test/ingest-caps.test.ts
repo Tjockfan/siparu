@@ -59,11 +59,14 @@ describe('dynamic path names are bounded', () => {
     expect(s.ingest('tanks.fuel 0.currentLevel', 0.5, T0)).toBe(false)
   })
 
-  it('accepts the real families it exists for', () => {
+  it('accepts the real families it exists for, hyphens and underscores included', () => {
     const s = fresh()
     expect(s.ingest('propulsion.port.revolutions', 25, T0)).toBe(true)
     expect(s.ingest('tanks.fuel.0.currentLevel', 0.62, T0)).toBe(true)
     expect(s.ingest('electrical.generators.0.load', 0.4, T0)).toBe(true)
+    // Instance identifiers a gateway assigns are not always camelCase.
+    expect(s.ingest('electrical.generators.genset-1.revolutions', 1500, T0)).toBe(true)
+    expect(s.ingest('tanks.fresh_water.0.currentLevel', 0.5, T0)).toBe(true)
   })
 
   it('stops taking new dynamic paths at 64, but keeps updating the known ones', () => {

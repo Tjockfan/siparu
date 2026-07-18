@@ -118,7 +118,8 @@ export function safeRelayUrl(raw: unknown): string | undefined {
   try {
     const u = new URL(raw)
     if (u.protocol === 'https:') return raw.replace(/\/+$/, '')
-    const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]' || u.hostname === '::1'
+    // URL normalises an IPv6 literal host to bracketed form, so '[::1]' is the shape it takes.
+    const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
     return u.protocol === 'http:' && loopback ? raw.replace(/\/+$/, '') : undefined
   } catch {
     return undefined

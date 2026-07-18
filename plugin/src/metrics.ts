@@ -76,7 +76,12 @@ const CORE_PATH_SET: ReadonlySet<string> = new Set(SUBSCRIBED_PATHS)
 const TEXT_MAX = 32
 const MAX_DYNAMIC_PATHS = 64
 const PATH_MAX_LEN = 128
-const PATH_RE = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$/
+// Dotted, alpha-led at the top, with digits, hyphens and underscores allowed in the
+// segments below it: instance identifiers a gateway assigns are not always camelCase
+// (electrical.generators.genset-1, tanks.fresh_water.0). The bound that matters is
+// length and slot count, not grammar - narrowing the charset only drops legitimate
+// gauges silently. Kept in step with the relay's telemetry sanitiser.
+const PATH_RE = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z0-9_-]+)+$/
 
 function isDynamicPath(path: string): boolean {
   return (

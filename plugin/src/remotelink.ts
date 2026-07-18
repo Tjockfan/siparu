@@ -34,7 +34,11 @@ export interface PendingUnlink {
 
 interface FileShape {
   remote?: RemoteLink
-  pendingUnlink?: PendingUnlink
+  // A list, not one slot: a boat can be unlinked, re-paired and unlinked again all
+  // while offline, and each disowned token has to reach the relay independently.
+  // A single slot would let the second unlink overwrite the first, orphaning it
+  // forever - the exact failure this feature exists to prevent.
+  pendingUnlinks?: PendingUnlink[]
 }
 
 export class RemoteLinkStore {
@@ -56,11 +60,19 @@ export class RemoteLinkStore {
       this.cache = {}
       return
     }
-    const raw = (parsed ?? {}) as Partial<FileShape>
+    const raw = (parsed ?? {}) as Partial<FileShape> & { pendingUnlink?: PendingUnlink }
     // A half-formed link is worse than none: a boatToken without a boatId
     // cannot stream anywhere, it can only confuse the screen into "paired".
     const r = raw.remote
-    const p = raw.pendingUnlink
+    // Accept both the list and a single legacy pendingUnlink from an older build.
+    const rawPending = Array.isArray(raw.pendingUnlinks)
+      ? raw.pendingUnlinks
+      : raw.pendingUnlink
+        ? [raw.pendingUnlink]
+        : []
+    const pending = rawPending
+      .filter((p): p is PendingUnlink => !!p && typeof p.boatToken === 'string')
+      .map((p) => ({ boatToken: p.boatToken, since: typeof p.since === 'string' ? p.since : new Date(0).toISOString() }))
     this.cache = {
       remote:
         r && typeof r.boatId === 'string' && typeof r.boatToken === 'string'
@@ -71,10 +83,7 @@ export class RemoteLinkStore {
               pairedAt: typeof r.pairedAt === 'string' ? r.pairedAt : new Date(0).toISOString()
             }
           : undefined,
-      pendingUnlink:
-        p && typeof p.boatToken === 'string'
-          ? { boatToken: p.boatToken, since: typeof p.since === 'string' ? p.since : new Date(0).toISOString() }
-          : undefined
+      pendingUnlinks: pending.length ? pending : undefined
     }
   }
 
@@ -82,8 +91,8 @@ export class RemoteLinkStore {
     return this.cache.remote
   }
 
-  getPendingUnlink(): PendingUnlink | undefined {
-    return this.cache.pendingUnlink
+  getPendingUnlinks(): PendingUnlink[] {
+    return this.cache.pendingUnlinks ?? []
   }
 
   async saveRemote(remote: RemoteLink | undefined): Promise<void> {
@@ -91,8 +100,21 @@ export class RemoteLinkStore {
     return this.persist()
   }
 
-  async setPendingUnlink(pendingUnlink: PendingUnlink | undefined): Promise<void> {
-    this.cache = { ...this.cache, pendingUnlink }
+  /** Park a disowned token, without displacing any already waiting to be revoked. */
+  async addPendingUnlink(pending: PendingUnlink): Promise<void> {
+    const list = this.cache.pendingUnlinks ?? []
+    // A token is only ever parked once - re-parking the same one is a no-op.
+    if (list.some((p) => p.boatToken === pending.boatToken)) return
+    this.cache = { ...this.cache, pendingUnlinks: [...list, pending] }
+    return this.persist()
+  }
+
+  /** Drop one parked token once the relay has confirmed it dead. */
+  async removePendingUnlink(boatToken: string): Promise<void> {
+    const list = this.cache.pendingUnlinks ?? []
+    const next = list.filter((p) => p.boatToken !== boatToken)
+    if (next.length === list.length) return
+    this.cache = { ...this.cache, pendingUnlinks: next.length ? next : undefined }
     return this.persist()
   }
 
@@ -103,7 +125,7 @@ export class RemoteLinkStore {
       // mid-write must not leave a torn file holding half a credential.
       const tmp = `${this.file}.tmp`
       const body = JSON.stringify(snapshot, null, 2)
-      if (snapshot.remote === undefined && snapshot.pendingUnlink === undefined) {
+      if (snapshot.remote === undefined && (snapshot.pendingUnlinks?.length ?? 0) === 0) {
         // Nothing left to protect - remove the file rather than leaving an
         // empty husk that reads as "something was here".
         await fs.promises.rm(this.file, { force: true })

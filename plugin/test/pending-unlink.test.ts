@@ -12,7 +12,7 @@ import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
 import type { Request, Response } from 'express'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { __resetPairingState, registerPairRoutes, RemoteState, retryPendingUnlink } from '../src/pairing'
+import { __resetPairingState, registerPairRoutes, RemoteState, retryPendingUnlinks } from '../src/pairing'
 import { PendingUnlink, RemoteLinkStore } from '../src/remotelink'
 
 type Handler = (req: Request, res: Response) => void
@@ -33,7 +33,7 @@ function routes(opts: { remote?: RemoteState } = {}) {
     post: (p: string, h: Handler) => handlers.set(p, h)
   } as unknown as IRouter
   let remote = opts.remote
-  let pending: PendingUnlink | undefined
+  let pending: PendingUnlink[] = []
   registerPairRoutes(router, {
     app,
     relayUrl: 'https://relay.example',
@@ -44,15 +44,16 @@ function routes(opts: { remote?: RemoteState } = {}) {
     saveRemote: async (r) => {
       remote = r
     },
-    getPendingUnlink: () => pending,
-    setPendingUnlink: async (p) => {
-      pending = p
+    getPendingUnlinks: () => pending,
+    addPendingUnlink: async (p) => {
+      pending = [...pending, p]
     }
   })
   return {
     handlers,
     getRemote: () => remote,
-    getPending: () => pending
+    getPending: () => pending[0],
+    getPendingList: () => pending
   }
 }
 
@@ -86,9 +87,9 @@ describe('unlink while the relay is unreachable', () => {
     expect(r.getRemote()).toBeUndefined()
     expect(r.getPending()?.boatToken).toBe(PAIRED.boatToken)
 
-    const status = (await call(r.handlers, 'GET /pair/status')) as { state: string; revoke_pending?: boolean }
-    expect(status.state).toBe('idle')
-    expect(status.revoke_pending).toBe(true)
+    const st = (await call(r.handlers, 'GET /pair/status')) as { state: string; revoke_pending?: boolean }
+    expect(st.state).toBe('idle')
+    expect(st.revoke_pending).toBe(true)
   })
 
   it('parks nothing when the relay answers 200', async () => {
@@ -113,10 +114,10 @@ describe('unlink while the relay is unreachable', () => {
   })
 })
 
-describe('retryPendingUnlink', () => {
+describe('retryPendingUnlinks', () => {
   const pendingOf = (token: string): PendingUnlink => ({ boatToken: token, since: '2026-07-18T00:00:00.000Z' })
 
-  it('delivers the unlink and clears the parked token', async () => {
+  it('delivers every parked token and clears each as it lands', async () => {
     const sent: string[] = []
     vi.stubGlobal(
       'fetch',
@@ -126,17 +127,17 @@ describe('retryPendingUnlink', () => {
         return new Response(JSON.stringify({ ok: true }), { status: 200 })
       })
     )
-    let pending: PendingUnlink | undefined = pendingOf('parked-token')
-    await retryPendingUnlink(
+    let pending: PendingUnlink[] = [pendingOf('token-a'), pendingOf('token-b')]
+    await retryPendingUnlinks(
       'https://relay.example',
       () => pending,
-      async () => {
-        pending = undefined
+      async (token) => {
+        pending = pending.filter((p) => p.boatToken !== token)
       },
       () => {}
     )
-    expect(sent).toEqual(['Bearer parked-token'])
-    expect(pending).toBeUndefined()
+    expect(sent).toEqual(['Bearer token-a', 'Bearer token-b'])
+    expect(pending).toEqual([])
   })
 
   it('clears on 401: the relay no longer knows the token', async () => {
@@ -144,41 +145,43 @@ describe('retryPendingUnlink', () => {
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ error: 'unknown_token' }), { status: 401 }))
     )
-    let pending: PendingUnlink | undefined = pendingOf('parked-token')
-    await retryPendingUnlink(
+    let pending: PendingUnlink[] = [pendingOf('parked-token')]
+    await retryPendingUnlinks(
       'https://relay.example',
       () => pending,
-      async () => {
-        pending = undefined
+      async (token) => {
+        pending = pending.filter((p) => p.boatToken !== token)
       },
       () => {}
     )
-    expect(pending).toBeUndefined()
+    expect(pending).toEqual([])
   })
 
-  it('keeps the token when the relay is still unreachable', async () => {
+  it('keeps a token the relay is still unreachable for, and does not block the others', async () => {
+    // token-a is deliverable, token-b's relay is a black hole. token-a must still clear.
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => {
-        throw new TypeError('fetch failed')
+      vi.fn(async (_url: string, init: { headers: Record<string, string> }) => {
+        if (init.headers.authorization === 'Bearer token-b') throw new TypeError('fetch failed')
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
       })
     )
-    let pending: PendingUnlink | undefined = pendingOf('parked-token')
-    await retryPendingUnlink(
+    let pending: PendingUnlink[] = [pendingOf('token-a'), pendingOf('token-b')]
+    await retryPendingUnlinks(
       'https://relay.example',
       () => pending,
-      async () => {
-        pending = undefined
+      async (token) => {
+        pending = pending.filter((p) => p.boatToken !== token)
       },
       () => {}
     )
-    expect(pending?.boatToken).toBe('parked-token')
+    expect(pending.map((p) => p.boatToken)).toEqual(['token-b'])
   })
 
   it('does not touch the network when nothing is parked', async () => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
-    await retryPendingUnlink('https://relay.example', () => undefined, async () => {}, () => {})
+    await retryPendingUnlinks('https://relay.example', () => [], async () => {}, () => {})
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
@@ -188,17 +191,49 @@ describe('RemoteLinkStore', () => {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'siparu-remotelink-'))
   }
 
-  it('round-trips the link and the parked unlink through a fresh instance', async () => {
+  it('round-trips the link and the parked unlinks through a fresh instance', async () => {
     const dir = tmpDir()
     const a = new RemoteLinkStore(dir)
     a.load()
     await a.saveRemote(PAIRED)
-    await a.setPendingUnlink({ boatToken: 'old-token', since: '2026-07-18T00:00:00.000Z' })
+    await a.addPendingUnlink({ boatToken: 'old-token', since: '2026-07-18T00:00:00.000Z' })
 
     const b = new RemoteLinkStore(dir)
     b.load()
     expect(b.getRemote()).toEqual(PAIRED)
-    expect(b.getPendingUnlink()?.boatToken).toBe('old-token')
+    expect(b.getPendingUnlinks().map((p) => p.boatToken)).toEqual(['old-token'])
+  })
+
+  it('parks more than one token without displacing the first', async () => {
+    const dir = tmpDir()
+    const s = new RemoteLinkStore(dir)
+    s.load()
+    await s.addPendingUnlink({ boatToken: 'token-a', since: '2026-07-18T00:00:00.000Z' })
+    await s.addPendingUnlink({ boatToken: 'token-b', since: '2026-07-18T00:01:00.000Z' })
+    expect(s.getPendingUnlinks().map((p) => p.boatToken)).toEqual(['token-a', 'token-b'])
+  })
+
+  it('parking the same token twice is a no-op, and removal takes just the one', async () => {
+    const dir = tmpDir()
+    const s = new RemoteLinkStore(dir)
+    s.load()
+    await s.addPendingUnlink({ boatToken: 'token-a', since: '2026-07-18T00:00:00.000Z' })
+    await s.addPendingUnlink({ boatToken: 'token-a', since: '2026-07-18T00:02:00.000Z' })
+    expect(s.getPendingUnlinks()).toHaveLength(1)
+    await s.addPendingUnlink({ boatToken: 'token-b', since: '2026-07-18T00:03:00.000Z' })
+    await s.removePendingUnlink('token-a')
+    expect(s.getPendingUnlinks().map((p) => p.boatToken)).toEqual(['token-b'])
+  })
+
+  it('migrates a single legacy pendingUnlink from an older build into the list', () => {
+    const dir = tmpDir()
+    fs.writeFileSync(
+      path.join(dir, 'remote.json'),
+      JSON.stringify({ pendingUnlink: { boatToken: 'legacy-parked', since: '2026-07-18T00:00:00.000Z' } })
+    )
+    const s = new RemoteLinkStore(dir)
+    s.load()
+    expect(s.getPendingUnlinks().map((p) => p.boatToken)).toEqual(['legacy-parked'])
   })
 
   it('keeps the file out of group and world hands', async () => {

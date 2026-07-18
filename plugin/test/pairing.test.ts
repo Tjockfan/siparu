@@ -49,7 +49,7 @@ function routes(opts: Opts = {}) {
   } as unknown as IRouter
 
   let remote = opts.remote
-  let pending: { boatToken: string; since: string } | undefined
+  let pending: Array<{ boatToken: string; since: string }> = []
   registerPairRoutes(router, {
     app,
     relayUrl: 'https://relay.example',
@@ -61,9 +61,9 @@ function routes(opts: Opts = {}) {
       remote = r
       opts.saved?.(r)
     },
-    getPendingUnlink: () => pending,
-    setPendingUnlink: async (p) => {
-      pending = p
+    getPendingUnlinks: () => pending,
+    addPendingUnlink: async (p) => {
+      pending = [...pending, p]
       opts.pendingSaved?.(p)
     }
   })

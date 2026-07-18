@@ -52,8 +52,8 @@ function status(strategy: Strategy | undefined, remote?: RemoteState): Promise<R
     uplinkStatus: () => null,
     getRemote: () => remote,
     saveRemote: async () => undefined,
-    getPendingUnlink: () => undefined,
-    setPendingUnlink: async () => undefined
+    getPendingUnlinks: () => [],
+    addPendingUnlink: async () => undefined
   })
 
   return new Promise((resolve) => {

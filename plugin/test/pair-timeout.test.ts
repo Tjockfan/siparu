@@ -39,8 +39,8 @@ function routes() {
     uplinkStatus: () => null,
     getRemote: () => undefined,
     saveRemote: async () => undefined,
-    getPendingUnlink: () => undefined,
-    setPendingUnlink: async () => undefined
+    getPendingUnlinks: () => [],
+    addPendingUnlink: async () => undefined
   })
   return handlers
 }

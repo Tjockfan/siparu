@@ -24,7 +24,7 @@ import { CONFIG_SCHEMA, DEFAULTS, INTERNAL, Options, resolveOptions } from './co
 import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQuery } from './contract'
 import { DYNAMIC_PREFIXES, MetricsState, SUBSCRIBED_PATHS } from './metrics'
 import { QueryService } from './query'
-import { registerPairRoutes, retryPendingUnlink } from './pairing'
+import { registerPairRoutes, retryPendingUnlinks } from './pairing'
 import { RemoteLink, RemoteLinkStore } from './remotelink'
 import { registerRoutes, setRestDeps } from './rest'
 import { RollupEngine } from './rollup'
@@ -356,10 +356,10 @@ export = (app: ServerAPI): Plugin => {
           // slow clock. The boat that was offline when her owner said "off" is
           // exactly the boat that comes online again later.
           const tryUnlink = (): void => {
-            void retryPendingUnlink(
+            void retryPendingUnlinks(
               opts.relayUrl,
-              () => rl.getPendingUnlink(),
-              () => rl.setPendingUnlink(undefined),
+              () => rl.getPendingUnlinks(),
+              (token) => rl.removePendingUnlink(token),
               (msg) => app.debug(msg)
             )
           }
@@ -436,8 +436,8 @@ export = (app: ServerAPI): Plugin => {
           uplink?.reset()
           liveUplink?.reset()
         },
-        getPendingUnlink: () => ensureRemoteLink().getPendingUnlink(),
-        setPendingUnlink: (p) => ensureRemoteLink().setPendingUnlink(p)
+        getPendingUnlinks: () => ensureRemoteLink().getPendingUnlinks(),
+        addPendingUnlink: (p) => ensureRemoteLink().addPendingUnlink(p)
       })
     }
   }
