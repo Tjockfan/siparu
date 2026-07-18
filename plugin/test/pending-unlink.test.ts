@@ -236,7 +236,9 @@ describe('RemoteLinkStore', () => {
     expect(s.getPendingUnlinks().map((p) => p.boatToken)).toEqual(['legacy-parked'])
   })
 
-  it('keeps the file out of group and world hands', async () => {
+  // Windows has no Unix permission bits, so mode is meaningless there; the CI matrix
+  // includes it and would otherwise fail on a check that does not apply.
+  it.skipIf(process.platform === 'win32')('keeps the file out of group and world hands', async () => {
     const dir = tmpDir()
     const s = new RemoteLinkStore(dir)
     s.load()

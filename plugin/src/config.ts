@@ -108,22 +108,15 @@ export function isCalendarMonthDay(s: string): boolean {
 }
 
 /**
- * The relay URL carries the boat token as a Bearer header, so it must not be
- * plain http - except toward loopback, which is how `wrangler dev` is reached.
- * Anything else falls back to the default rather than sending the credential
- * in clear text.
+ * The relay URL carries the boat token as a Bearer header, so it must be https:
+ * a plain-http relay would put the credential on the wire in clear text. Anything
+ * else falls back to the default. The relay lives on the public internet by design
+ * - the plugin never addresses a loopback host, which is also what the read-only CI
+ * guard proves, so no exception is made for one here.
  */
 export function safeRelayUrl(raw: unknown): string | undefined {
-  if (typeof raw !== 'string' || !/^https?:\/\/\S+$/.test(raw)) return undefined
-  try {
-    const u = new URL(raw)
-    if (u.protocol === 'https:') return raw.replace(/\/+$/, '')
-    // URL normalises an IPv6 literal host to bracketed form, so '[::1]' is the shape it takes.
-    const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
-    return u.protocol === 'http:' && loopback ? raw.replace(/\/+$/, '') : undefined
-  } catch {
-    return undefined
-  }
+  if (typeof raw !== 'string' || !/^https:\/\/\S+$/.test(raw)) return undefined
+  return raw.replace(/\/+$/, '')
 }
 
 export function resolveOptions(raw: unknown): Options {

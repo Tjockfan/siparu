@@ -56,27 +56,24 @@ describe('ports must sit on the globe', () => {
 })
 
 describe('the relay URL never carries the boat token in clear text', () => {
-  it('accepts https anywhere', () => {
+  it('accepts https and trims a trailing slash', () => {
     expect(resolveOptions({ relayUrl: 'https://relay.example' }).relayUrl).toBe('https://relay.example')
     expect(resolveOptions({ relayUrl: 'https://relay.siparu.app/' }).relayUrl).toBe('https://relay.siparu.app')
   })
 
-  it('accepts plain http only toward loopback, which is how wrangler dev is reached', () => {
-    expect(resolveOptions({ relayUrl: 'http://localhost:8787' }).relayUrl).toBe('http://localhost:8787')
-    expect(resolveOptions({ relayUrl: 'http://127.0.0.1:8787' }).relayUrl).toBe('http://127.0.0.1:8787')
-    expect(resolveOptions({ relayUrl: 'http://[::1]:8787' }).relayUrl).toBe('http://[::1]:8787')
-  })
-
-  it('falls back to the default rather than sending the bearer over plain http', () => {
+  it('falls back to the default for any plain-http URL, loopback included', () => {
+    // The relay is on the public internet; there is no loopback exception, so the
+    // token never rides plain http even in a hand-edited config.
     expect(resolveOptions({ relayUrl: 'http://evil.example' }).relayUrl).toBe(DEFAULTS.relayUrl)
+    expect(resolveOptions({ relayUrl: 'http://localhost:8787' }).relayUrl).toBe(DEFAULTS.relayUrl)
     expect(resolveOptions({ relayUrl: 'http://192.168.1.10:8787' }).relayUrl).toBe(DEFAULTS.relayUrl)
     expect(resolveOptions({ relayUrl: 'ftp://nope' }).relayUrl).toBe(DEFAULTS.relayUrl)
     expect(resolveOptions({ relayUrl: 'not a url' }).relayUrl).toBe(DEFAULTS.relayUrl)
   })
 
   it('safeRelayUrl is the single gate live.ts derives ws/wss from', () => {
-    // live.ts turns http->ws and https->wss off this value; a plain-http URL
-    // passing here would put the token on an unencrypted websocket too.
+    // live.ts turns https->wss off this value; a plain-http URL passing here would
+    // put the token on an unencrypted websocket too.
     expect(safeRelayUrl('http://relay.example')).toBeUndefined()
     expect(safeRelayUrl('https://relay.example')).toBe('https://relay.example')
   })
