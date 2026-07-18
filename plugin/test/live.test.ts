@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
 import { PathSeriesResult } from '../src/contract'
-import { FRAME_EVERY_MS, LiveSocket, LiveUplink, PING_EVERY_MS } from '../src/live'
+import { FRAME_EVERY_MS, LiveSocket, LiveUplink, PING_EVERY_MS, STILL_FRAME_EVERY_MS } from '../src/live'
 
 /**
  * The live uplink is the one part of the boat that holds a connection open to the shore
@@ -159,6 +159,62 @@ describe('holding the socket open', () => {
     vi.advanceTimersByTime(FRAME_EVERY_MS * 3)
     expect(last().frames()).toHaveLength(5)
 
+    live.stop()
+  })
+
+  it('slows to the still cadence when she is not moving, and speeds back up when she is', () => {
+    // The Durable Object bills one invocation per frame against a shared daily ceiling, so a
+    // boat sat at anchor must not spend the fast rate on a position that is not changing.
+    let sog = 0 // at rest
+    // Ping pushed past the window: this test is about frame cadence, and the keepalive
+    // watchdog (two unanswered pings = a dead line) is a separate mechanism tested elsewhere.
+    const { live, last } = uplink({
+      pingEveryMs: 10 * 60_000,
+      frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0, sog })
+    })
+    live.start()
+    last().open()
+    expect(last().frames()).toHaveLength(1) // the immediate frame, which reads sog=0
+
+    // A fast interval must NOT produce a frame while she is still.
+    vi.advanceTimersByTime(FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(1)
+
+    // The still interval does.
+    vi.advanceTimersByTime(STILL_FRAME_EVERY_MS - FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(2)
+
+    // She gets under way: the frame that reports it switches her back to the fast cadence.
+    sog = 3.0
+    vi.advanceTimersByTime(STILL_FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(3) // this frame carries sog=3.0
+    vi.advanceTimersByTime(FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(4) // now on the fast rate again
+
+    live.stop()
+  })
+
+  it('treats an unknown speed as under way, keeping her fresh', () => {
+    // A boat whose GPS is silent still deserves the live rate: null must not read as "at rest"
+    // and drop her to a frame a minute.
+    const { live, last } = uplink({ frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0 }) })
+    live.start()
+    last().open()
+    vi.advanceTimersByTime(FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(2)
+    live.stop()
+  })
+
+  it('honours a fixed cadence when one is injected, ignoring speed', () => {
+    // Tests that want a predictable rate pin frameEveryMs; the adaptive path stands down.
+    const { live, last } = uplink({
+      frameEveryMs: 2_000,
+      frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0, sog: 0 })
+    })
+    live.start()
+    last().open()
+    vi.advanceTimersByTime(2_000)
+    expect(last().frames()).toHaveLength(2) // fired at the pinned 2s despite sog=0
     live.stop()
   })
 

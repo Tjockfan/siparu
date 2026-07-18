@@ -19,14 +19,32 @@ import type { RemoteLink } from './remotelink'
 import type { HistoryRequest, HistoryResponse, PathSeriesResult, SnapshotsQuery } from './contract'
 
 /**
- * How often a frame goes up while the socket is open.
+ * How often a frame goes up while the socket is open, when she is under way.
  *
- * The relay drops anything faster than one frame per 500ms, so this sits well clear of the
- * floor. It is also what the shore's idea of "live" costs: at two seconds a boat at six knots
- * has moved six metres between frames, which is under the width of the boat, and the Durable
- * Object bills for the frames rather than for the season she is connected.
+ * The relay's Durable Object bills one invocation per frame, and the free-tier ceiling is
+ * 100,000 requests a day for the whole account. At two seconds that is 43,200 a day for ONE
+ * connected boat - two boats exhausted the plan, which is what this number cost on 18 Jul.
+ * Ten seconds is 8,640 a day, and at six knots a boat has moved about thirty metres between
+ * frames, still around a boat length and imperceptible for a "where is she now" view. The
+ * relay floor is 500ms, so this sits well clear of it. When she is not moving the cadence
+ * drops much further still - see STILL_FRAME_EVERY_MS and the adaptive scheduler.
  */
-export const FRAME_EVERY_MS = 2_000
+export const FRAME_EVERY_MS = 10_000
+
+/**
+ * How often a frame goes up while she is stationary - at anchor or in a berth, where the
+ * position simply does not change. A boat spends most of her life here, so this is where the
+ * daily cost is actually decided: at sixty seconds a still boat is 1,440 invocations a day
+ * rather than 8,640, which is what lets tens of boats share the free tier instead of two.
+ */
+export const STILL_FRAME_EVERY_MS = 60_000
+
+/**
+ * Below this speed she is treated as stationary and the slow cadence applies. In metres per
+ * second, because that is the unit the snapshot carries. 0.3 kn is drift and swing at anchor,
+ * not passage-making; the first frame that shows real way switches her back to the fast rate.
+ */
+const UNDERWAY_SOG_MS = 0.3 * 0.514444
 
 /**
  * Starlink sits behind CGNAT, which drops an idle flow in around a minute. The relay answers
@@ -151,14 +169,21 @@ export class LiveUplink {
 
   private failures = 0
   private lastFrameTs: number | null = null
+  /** SOG (m/s) of the last frame sent; decides how soon the next one goes. Null until seen. */
+  private lastSog: number | null = null
   private rejected = false
   private lastError: string | null = null
 
-  private readonly frameEveryMs: number
+  /**
+   * A fixed cadence pins the interval and turns the adaptive scheduler off - injected in tests
+   * that want a predictable rate. In production it is null, and the cadence follows her speed:
+   * FRAME_EVERY_MS under way, STILL_FRAME_EVERY_MS at rest.
+   */
+  private readonly fixedFrameMs: number | null
   private readonly pingEveryMs: number
 
   constructor(private readonly deps: LiveDeps) {
-    this.frameEveryMs = deps.frameEveryMs ?? FRAME_EVERY_MS
+    this.fixedFrameMs = deps.frameEveryMs ?? null
     this.pingEveryMs = deps.pingEveryMs ?? PING_EVERY_MS
   }
 
@@ -258,10 +283,10 @@ export class LiveUplink {
       this.lastError = null
       this.awaitingPong = false
 
-      // At once, not in two seconds: the shore's whole reason for wanting this socket is to
+      // At once, not after an interval: the shore's whole reason for wanting this socket is to
       // know she is there, and making it wait would be theatre.
       this.sendFrame(gen)
-      this.frameTimer = setInterval(() => this.sendFrame(gen), this.frameEveryMs)
+      this.scheduleFrame(gen)
       this.pingTimer = setInterval(() => this.keepalive(gen), this.pingEveryMs)
     })
 
@@ -315,7 +340,13 @@ export class LiveUplink {
   private sendFrame(gen: number): void {
     if (gen !== this.gen || !this.sock) return
     try {
-      this.sock.send(JSON.stringify(this.deps.frame()))
+      const frame = this.deps.frame()
+      // Read her speed off the frame we are about to send: it decides how soon the next one
+      // goes. LiveResult carries sog at the top level, in m/s. Anything else leaves it null,
+      // which the scheduler treats as under way - the safe side, keeping her fresh.
+      const sog = (frame as { sog?: unknown }).sog
+      this.lastSog = typeof sog === 'number' && Number.isFinite(sog) ? sog : null
+      this.sock.send(JSON.stringify(frame))
       this.lastFrameTs = Date.now()
     } catch (e) {
       // The socket died under her. Treat it as the drop it is, rather than throwing inside a
@@ -324,6 +355,27 @@ export class LiveUplink {
       this.kill(this.sock)
       this.closed(gen, 1006)
     }
+  }
+
+  /**
+   * The next frame is a self-rescheduling timeout, not a fixed interval, so its delay can
+   * follow her speed: fast under way, slow at rest. A still boat at a berth is most of the
+   * fleet's life and nearly all of the daily cost, so dropping her to a frame a minute is what
+   * keeps the Durable Object bill within a free tier that tens of boats share.
+   */
+  private scheduleFrame(gen: number): void {
+    if (gen !== this.gen || this.stopped) return
+    this.frameTimer = setTimeout(() => {
+      if (gen !== this.gen) return
+      this.sendFrame(gen)
+      this.scheduleFrame(gen)
+    }, this.nextFrameDelayMs())
+  }
+
+  private nextFrameDelayMs(): number {
+    if (this.fixedFrameMs !== null) return this.fixedFrameMs
+    if (this.lastSog !== null && this.lastSog < UNDERWAY_SOG_MS) return STILL_FRAME_EVERY_MS
+    return FRAME_EVERY_MS
   }
 
   /**
@@ -466,7 +518,7 @@ export class LiveUplink {
   }
 
   private clearTimers(): void {
-    if (this.frameTimer) clearInterval(this.frameTimer)
+    if (this.frameTimer) clearTimeout(this.frameTimer)
     if (this.pingTimer) clearInterval(this.pingTimer)
     if (this.redialTimer) clearTimeout(this.redialTimer)
     this.frameTimer = null
