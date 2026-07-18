@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { api } from "../lib/api";
-import { BrandMark } from "./swiss/icons";
+import { BrandMark } from "siparu-ui";
 
 /**
  * AuthGate - Signal K security is enabled and the plugin REST call returned

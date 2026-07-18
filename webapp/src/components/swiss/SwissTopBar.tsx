@@ -6,7 +6,7 @@ import { api, type LiveSnapshot } from "../../lib/api";
 import { useNow } from "../../lib/useNow";
 import { usePolling } from "../../lib/usePolling";
 import { getTheme, toggleTheme, type ThemeName } from "../../lib/theme";
-import { BrandMark, ChevLeft, MoonIcon, SunIcon } from "./icons";
+import { BrandMark, ChevLeft, MoonIcon, SunIcon } from "siparu-ui";
 
 type Props = {
   /** true → history back; string → navigate(path). */

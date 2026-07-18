@@ -35,7 +35,7 @@
     "prepack": "npm run build:all",
     "build:webapp": "npm --prefix webapp run build",
     "build:all": "npm run build && npm run build:webapp",
-    "ci:build": "npm --prefix webapp ci && npm run build:all"
+    "ci:build": "npm --prefix ui ci && npm --prefix webapp ci && npm run build:all"
   },
   "dependencies": {
     "ws": "^8.21.0"

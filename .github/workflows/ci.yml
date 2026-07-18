@@ -82,13 +82,15 @@ jobs:
 
       - name: Read-only proof - the webapp writes only to the pairing routes
         run: |
-          offenders=$(grep -rnE "method: *['\"]?(PUT|POST|DELETE|PATCH)" webapp/src \
+          # ui/src is the shared design system the webapp bundles; it is held to
+          # the same rule as the webapp source it was extracted from.
+          offenders=$(grep -rnE "method: *['\"]?(PUT|POST|DELETE|PATCH)" webapp/src ui/src \
             | grep -vE "'/pair/(start|approve|deny|reset)'") || true
           [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
 
       - name: License gate - no Leaflet/CARTO/OpenSeaMap remnants
         run: |
-          ! grep -rin "leaflet\|cartocdn\|openseamap" plugin/src webapp/src
+          ! grep -rin "leaflet\|cartocdn\|openseamap" plugin/src webapp/src ui/src
 
       - name: Runtime purity - no value imports from devDependencies
         run: |

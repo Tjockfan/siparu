@@ -5,7 +5,7 @@ import BoatLoader from "./BoatLoader";
 import SwissTopBar from "./swiss/SwissTopBar";
 import BridgeTabBar from "./swiss/BridgeTabBar";
 import { useNow } from "../lib/useNow";
-import { dur, ease } from "../lib/motion";
+import { dur, ease } from "siparu-ui";
 import { cacheTimestamp } from "../lib/prefetchCache";
 
 /** App shell (Swiss) - flex column:

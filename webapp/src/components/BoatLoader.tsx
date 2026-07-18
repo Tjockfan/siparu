@@ -1,4 +1,4 @@
-import { BrandMark } from "./swiss/icons";
+import { BrandMark } from "siparu-ui";
 
 /**
  * BoatLoader - minimal loading state: the mark and wordmark breathe slowly.

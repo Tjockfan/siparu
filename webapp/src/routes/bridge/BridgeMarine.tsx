@@ -25,7 +25,7 @@
 import { useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import AnimatedNumber from "../../components/AnimatedNumber";
-import Sparkline from "../../components/swiss/Sparkline";
+import { Sparkline } from "siparu-ui";
 import SystemsMarine from "./SystemsMarine";
 import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";

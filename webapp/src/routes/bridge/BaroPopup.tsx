@@ -5,7 +5,7 @@
  *  The Sheet primitive is the shell: tapping the scrim (outside the chart) closes it. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Sheet from "../../components/swiss/Sheet";
+import { Sheet } from "siparu-ui";
 import { api } from "../../lib/api";
 
 const H = 3_600_000;

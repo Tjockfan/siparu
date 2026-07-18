@@ -8,8 +8,7 @@
  * the engines, generator and tanks she reports - and it leaves the other three their own words. */
 import { NavLink } from "react-router-dom";
 import { motion } from "motion/react";
-import { ease } from "../../lib/motion";
-import { InstrumentsIcon, LogbookIcon, MapIcon, VoyageIcon } from "./icons";
+import { ease, InstrumentsIcon, LogbookIcon, MapIcon, VoyageIcon } from "siparu-ui";
 
 const TABS = [
   { to: "/", end: true, label: "Instruments", Icon: InstrumentsIcon },
