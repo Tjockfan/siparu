@@ -24,7 +24,8 @@ import { CONFIG_SCHEMA, DEFAULTS, INTERNAL, Options, resolveOptions } from './co
 import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQuery } from './contract'
 import { DYNAMIC_PREFIXES, MetricsState, SUBSCRIBED_PATHS } from './metrics'
 import { QueryService } from './query'
-import { registerPairRoutes } from './pairing'
+import { registerPairRoutes, retryPendingUnlink } from './pairing'
+import { RemoteLink, RemoteLinkStore } from './remotelink'
 import { registerRoutes, setRestDeps } from './rest'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
@@ -54,7 +55,53 @@ export = (app: ServerAPI): Plugin => {
   let uplink: Uplink | null = null
   let liveUplink: LiveUplink | null = null
   let timer: NodeJS.Timeout | null = null
+  let unlinkRetryTimer: NodeJS.Timeout | null = null
   let unsubscribes: Array<() => void> = []
+  let remoteLink: RemoteLinkStore | null = null
+
+  // Lazy because registerWithRouter can run before start(): the store must
+  // exist for whichever of them asks first, and be the same one afterwards.
+  function ensureRemoteLink(): RemoteLinkStore {
+    if (!remoteLink) {
+      remoteLink = new RemoteLinkStore(app.getDataDirPath())
+      remoteLink.load()
+    }
+    return remoteLink
+  }
+
+  /**
+   * Until 0.1.18 the relay credential lived in the plugin's options, which
+   * Signal K serves in full over GET /plugins/<id>/config - readable by anyone
+   * on the network when security is off. Move a legacy copy into the data dir,
+   * then scrub it from the options so the config route stops carrying it.
+   * The file wins when both exist: pairing has written only there since.
+   */
+  function migrateLegacyRemote(config: object, rl: RemoteLinkStore): void {
+    const legacy = (config as { remote?: Partial<RemoteLink> }).remote
+    if (!legacy || typeof legacy.boatId !== 'string' || typeof legacy.boatToken !== 'string') return
+    const adopt = rl.getRemote()
+      ? Promise.resolve()
+      : rl.saveRemote({
+          boatId: legacy.boatId,
+          boatToken: legacy.boatToken,
+          pairedEmail: typeof legacy.pairedEmail === 'string' ? legacy.pairedEmail : null,
+          pairedAt: typeof legacy.pairedAt === 'string' ? legacy.pairedAt : new Date(0).toISOString()
+        })
+    adopt
+      .then(() => {
+        // Only after the file holds it: scrubbing first and failing to write
+        // would throw the only copy of the credential away.
+        const scrubbed: Record<string, unknown> = { ...(config as Record<string, unknown>) }
+        delete scrubbed.remote
+        app.savePluginOptions(scrubbed, (err?: unknown) => {
+          if (err) app.error(`could not scrub the legacy token from plugin options: ${String(err)}`)
+          else app.debug('legacy relay token moved out of plugin options')
+        })
+      })
+      .catch((err: unknown) => {
+        app.error(`could not move the legacy token to the data dir; options left untouched: ${String(err)}`)
+      })
+  }
   // Bumped on every start/stop; a stale async init aborts instead of leaking
   // a timer + subscription past stop() (server restarts plugins on every
   // config save, so this race is routine, not exotic).
@@ -180,6 +227,8 @@ export = (app: ServerAPI): Plugin => {
     start(config: object): void {
       const gen = ++startGen
       opts = resolveOptions(config)
+      const rl = ensureRemoteLink()
+      migrateLegacyRemote(config, rl)
       const now = Date.now()
       startedAt = now
       countedDay = dayKey(now)
@@ -282,7 +331,7 @@ export = (app: ServerAPI): Plugin => {
           // when something notices a failure - it is already running when the failure happens.
           const ws = new LiveUplink({
             relayUrl: opts.relayUrl,
-            getRemote: () => opts.remote,
+            getRemote: () => rl.getRemote(),
             frame: () => live(),
             // The one thing the shore may ask of her: her own recorded history for a gauge,
             // read from the same store the local /snapshots serves. It reaches this query
@@ -295,13 +344,27 @@ export = (app: ServerAPI): Plugin => {
 
           const up = new Uplink({
             relayUrl: opts.relayUrl,
-            getRemote: () => opts.remote,
+            getRemote: () => rl.getRemote(),
             frame: () => live(),
             debug: (msg) => app.debug(msg),
             liveHealthy: () => ws.healthy()
           })
           uplink = up
           up.start()
+
+          // An unlink the relay never heard is retried here: once now, then on a
+          // slow clock. The boat that was offline when her owner said "off" is
+          // exactly the boat that comes online again later.
+          const tryUnlink = (): void => {
+            void retryPendingUnlink(
+              opts.relayUrl,
+              () => rl.getPendingUnlink(),
+              () => rl.setPendingUnlink(undefined),
+              (msg) => app.debug(msg)
+            )
+          }
+          tryUnlink()
+          unlinkRetryTimer = setInterval(tryUnlink, 15 * 60_000)
 
           app.setPluginStatus('Recording - waiting for first snapshot')
         })
@@ -315,6 +378,10 @@ export = (app: ServerAPI): Plugin => {
       if (timer) {
         clearInterval(timer)
         timer = null
+      }
+      if (unlinkRetryTimer) {
+        clearInterval(unlinkRetryTimer)
+        unlinkRetryTimer = null
       }
       unsubscribes.forEach((f) => {
         try {
@@ -356,25 +423,21 @@ export = (app: ServerAPI): Plugin => {
         // undefined - which is fine, because nothing is authorised by it: it is reported
         // for identification, never used to prove who she is.
         vesselUrn: () => String(app.selfId ?? ''),
-        getRemote: () => opts?.remote,
+        getRemote: () => ensureRemoteLink().getRemote(),
         saveRemote: async (remote) => {
-          // savePluginOptions persists through plugin updates (the plan requires
-          // that: a token lost on every npm upgrade would be unusable). Writing the
-          // live object too, so a restart is not needed to reflect the new state.
-          const next = { ...(opts ?? DEFAULTS), remote }
-          await new Promise<void>((resolve, reject) => {
-            app.savePluginOptions(next, (err?: unknown) =>
-              err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve()
-            )
-          })
-          opts = next
+          // The data-dir file persists through plugin updates (the plan requires
+          // that: a token lost on every npm upgrade would be unusable) and, unlike
+          // plugin options, is never served by any Signal K route.
+          await ensureRemoteLink().saveRemote(remote)
 
           // A new link is not answerable for the old one's failures: an unlink followed
           // by a fresh pairing must not leave "rejected" on the screen of a boat that is
           // now streaming perfectly well.
           uplink?.reset()
           liveUplink?.reset()
-        }
+        },
+        getPendingUnlink: () => ensureRemoteLink().getPendingUnlink(),
+        setPendingUnlink: (p) => ensureRemoteLink().setPendingUnlink(p)
       })
     }
   }

@@ -17,15 +17,11 @@
  */
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
+import type { PendingUnlink, RemoteLink } from './remotelink'
 import type { UplinkStatus } from './uplink'
 
-/** Written into the plugin's own options, so it survives a plugin update. */
-export interface RemoteState {
-  boatId: string
-  boatToken: string
-  pairedEmail: string | null
-  pairedAt: string
-}
+/** Kept in the plugin's data dir (remotelink.ts), so it survives a plugin update. */
+export type RemoteState = RemoteLink
 
 export type PairScreen =
   | { state: 'idle' }
@@ -49,9 +45,12 @@ export type PairScreen =
 /**
  * What /pair/status answers: the screen's state, plus the state of the door it is
  * standing behind. `security_off` rides every state because it describes the server,
- * not where in the flow the skipper happens to be.
+ * not where in the flow the skipper happens to be. `revoke_pending` rides along when
+ * an unlink was cut locally but the relay has not yet been reached to kill its copy
+ * of the token - "off on this boat, still revoking ashore" is a different truth from
+ * plain "off", and the screen should not flatten it.
  */
-export type PairStatus = PairScreen & { security_off?: boolean }
+export type PairStatus = PairScreen & { security_off?: boolean; revoke_pending?: boolean }
 
 /**
  * True when Signal K is running with security off - which is its default, and which
@@ -103,6 +102,9 @@ interface Deps {
   vesselUrn: () => string
   getRemote: () => RemoteState | undefined
   saveRemote: (r: RemoteState | undefined) => Promise<void>
+  /** A disowned token the relay has not yet revoked; kept until it answers. */
+  getPendingUnlink: () => PendingUnlink | undefined
+  setPendingUnlink: (p: PendingUnlink | undefined) => Promise<void>
 }
 
 /**
@@ -211,7 +213,8 @@ export function maskEmail(email: string | null): string | null {
 }
 
 export function registerPairRoutes(router: IRouter, deps: Deps): void {
-  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus } = deps
+  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus, getPendingUnlink, setPendingUnlink } =
+    deps
 
   const paired = (remote: RemoteState): PairScreen => ({
     state: 'paired',
@@ -226,7 +229,10 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
     // Every answer carries the door's state alongside the screen's, so the helm is
     // told once, wherever the skipper is in the flow.
     const json = (screen: PairScreen): void => {
-      res.json(securityOff(app, req) ? { ...screen, security_off: true } : screen)
+      const status: PairStatus = { ...screen }
+      if (securityOff(app, req)) status.security_off = true
+      if (getPendingUnlink()) status.revoke_pending = true
+      res.json(status)
     }
     void (async () => {
       const remote = getRemote()
@@ -442,12 +448,23 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
       // Forgetting the token here is not enough - it would go on working at the relay,
       // and anyone holding a copy (an old disk image, a plotter sold with the boat)
       // could still write to this vessel. Tell the relay to kill it, THEN forget it.
-      // Best effort: if the boat is offline the local link is still cut, which is what
-      // the person standing at the screen asked for.
+      // When the relay cannot be reached the local link is still cut - that is what
+      // the person standing at the screen asked for - but the token is NOT simply
+      // dropped: it is the only credential that can ever revoke itself, so losing it
+      // here would make the revocation impossible forever. It waits in the data dir
+      // and is retried until the relay answers.
       if (remote?.boatToken) {
-        await relay(relayUrl, '/pair/unlink', {}, remote.boatToken).catch((e: unknown) => {
-          app.error(`unlink could not reach the relay, token still live there: ${String(e)}`)
-        })
+        try {
+          await relay(relayUrl, '/pair/unlink', {}, remote.boatToken)
+        } catch (e) {
+          if (e instanceof RelayRefused && e.status === 401) {
+            // The relay answered: it no longer knows this token. Nothing to revoke.
+            app.debug('unlink: the relay already considers that token dead')
+          } else {
+            app.error(`unlink could not reach the relay; keeping the token to retry: ${String(e)}`)
+            await setPendingUnlink({ boatToken: remote.boatToken, since: new Date().toISOString() })
+          }
+        }
       }
 
       await saveRemote(undefined)
@@ -456,6 +473,36 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
       res.json({ state: 'idle' } satisfies PairScreen)
     })()
   })
+}
+
+/**
+ * Deliver an unlink the relay never heard. Called at plugin start and on a slow
+ * interval after that: the boat that was offline when her owner said "off" is
+ * exactly the boat that will be online again later, and the revocation must not
+ * depend on anyone remembering to press anything twice.
+ */
+export async function retryPendingUnlink(
+  relayUrl: string,
+  getPending: () => PendingUnlink | undefined,
+  clear: () => Promise<void>,
+  log: (msg: string) => void
+): Promise<void> {
+  const pending = getPending()
+  if (!pending) return
+  try {
+    await relay(relayUrl, '/pair/unlink', {}, pending.boatToken)
+    await clear()
+    log('pending unlink delivered: the relay has revoked the old token')
+  } catch (e) {
+    if (e instanceof RelayRefused && e.status === 401) {
+      // The relay no longer knows that token - revoked by a later pairing, or
+      // never confirmed. Either way there is nothing left to kill.
+      await clear()
+      log('pending unlink resolved: the relay no longer knows that token')
+    } else {
+      log(`pending unlink still undelivered, will retry: ${String(e)}`)
+    }
+  }
 }
 
 /** Test seam: the module-level code is per-process, so tests must be able to clear it. */

@@ -17,7 +17,7 @@
  * otherwise silently unpair every vessel in the fleet, and every owner would have to
  * walk down to their boat to fix a bug that was ours.
  */
-import type { RemoteLink } from './config'
+import type { RemoteLink } from './remotelink'
 
 export interface UplinkStatus {
   /** Epoch ms of the last frame the relay accepted. */

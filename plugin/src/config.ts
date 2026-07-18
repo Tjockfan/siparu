@@ -34,21 +34,11 @@ export interface Options {
   relayUrl: string
   ports: PortEntry[]
   voyage: VoyageOptions
-  /**
-   * Written by the plugin at pairing, never by the user - which is why it is absent
-   * from CONFIG_SCHEMA and so never rendered in the admin UI. Holds the boat_token,
-   * so it lives at the same protection level as the rest of the Signal K config
-   * directory. Removed in one shot by "reset remote viewing" on the boat.
-   */
-  remote?: RemoteLink
-}
-
-export interface RemoteLink {
-  boatId: string
-  boatToken: string
-  /** Masked (o***@gmail.com): enough to recognise, not enough to harvest. */
-  pairedEmail: string | null
-  pairedAt: string
+  // The relay credential deliberately does NOT live here. Plugin options are
+  // served wholesale by GET /plugins/<id>/config, which with security off (the
+  // default install) answers anyone on the boat's network. The token lives in
+  // the plugin's data dir instead - see remotelink.ts, and the migration in
+  // index.ts that moves a legacy copy out of here.
 }
 
 export const DEFAULTS: Options = {
@@ -153,18 +143,6 @@ export function resolveOptions(raw: unknown): Options {
       ? (c.chartsBasemapUrl as string).replace(/\/+$/, '')
       : DEFAULTS.chartsBasemapUrl,
     relayUrl: safeRelayUrl(c.relayUrl) ?? DEFAULTS.relayUrl,
-    // Round-trip only. The plugin wrote this; the user never types it, and a
-    // half-formed one is worse than none - a boatToken without a boatId cannot
-    // stream anywhere, it can only confuse the screen into saying "paired".
-    remote:
-      c.remote && typeof c.remote.boatId === 'string' && typeof c.remote.boatToken === 'string'
-        ? {
-            boatId: c.remote.boatId,
-            boatToken: c.remote.boatToken,
-            pairedEmail: typeof c.remote.pairedEmail === 'string' ? c.remote.pairedEmail : null,
-            pairedAt: typeof c.remote.pairedAt === 'string' ? c.remote.pairedAt : new Date(0).toISOString()
-          }
-        : undefined,
     ports: Array.isArray(c.ports)
       ? c.ports
           .filter(

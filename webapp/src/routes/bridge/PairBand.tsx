@@ -111,6 +111,20 @@ export default function PairBand() {
     </div>
   ) : null;
 
+  // "Off on this boat, still revoking ashore" is a different truth from plain "off".
+  // The plugin retries by itself; this only keeps the screen from flattening it.
+  const revoking = data.revoke_pending ? (
+    <div className="pair warn">
+      <div className="pl">
+        <div className="t">Still revoking the old key</div>
+        <div className="s">
+          Remote viewing is off on this boat, but Siparu could not be reached to revoke
+          its copy of the key. It will keep trying whenever the boat is online.
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   const band = (() => {
     switch (data.state) {
         case "idle":
@@ -207,6 +221,7 @@ export default function PairBand() {
   return (
     <>
       {warning}
+      {revoking}
       {band}
     </>
   );

@@ -51,7 +51,9 @@ function status(strategy: Strategy | undefined, remote?: RemoteState): Promise<R
     vesselUrn: () => '',
     uplinkStatus: () => null,
     getRemote: () => remote,
-    saveRemote: async () => undefined
+    saveRemote: async () => undefined,
+    getPendingUnlink: () => undefined,
+    setPendingUnlink: async () => undefined
   })
 
   return new Promise((resolve) => {

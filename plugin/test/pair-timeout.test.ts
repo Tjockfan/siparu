@@ -38,7 +38,9 @@ function routes() {
     vesselUrn: () => '',
     uplinkStatus: () => null,
     getRemote: () => undefined,
-    saveRemote: async () => undefined
+    saveRemote: async () => undefined,
+    getPendingUnlink: () => undefined,
+    setPendingUnlink: async () => undefined
   })
   return handlers
 }

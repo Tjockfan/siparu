@@ -37,6 +37,7 @@ interface Opts {
   remote?: RemoteState
   uplink?: UplinkStatus
   saved?: (r: RemoteState | undefined) => void
+  pendingSaved?: (p: { boatToken: string; since: string } | undefined) => void
 }
 
 /** Registers the routes against a fake router and hands back the handlers. */
@@ -48,6 +49,7 @@ function routes(opts: Opts = {}) {
   } as unknown as IRouter
 
   let remote = opts.remote
+  let pending: { boatToken: string; since: string } | undefined
   registerPairRoutes(router, {
     app,
     relayUrl: 'https://relay.example',
@@ -58,6 +60,11 @@ function routes(opts: Opts = {}) {
     saveRemote: async (r) => {
       remote = r
       opts.saved?.(r)
+    },
+    getPendingUnlink: () => pending,
+    setPendingUnlink: async (p) => {
+      pending = p
+      opts.pendingSaved?.(p)
     }
   })
   return handlers

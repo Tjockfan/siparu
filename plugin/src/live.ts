@@ -15,7 +15,7 @@
  * deploy, a migration halfway through - would otherwise silently unpair every vessel in the
  * fleet, and every owner would have to walk down to their boat to fix a bug that was ours.
  */
-import type { RemoteLink } from './config'
+import type { RemoteLink } from './remotelink'
 import type { HistoryRequest, HistoryResponse, PathSeriesResult, SnapshotsQuery } from './contract'
 
 /**

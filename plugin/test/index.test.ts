@@ -15,9 +15,13 @@ interface Plugin {
 }
 
 function fakeApp(dataDir: string) {
-  const calls = { subscribes: 0, unsubscribed: 0, errors: [] as string[] }
+  const calls = { subscribes: 0, unsubscribed: 0, errors: [] as string[], savedOptions: [] as object[] }
   const app = {
     calls,
+    savePluginOptions: (opts: object, cb: (err?: unknown) => void) => {
+      calls.savedOptions.push(opts)
+      cb()
+    },
     getDataDirPath: () => dataDir,
     getSelfPath: () => undefined,
     setPluginStatus: () => undefined,
@@ -88,5 +92,63 @@ describe('plugin lifecycle', () => {
     expect(app.calls.subscribes).toBe(1) // stale init #1 must not fire late
     await plugin.stop()
     expect(app.calls.unsubscribed).toBe(1)
+  })
+})
+
+describe('legacy token migration', () => {
+  const LEGACY = {
+    boatId: 'boat-legacy',
+    boatToken: 'token-from-the-options',
+    pairedEmail: 'o***@example.com',
+    pairedAt: '2026-07-01T00:00:00.000Z'
+  }
+
+  it('moves a token found in the options into the data dir and scrubs the options', async () => {
+    const createPlugin = await loadFactory()
+    const app = fakeApp(dir)
+    const plugin = createPlugin(app)
+    plugin.start({ remote: LEGACY })
+    await waitFor(() => app.calls.savedOptions.length === 1)
+
+    const file = JSON.parse(await fs.readFile(path.join(dir, 'remote.json'), 'utf8')) as {
+      remote?: { boatToken?: string }
+    }
+    expect(file.remote?.boatToken).toBe(LEGACY.boatToken)
+
+    // The options written back carry no token: GET /plugins/<id>/config stops
+    // serving it from the next save on.
+    expect('remote' in (app.calls.savedOptions[0] as Record<string, unknown>)).toBe(false)
+    await plugin.stop()
+  })
+
+  it('lets the data-dir file win when both exist - pairing has written only there since', async () => {
+    await fs.writeFile(
+      path.join(dir, 'remote.json'),
+      JSON.stringify({ remote: { ...LEGACY, boatToken: 'newer-token-in-the-file' } })
+    )
+    const createPlugin = await loadFactory()
+    const app = fakeApp(dir)
+    const plugin = createPlugin(app)
+    plugin.start({ remote: LEGACY })
+    await waitFor(() => app.calls.savedOptions.length === 1)
+
+    const file = JSON.parse(await fs.readFile(path.join(dir, 'remote.json'), 'utf8')) as {
+      remote?: { boatToken?: string }
+    }
+    expect(file.remote?.boatToken).toBe('newer-token-in-the-file')
+    expect('remote' in (app.calls.savedOptions[0] as Record<string, unknown>)).toBe(false)
+    await plugin.stop()
+  })
+
+  it('touches neither file nor options when there is nothing to migrate', async () => {
+    const createPlugin = await loadFactory()
+    const app = fakeApp(dir)
+    const plugin = createPlugin(app)
+    plugin.start({})
+    await waitFor(() => app.calls.subscribes === 1)
+    await new Promise((r) => setTimeout(r, 100))
+    expect(app.calls.savedOptions).toHaveLength(0)
+    await expect(fs.stat(path.join(dir, 'remote.json'))).rejects.toThrow()
+    await plugin.stop()
   })
 })

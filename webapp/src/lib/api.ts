@@ -339,9 +339,11 @@ type PairState =
  * The screen's state, plus the state of the door it stands behind. `security_off` is
  * true when Signal K is running without security, which is its default: the pairing
  * endpoints then answer anyone on the boat's network. It rides every state because it
- * describes the server, not the flow.
+ * describes the server, not the flow. `revoke_pending` is true when an unlink was cut
+ * on the boat but the relay has not yet been reached to kill its copy of the key; the
+ * plugin keeps retrying on its own.
  */
-export type PairScreen = PairState & { security_off?: boolean }
+export type PairScreen = PairState & { security_off?: boolean; revoke_pending?: boolean }
 
 export const api = {
   live: () => http<LiveSnapshot>('/live'),
