@@ -10,7 +10,7 @@
  * triggered from within (onClose fires once the animation completes). */
 import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { dur, ease } from "../../lib/motion";
+import { dur, ease } from "./motion";
 import { Close } from "./icons";
 
 type Props = {
