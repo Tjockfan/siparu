@@ -26,8 +26,10 @@ function utc(nowMs: number): string {
 }
 
 /** Local time at the boat's GPS position. lat/lon → IANA timezone (tz-lookup,
- *  lazy) → DST-correct render ("16:23:45 CEST"). Falls back to UTC. */
-function TopBarClock() {
+ *  lazy) → DST-correct render ("16:23:45 CEST"). Falls back to UTC.
+ *  Exported so the desktop side rail shows the same clock, driven by the same
+ *  poll, rather than a second copy that could drift. */
+export function TopBarClock() {
   const now = useNow(1000);
   const { data: snap } = usePolling<LiveSnapshot>(api.live, 60_000, [], "bridge:live");
   const [tz, setTz] = useState<string | null>(null);

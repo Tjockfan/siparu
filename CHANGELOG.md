@@ -13,6 +13,16 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-07-18
+
+### Added
+
+- A desktop layout. On a wide screen the top header and the bottom tab bar give way to a left
+  rail that carries the brand, the four destinations, the live state, the boat-local clock and the
+  theme toggle, and the content fills the rest; a full-width bottom bar would otherwise stretch
+  each tab to a quarter of the viewport. Below the breakpoint the phone keeps its header and bottom
+  bar untouched, and the rail is not mounted at all, so the two chromes never stack.
+
 ## [0.1.15] - 2026-07-18
 
 ### Fixed

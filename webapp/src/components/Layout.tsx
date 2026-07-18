@@ -3,10 +3,17 @@ import { useLocation, useOutlet } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import BoatLoader from "./BoatLoader";
 import SwissTopBar from "./swiss/SwissTopBar";
+import SideNav from "./swiss/SideNav";
 import BridgeTabBar from "./swiss/BridgeTabBar";
 import { useNow } from "../lib/useNow";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { dur, ease } from "siparu-ui";
 import { cacheTimestamp } from "../lib/prefetchCache";
+
+// A wide screen carries a left rail instead of the top header + bottom tab bar; below this the
+// phone keeps both. Matches the split threshold in BridgeMarine, so the dashboard goes two-up at
+// the same width the chrome moves to the side.
+const RAIL_QUERY = "(min-width: 1000px)";
 
 /** App shell (Swiss) - flex column:
  *  header (persistent) → animated outlet → bottom tab bar.
@@ -72,9 +79,15 @@ export default function Layout() {
   const stale =
     location.pathname === "/" && liveTs !== null && now - liveTs > 10_000;
 
+  const wide = useMediaQuery(RAIL_QUERY);
+
   return (
-    <div className="swiss sp-screen">
-      <SwissTopBar clock live={isLive} stale={stale} />
+    <div className={`swiss sp-screen${wide ? " sp-wide" : ""}`}>
+      {wide ? (
+        <SideNav live={isLive} stale={stale} />
+      ) : (
+        <SwissTopBar clock live={isLive} stale={stale} />
+      )}
 
       {/* Inner Suspense wraps AnimatePresence from the OUTSIDE - putting it
           inside would leave a suspended motion.div unable to finish its exit
@@ -100,7 +113,7 @@ export default function Layout() {
         </Suspense>
       </main>
 
-      <BridgeTabBar />
+      {!wide && <BridgeTabBar />}
     </div>
   );
 }

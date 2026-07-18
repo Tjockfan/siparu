@@ -10,7 +10,9 @@ import { NavLink } from "react-router-dom";
 import { motion } from "motion/react";
 import { ease, InstrumentsIcon, LogbookIcon, MapIcon, VoyageIcon } from "siparu-ui";
 
-const TABS = [
+// The bridge destinations, in order. Exported so the desktop side rail draws the same list
+// vertically instead of keeping its own copy that could drift out of step with this one.
+export const TABS = [
   { to: "/", end: true, label: "Instruments", Icon: InstrumentsIcon },
   { to: "/logbook", end: false, label: "Logbook", Icon: LogbookIcon },
   { to: "/voyage", end: false, label: "Voyage", Icon: VoyageIcon },

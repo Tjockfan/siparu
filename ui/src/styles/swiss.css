@@ -292,6 +292,113 @@ body {
 }
 
 /* ============================================================
+   DESKTOP SIDE RAIL  (.sp-rail)
+   ============================================================ */
+/* On a wide screen the screen becomes a row: the rail on the left, the content column filling the
+   rest. The rail is mounted only above the breakpoint and the top header + bottom tab bar only
+   below it (Layout branches on the same width), so a phone never sees any of this and the two
+   never stack. The content column takes min-width:0 so a wide child (the map canvas) cannot push
+   the layout past the viewport. */
+@media (min-width: 1000px) {
+  .swiss.sp-wide { flex-direction: row; }
+  .swiss.sp-wide > main { min-width: 0; }
+}
+.swiss .sp-rail {
+  flex: none;
+  width: 216px;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-band);
+  color: var(--chrome-text);
+  border-right: 1px solid var(--rule);
+  padding: calc(16px + env(safe-area-inset-top)) 0 16px;
+}
+.swiss .sp-rail .sp-brand { font-size: 19px; padding: 0 18px 22px; }
+.swiss .sp-rail .mk {
+  font-family: var(--sp-font);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: var(--chrome-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+/* The same four destinations the bottom bar carries, drawn down the rail. The active marker is a
+   left edge rather than the sliding top line: vertical travel between rows would need a layout
+   animation for little gain, and a steady edge reads cleanly at rest. */
+.swiss .sp-rail .rnav-list { display: flex; flex-direction: column; }
+.swiss .sp-rail .rnav {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 18px;
+  color: #79817f;
+  text-decoration: none;
+  font-family: var(--sp-font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  position: relative;
+  transition: color 0.15s;
+}
+.swiss .sp-rail .rnav svg { width: 20px; height: 20px; flex: none; }
+.swiss .sp-rail .rnav:hover { color: var(--chrome-text); }
+.swiss .sp-rail .rnav.on { color: var(--chrome-text); }
+.swiss .sp-rail .rnav.on::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+/* Footer, pushed to the bottom: the chrome that lives in the header on a phone. */
+.swiss .sp-rail .rfoot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 16px 18px 0;
+}
+.swiss .sp-rail .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--accent-soft);
+}
+.swiss .sp-rail .live .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: spPulse 2s ease-in-out infinite;
+}
+.swiss .sp-rail .live.is-stale { color: var(--band-muted); }
+.swiss .sp-rail .live.is-stale .dot { background: var(--band-muted); animation: none; }
+.swiss .sp-rail .clk {
+  font-family: var(--sp-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--chrome-text);
+  opacity: 0.82;
+  font-variant-numeric: tabular-nums;
+}
+.swiss .sp-rail .umenu-btn {
+  width: 30px; height: 30px;
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--chrome-text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s var(--ease-snap);
+}
+.swiss .sp-rail .umenu-btn:active { transform: scale(0.94); }
+
+/* ============================================================
    TELEMETRY - brutalist modular grid
    ============================================================ */
 /* The bridge is laid out from what the boat actually reports, so the cell count is hers to
