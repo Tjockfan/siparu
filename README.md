@@ -19,7 +19,8 @@ generator tab. The same gauges are also served over the API (`GET /live`,
   on every commit - grep this codebase and see for yourself.
 - **Nothing leaves until you pair her**, and pairing takes a deliberate tap at
   the helm. Unpair and it stops the same minute.
-- **What she sends once paired.** Her bridge, every couple of seconds: position,
+- **What she sends once paired.** Her bridge, every ten seconds under way and
+  once a minute at rest: position,
   speed and course over ground, heading, rate of turn, magnetic variation and
   deviation, navigation state, apparent and true wind with gust and direction,
   depth, air and water temperature, barometric pressure, and GPS satellite count.
@@ -47,8 +48,9 @@ generator tab. The same gauges are also served over the API (`GET /live`,
 Signal K ships with security switched off, and nothing in the setup makes you turn
 it on. With it off, every plugin's HTTP surface is open to anyone who can reach
 your boat's network, this one included: the pairing endpoints below answer whoever
-asks, and `GET /plugins/siparu/config` hands over the credential that lets a screen
-ashore watch this vessel.
+asks, so anyone on the network could pair their own screen to her. (The relay
+credential itself is out of reach: it lives in a mode-600 file under the plugin's
+data directory, not in the config.)
 
 Little of that is peculiar to Siparu. On an unsecured server `GET /skServer/plugins`
 already discloses every plugin's configuration and the App Store will install code.
@@ -81,6 +83,7 @@ Mounted at `/plugins/siparu`:
 | Endpoint | Description |
 |---|---|
 | `GET /live` | Current state of all recorded paths + data age |
+| `GET /inventory` | Dynamic paths the boat exposes right now, narrowed to the families the dashboard understands, with units metadata |
 | `GET /snapshots?bucket=1\|60\|360\|1440&from=&to=&limit=&offset=&order=` | History rows. `bucket=1` serves raw rows (today only); larger buckets read materialized rollups |
 | `GET /health` | Recording status, signature diagnosis, per-path freshness, storage usage, rollup state |
 | `GET /voyages?limit=` | Auto-detected voyages, newest first |
@@ -101,9 +104,10 @@ moves the plugin's own state and never touches the vessel's:
 ### The uplink, when she is paired
 
 She opens a WebSocket out to the relay and sends the live frame described above
-every couple of seconds; if that socket cannot hold - marina networks mangle
-WebSockets - the same frame goes by HTTPS once a minute instead, which is also
-what leaves a last known position behind when she drops off. Both are outbound:
+every ten seconds under way, once a minute at rest; if that socket cannot hold -
+marina networks mangle WebSockets - the same frame goes by HTTPS once a minute
+instead. Either way the shore keeps none of it: when she drops off, all that
+remains ashore is her name and when she was last seen. Both are outbound:
 she dials the relay, the relay never dials her.
 
 Exactly one kind of message travels the other way:

@@ -23,8 +23,9 @@ licence text is carried in the `NOTICE` file.
 
 | Asset | Licence | Obligation |
 |---|---|---|
-| OpenStreetMap data (basemap + seamark PMTiles) | ODbL 1.0 | Visible "© OpenStreetMap contributors" attribution - shown on every map surface via `MAP_ATTRIBUTION` |
-| Protomaps daily planet build | ODbL "Produced Work" | OSM attribution suffices |
+| OpenStreetMap data (basemap + seamark tiles) | ODbL 1.0 | Visible "© OpenStreetMap contributors" attribution - attached to the tile sources in `map/style.ts`, shown on every map surface |
+| OpenFreeMap hosted basemap (tiles.openfreemap.org, OpenMapTiles schema) | Tiles free to use; data ODbL | OSM attribution as above |
+| Protomaps planet build (local/offline `basemap.pmtiles` archives only) | ODbL "Produced Work" | OSM attribution suffices |
 | Noto Sans glyphs ([protomaps/basemaps-assets](https://github.com/protomaps/basemaps-assets)) | SIL OFL 1.1 | Free to serve as a font; not sold on its own |
 
 ## Not for navigation

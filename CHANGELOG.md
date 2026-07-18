@@ -34,8 +34,8 @@ every commit, and a fifth write route fails the build.
 - `seasonStart` is validated against the calendar, so a typo like `99-99` falls
   back to the default instead of silently emptying the season statistics; the
   admin form carries the same pattern. Named-port coordinates must sit on the
-  globe. The relay URL falls back to the default unless it is `https` (or points
-  at loopback for local development), so the boat token never rides plain http.
+  globe. The relay URL falls back to the default unless it is `https`, so the
+  boat token never rides plain http.
 
 ## [0.1.18] - 2026-07-18
 
