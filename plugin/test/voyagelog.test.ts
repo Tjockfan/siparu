@@ -112,6 +112,9 @@ describe('VoyageLog', () => {
     expect(comparable(vlog.list(100).reverse())).toEqual(comparable(await batchReference(rows)))
   })
 
+  // The slowest fixture test in the suite: the row-by-row loop runs about 10x
+  // slower under QEMU armv7 and has crossed the default ceiling on that runner,
+  // so it gets its own. The suite-wide ceiling still guards everything else.
   it('per-snapshot incremental feed equals batch reconcile', async () => {
     const rows = subset()
     await store.init((rows[0] as VoyageRow).ts)
@@ -125,7 +128,7 @@ describe('VoyageLog', () => {
     await vlog.flush()
 
     expect(comparable(vlog.list(100).reverse())).toEqual(comparable(await batchReference(rows)))
-  })
+  }, 120_000)
 
   it('integrates engine fuel through the live feed (window path)', async () => {
     const rows = fuelRows()
