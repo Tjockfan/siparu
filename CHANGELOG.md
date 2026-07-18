@@ -13,6 +13,23 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-07-18
+
+### Changed
+
+- The wide instrument screen is now one board rather than two panels to pick between. It shows
+  everything she reports at once: a scrolling column of sections (the bridge, then each engine,
+  generator and tank group she carries) beside a fixed chart pane. The sections are the panels she
+  justifies, in her own order, so a boat with no generator has no generator section and there is
+  no list of them to keep. The cells are dense and equal here, many readings at a glance, where the
+  single bridge screen draws a few large ones. The phone is unchanged: one panel with a tab row.
+  The old two-up split and its URL pair are gone.
+
+### Fixed
+
+- On the board the position readout no longer wraps its hemisphere letter onto a second line; the
+  coordinate holds one line beside its label.
+
 ## [0.1.16] - 2026-07-18
 
 ### Added

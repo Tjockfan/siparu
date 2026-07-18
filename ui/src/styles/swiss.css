@@ -417,10 +417,8 @@ body {
  * glass stays at 0.0-2.3%, which is where the eight-cell picture sat (1.2%). Deleting the map
  * and stopping there reads 39-65%. See dev/verify/bridge_hole.py.
  */
-/* The dashboard is one panel, or two side by side on a wide screen. The pair is a URL param,
- * so it survives a reload and can be shared; the split is one media query, because "is there
- * room for two panels" is a question about the window. Below the threshold .sp-dash is a single
- * column and the second panel is simply not mounted - its param waits in the URL. */
+/* The dashboard is one panel on a phone (a tab row over the bridge or one system) and the whole
+ * board on a wide screen. The phone stays a single column; the board (.sp-board) is set below. */
 .swiss .sp-dash {
   flex: 1;
   min-height: 0;
@@ -428,12 +426,67 @@ body {
   flex-direction: column;
   gap: 2px;
 }
-@media (min-width: 1000px) {
-  .swiss .sp-dash.split { flex-direction: row; }
+
+/* ============================================================
+   DASHBOARD BOARD  (.sp-board) - wide, everything at once
+   ============================================================ */
+/* A row of two: a scrolling column of sections on the left, a fixed chart pane on the right. The
+ * sections are the panels the boat justifies (bridge first), drawn at their natural height rather
+ * than stretched to fill, so many readings sit at a glance and the column scrolls when she reports
+ * more than fits. The chart stays put beside them and never reflows with the data. */
+.swiss .sp-board { flex-direction: row; }
+.swiss .sp-board .sp-cols {
+  flex: 1.15 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--ink-band);
 }
-/* A panel is the container each cell reads its width from (container-type), NOT the window: a
- * half-width pane must lay out like the narrow screen it is the size of. inline-size, not size:
- * size would need a definite height and collapse the flex fill to zero. */
+.swiss .sp-board .sp-mappane {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+.swiss .sp-sec { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.swiss .sp-sec-h {
+  margin: 0;
+  padding: 11px 14px 5px;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--ink-band);
+}
+/* In the board the bridge grid is one section among several, not a pane to fill: flatten its
+ * vertical grow so band and matrix stack at their content height and the column, not the grid,
+ * owns the scroll. */
+.swiss .sp-board .grid { flex: none; }
+.swiss .sp-board .grid .band,
+.swiss .sp-board .grid .matrix { flex: none; }
+.swiss .sp-board .sy-wrap { flex: none; }
+/* Dense cells: a moderate fixed height and number, so a mixed dashboard reads as many equal
+ * readings rather than a few pane-filling heroes. The single bridge screen keeps its large type;
+ * these overrides apply only inside the board. */
+.swiss .sp-board .c { min-height: 94px; }
+.swiss .sp-board .c-sog .n { font-size: 40px; }
+.swiss .sp-board .grid .matrix .n { font-size: 34px; }
+.swiss .sp-board .c-state .s { font-size: 22px; }
+.swiss .sp-board .sy-n { font-size: 34px; }
+/* At the board's section width the position cell is narrow enough that the 18px coordinate would
+ * wrap its hemisphere letter onto a second line. A smaller figure on one line reads better than a
+ * broken one; it stays right-aligned beside its label. */
+.swiss .sp-board .c-pos .coords { font-size: 14px; white-space: nowrap; }
+/* The phone panel is the container each cell reads its width from (container-type), NOT the
+ * window: a tablet in portrait sits below the board threshold and shows this one pane, which must
+ * lay out for its own width rather than a phone's. inline-size, not size: size would need a
+ * definite height and collapse the flex fill to zero. */
 .swiss .sp-pane {
   flex: 1 1 0;
   min-width: 0;
@@ -512,10 +565,10 @@ body {
  * it. One step up and the same iPad picks four columns, three rows, 221px. The phone must
  * keep 158: at 210 it drops to a single column, which is a list, not a bridge. */
 .swiss .grid .matrix > .c { flex: 1 1 min(158px, 100%); min-width: 0; }
-/* The step up is asked of the PANE, not the window: a half-width panel on a split iPad is
-   1180/2, which is a phone, and must take the phone's basis or its four glyphs land in a cell
-   341px tall. .sp-pane carries container-type, so this resolves against the panel a cell sits
-   in - full width when there is one panel, half when there are two. */
+/* The step up is asked of the PANE, not the window, so a phone keeps 158 while a tablet in
+   portrait (still one pane, below the board threshold) gets the wider basis its own width earns.
+   .sp-pane carries container-type; the wide board draws its cells outside any pane, so they hold
+   the 158 basis above rather than stepping up. */
 @container pane (min-width: 600px) {
   .swiss .grid .matrix > .c { flex-basis: min(210px, 100%); }
 }
@@ -1364,11 +1417,12 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  /* Fill the panel the way the bridge does: the rows stretch to take the height the pane gives
-   * them, rather than packing at the top and leaving a slab of dark below - the same "too much
-   * whitespace" the bridge answered, seen here when a system has a handful of gauges in a tall
-   * split pane. A system with one gauge gets one tall cell, which is the honest shape of "she
-   * reports one thing", not a bug. */
+  /* On the phone panel, fill it the way the bridge does: the rows stretch to take the height the
+   * pane gives them, rather than packing at the top and leaving a slab of dark below - the same
+   * "too much whitespace" the bridge answered, seen when a system has a handful of gauges in a
+   * tall single pane. A system with one gauge gets one tall cell, which is the honest shape of
+   * "she reports one thing", not a bug. In the wide board the section is flattened to its content
+   * height instead (see .sp-board .sy-wrap), so this stretch applies to the phone only. */
   align-content: stretch;
   min-height: 100%;
 }

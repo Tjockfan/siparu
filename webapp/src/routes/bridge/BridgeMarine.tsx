@@ -10,12 +10,13 @@
  * other reading, equal cells. A tier with no members is not rendered - see swiss.css, where
  * the survivor takes the glass.
  *
- * The dashboard is a panel, and on a wide screen there are two of them side by side: the
- * bridge and one system at once, each with its own tab row, each driven by a URL param
- * (?a=bridge&b=engine) so the pair survives a reload and can be shared ashore. A panel picks
- * its layout from its OWN width, not the window's, through a container query - so a half-width
- * pane on an iPad takes the narrow layout a phone would. Below the split threshold there is one
- * panel; the second param stays in the URL, so turning the iPad back brings the pair back.
+ * On a phone this is one panel with a tab row: the bridge, or one system she reports, chosen by
+ * a URL param (?a=engine) so the choice survives a reload and can be shared. That pane reads its
+ * density off its OWN width through a container query, so a tablet in portrait, still below the
+ * board threshold, gets the wider layout its width allows. On a wide screen the tabs are gone and
+ * everything she reports is shown at once: a scrolling column of sections (the bridge, then each
+ * system) beside a fixed chart pane. The sections are the panels she justifies, in their order,
+ * so a boat with no generator has no generator section and nothing here lists them.
  *
  * Live SignalK (2s) via useBridgeData; SOG/Depth animate, gust+baro sparklines, skeleton on
  * load. Loading is NOT absence: until the first frame lands every cell is drawn as a skeleton,
@@ -27,6 +28,7 @@ import { useSearchParams } from "react-router-dom";
 import AnimatedNumber from "../../components/AnimatedNumber";
 import { Sparkline } from "siparu-ui";
 import SystemsMarine from "./SystemsMarine";
+import MapMarine from "../map/MapMarine";
 import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
 import { depthDiagLabel } from "../../lib/depthDiag";
@@ -37,9 +39,10 @@ import PairBand from "./PairBand";
 
 const GUST_WINDOWS: GustHours[] = [1, 6, 12, 24];
 
-// A wide screen carries two panels; below this it carries one. The pane, not the window, then
-// decides each panel's density (see swiss.css, @container pane).
-const SPLIT_QUERY = "(min-width: 1000px)";
+// A wide screen shows the whole dashboard at once (the board); below this it shows one panel with
+// a tab row. Same threshold as the side rail in Layout, so the chrome and the content switch shape
+// together.
+const WIDE_QUERY = "(min-width: 1000px)";
 
 function deg(v: number | null): string {
   return v === null ? "·" : String(Math.round(v));
@@ -75,7 +78,7 @@ function navDisplay(s: string): string {
 }
 
 // The band and matrix for the bridge tab, built from what the boat is saying. Pulled out of the
-// panel so the same instruments can be drawn on either side of a split.
+// panel so the same instruments render in the phone's tab and in the wide board's bridge section.
 function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void }) {
   const loading = d.snap === null;
   const trend = baroTrend(d.baroDelta);
@@ -309,37 +312,60 @@ export default function BridgeMarine() {
   const d = useBridgeData();
   const [baroOpen, setBaroOpen] = useState(false);
   const [params, setParams] = useSearchParams();
-  const wide = useMediaQuery(SPLIT_QUERY);
+  const wide = useMediaQuery(WIDE_QUERY);
+  const openBaro = () => setBaroOpen(true);
 
   // The panels this boat justifies, worked out from what she is saying. Bridge is always here:
   // she has a position whether or not she has an engine. The rest appear because she reports
-  // them, in the package's order, and there is no list of them anywhere to maintain.
+  // them, in the package's order, and there is no list of them anywhere to maintain. The board
+  // draws every one; the phone's tab row offers the same set one at a time.
   const panels = systemPanels(d.snap);
+
+  // The board shows everything at once, so there is nothing to pick and no param to keep. The
+  // sections are the panels above, bridge first, each at its natural height in a column that
+  // scrolls when she reports more than fits; the chart sits in a fixed pane beside it.
+  if (wide) {
+    return (
+      <>
+        <div className="sp-dash sp-board">
+          <div className="sp-cols">
+            <section className="sp-sec">
+              <h2 className="sp-sec-h">Bridge</h2>
+              <BridgeInstruments d={d} onBaro={openBaro} />
+            </section>
+            {panels.map((p) => (
+              <section className="sp-sec" key={p.key}>
+                <h2 className="sp-sec-h">{p.name}</h2>
+                <SystemsMarine snap={d.snap} tab={p.key} />
+              </section>
+            ))}
+          </div>
+          <div className="sp-mappane">
+            <MapMarine />
+          </div>
+        </div>
+        <PairBand />
+        {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
+      </>
+    );
+  }
+
+  // Phone: one panel with a tab row. The tab is a URL param so it survives a reload and can be
+  // shared; a tab that no longer resolves (a system that went quiet this session) falls back to
+  // the bridge rather than showing an empty panel.
   const tabs = [{ key: "bridge", name: "Bridge" }, ...panels.map((p) => ({ key: p.key as string, name: p.name }))];
   const valid = (k: string | null) => (k && tabs.some((t) => t.key === k) ? k : null);
-
   const a = valid(params.get("a")) ?? "bridge";
-  // The right panel exists only on a wide screen. An explicit b that no longer resolves (the
-  // engine that stopped reporting this session) collapses the panel rather than falling back to
-  // the bridge, because two bridges reads as a bug. With no b at all, a wide screen opens the
-  // first system beside the bridge, so the dashboard is two-up by default where there is room.
-  const bParam = params.get("b");
-  const b = wide ? (bParam !== null ? valid(bParam) : (panels[0]?.key ?? null)) : null;
-  const twoUp = b !== null;
-
-  const setSide = (side: "a" | "b", key: string) => {
+  const setTab = (key: string) => {
     const next = new URLSearchParams(params);
-    next.set(side, key);
+    next.set("a", key);
     setParams(next, { replace: true });
   };
 
   return (
     <>
-      <div className={`sp-dash${twoUp ? " split" : ""}`}>
-        <DashPanel tab={a} tabs={tabs} d={d} onTab={(k) => setSide("a", k)} onBaro={() => setBaroOpen(true)} />
-        {twoUp && (
-          <DashPanel tab={b} tabs={tabs} d={d} onTab={(k) => setSide("b", k)} onBaro={() => setBaroOpen(true)} />
-        )}
+      <div className="sp-dash">
+        <DashPanel tab={a} tabs={tabs} d={d} onTab={setTab} onBaro={openBaro} />
       </div>
       <PairBand />
       {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}

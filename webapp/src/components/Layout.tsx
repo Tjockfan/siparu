@@ -11,8 +11,8 @@ import { dur, ease } from "siparu-ui";
 import { cacheTimestamp } from "../lib/prefetchCache";
 
 // A wide screen carries a left rail instead of the top header + bottom tab bar; below this the
-// phone keeps both. Matches the split threshold in BridgeMarine, so the dashboard goes two-up at
-// the same width the chrome moves to the side.
+// phone keeps both. Matches the board threshold in BridgeMarine, so the dashboard opens up at the
+// same width the chrome moves to the side.
 const RAIL_QUERY = "(min-width: 1000px)";
 
 /** App shell (Swiss) - flex column:
