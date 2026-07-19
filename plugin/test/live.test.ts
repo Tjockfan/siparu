@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
-import { PathSeriesResult, SnapshotsResult, VoyageListResult } from '../src/contract'
+import { PathSeriesResult, SnapshotsResult, TrackResult, VoyageListResult } from '../src/contract'
 import { FRAME_EVERY_MS, LiveSocket, LiveUplink, PING_EVERY_MS, STILL_FRAME_EVERY_MS } from '../src/live'
 
 /**
@@ -110,6 +110,10 @@ class FakeSocket implements LiveSocket {
   /** Only the voyages answers she sent - the third sibling. */
   voyagesReplies(): Array<Record<string, unknown>> {
     return this.repliesOfType('voyages')
+  }
+  /** Only the track answers she sent - the fourth sibling. */
+  trackReplies(): Array<Record<string, unknown>> {
+    return this.repliesOfType('track')
   }
   private repliesOfType(type: string): Array<Record<string, unknown>> {
     return this.sent
@@ -806,6 +810,85 @@ describe('the third sibling the shore may say: asking for her voyages', () => {
     await flush()
 
     expect(last().voyagesReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+})
+
+describe('the fourth sibling the shore may say: asking for one voyage track', () => {
+  const TRACK: TrackResult = {
+    track: [
+      { ts: 1_752_400_000_000, lat: 43.5, lon: 7.0, sog: 3.2 },
+      { ts: 1_752_400_060_000, lat: 43.52, lon: 7.03, sog: 3.4 }
+    ],
+    decimated: false
+  }
+
+  it('answers one voyage path, tagged with the id that asked, and the voyage id reaches the store', async () => {
+    const onTrackQuery = vi.fn().mockResolvedValue(TRACK)
+    const { live, last } = uplink({ onTrackQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'track', id: 't1', voyageId: 7 }))
+    await flush()
+
+    // The voyage id reached the store untouched, and the path came back tagged with its id.
+    expect(onTrackQuery).toHaveBeenCalledWith(7)
+    expect(last().trackReplies()).toEqual([{ type: 'track', id: 't1', result: TRACK }])
+    // A track request is none of its siblings, nor answered twice.
+    expect(last().voyagesReplies()).toHaveLength(0)
+    expect(last().snapshotsReplies()).toHaveLength(0)
+    expect(last().historyReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('sends back a reason when the store cannot read the path, rather than silence', async () => {
+    const onTrackQuery = vi.fn().mockRejectedValue(new Error('/var/db/raw unreadable'))
+    const { live, last } = uplink({ onTrackQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'track', id: 't2', voyageId: 7 }))
+    await flush()
+
+    // A fixed message, not the caught error's text: that text can hold a data-dir path.
+    expect(last().trackReplies()).toEqual([
+      { type: 'track', id: 't2', error: { code: 'TRACK_FAILED', message: 'track query failed' } }
+    ])
+
+    live.stop()
+  })
+
+  it('acts on nothing else - a command wearing a voyage id is still not one', async () => {
+    const onTrackQuery = vi.fn().mockResolvedValue(TRACK)
+    const { live, last } = uplink({ onTrackQuery })
+    live.start()
+    last().open()
+
+    // A command wearing the request's clothes: an id and a numeric voyageId, everything but the
+    // type tag. The tag is the gate; if it ever stopped deciding, this is what would run.
+    last().say(JSON.stringify({ type: 'put', id: 'evil', voyageId: 7 }))
+    // And a track-tagged message whose voyage id is not a number is not one either.
+    last().say(JSON.stringify({ type: 'track', id: 't3', voyageId: 'all' }))
+    await flush()
+
+    expect(onTrackQuery).not.toHaveBeenCalled()
+    expect(last().trackReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('does nothing with a track request when the feature is not wired', async () => {
+    const { live, last } = uplink() // no onTrackQuery
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'track', id: 't1', voyageId: 7 }))
+    await flush()
+
+    expect(last().trackReplies()).toHaveLength(0)
 
     live.stop()
   })

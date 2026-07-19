@@ -31,6 +31,7 @@ import { RollupEngine } from './rollup'
 import { Store } from './store'
 import { dayKey } from './time'
 import { LiveUplink } from './live'
+import { decimateTrack } from './track'
 import { reportedStatus, Uplink } from './uplink'
 import { VoyageLog } from './voyagelog'
 
@@ -345,6 +346,10 @@ export = (app: ServerAPI): Plugin => {
             onVoyagesQuery: async (limit) => ({
               voyages: vl.list(Math.min(Math.max(1, limit || 50), 500))
             }),
+            // One voyage's path, the line the local /voyages/:id/track serves. Decimated before it
+            // crosses the wire: vl.track returns every recorded fix (a long voyage is tens of
+            // thousands), which the local REST may serve but a single timed socket reply may not.
+            onTrackQuery: (voyageId) => vl.track(voyageId, Date.now()).then(decimateTrack),
             debug: (msg) => app.debug(msg)
           })
           liveUplink = ws

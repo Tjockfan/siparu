@@ -24,6 +24,9 @@ import type {
   SnapshotsRequest,
   SnapshotsResponse,
   SnapshotsResult,
+  TrackRequest,
+  TrackResponse,
+  TrackResult,
   VoyageListResult,
   VoyagesRequest,
   VoyagesResponse
@@ -165,6 +168,13 @@ export interface LiveDeps {
    * relay or a boat wired without it simply never grows the ear.
    */
   onVoyagesQuery?: (limit: number) => Promise<VoyageListResult>
+  /**
+   * Answers a shore track request - one voyage's recorded path, the line the local REST
+   * /voyages/:id/track serves - from the same store. A fourth sibling of onHistoryQuery: a read,
+   * never a command, and it never reaches Signal K. Absent leaves the socket deaf to track
+   * requests, so an old relay or a boat wired without it simply never grows the ear.
+   */
+  onTrackQuery?: (voyageId: number) => Promise<TrackResult>
   debug: (msg: string) => void
   /** Injected in tests. In production this is the `ws` adapter at the bottom of the file. */
   connect?: (url: string, token: string) => LiveSocket
@@ -322,13 +332,14 @@ export class LiveUplink {
         return
       }
       // Beyond a pong, the shore may ask the boat to send back her own recorded history: one
-      // gauge's series (handleHistory), whole snapshot rows (handleSnapshots) or her recent
-      // voyages (handleVoyages). None is a command; each drops in silence anything that is not
-      // its own request, and anything that is none is not acted on at all, because the shore
-      // may not steer a boat.
+      // gauge's series (handleHistory), whole snapshot rows (handleSnapshots), her recent voyages
+      // (handleVoyages) or one voyage's path (handleTrack). None is a command; each drops in
+      // silence anything that is not its own request, and anything that is none is not acted on
+      // at all, because the shore may not steer a boat.
       this.handleHistory(gen, data)
       this.handleSnapshots(gen, data)
       this.handleVoyages(gen, data)
+      this.handleTrack(gen, data)
     })
 
     sock.onClose((code) => {
@@ -511,12 +522,47 @@ export class LiveUplink {
   }
 
   /**
-   * Send a history, snapshots or voyages answer, but only if it still belongs to the socket that
-   * asked. A query reads the disk while the line may drop and redial underneath it; the
-   * generation guard is what keeps a slow answer from landing on a fresh connection that never
-   * asked.
+   * A track request from the shore, answered from the boat's own store - a fourth sibling of
+   * handleHistory, and just as narrow. Parse, act only if it is a track request, and read the
+   * store, never Signal K. The boat decimates a long path before it answers, so a request cannot
+   * pull an unbounded stream over the wire.
    */
-  private reply(gen: number, msg: HistoryResponse | SnapshotsResponse | VoyagesResponse): void {
+  private handleTrack(gen: number, data: string): void {
+    const handler = this.deps.onTrackQuery
+    if (!handler) return
+
+    let msg: unknown
+    try {
+      msg = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (!isTrackRequest(msg)) return
+
+    const { id, voyageId } = msg
+    handler(voyageId).then(
+      (result) => this.reply(gen, { type: 'track', id, result }),
+      (err) => {
+        this.deps.debug(`track query failed: ${String(err)}`)
+        this.reply(gen, {
+          type: 'track',
+          id,
+          error: { code: 'TRACK_FAILED', message: 'track query failed' }
+        })
+      }
+    )
+  }
+
+  /**
+   * Send a history, snapshots, voyages or track answer, but only if it still belongs to the
+   * socket that asked. A query reads the disk while the line may drop and redial underneath it;
+   * the generation guard is what keeps a slow answer from landing on a fresh connection that
+   * never asked.
+   */
+  private reply(
+    gen: number,
+    msg: HistoryResponse | SnapshotsResponse | VoyagesResponse | TrackResponse
+  ): void {
     if (gen !== this.gen || !this.sock) return
     try {
       this.sock.send(JSON.stringify(msg))
@@ -665,6 +711,17 @@ function isVoyagesRequest(m: unknown): m is VoyagesRequest {
   if (typeof m !== 'object' || m === null) return false
   const o = m as Record<string, unknown>
   return o.type === 'voyages' && typeof o.id === 'string' && typeof o.limit === 'number'
+}
+
+/**
+ * A track request, told apart the same way: the type tag is the gate. It carries a voyage id, so
+ * the tag, the id and a numeric voyageId are checked. Whether that voyage exists is the store's
+ * to answer (an unknown id reads back an empty path), so it is not re-checked here.
+ */
+function isTrackRequest(m: unknown): m is TrackRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return o.type === 'track' && typeof o.id === 'string' && typeof o.voyageId === 'number'
 }
 
 /**

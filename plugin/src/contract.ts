@@ -192,6 +192,26 @@ export type VoyagesResponse =
   | { type: 'voyages'; id: string; result: VoyageListResult }
   | { type: 'voyages'; id: string; error: { code: string; message: string } }
 
+/**
+ * The track RPC, a fourth sibling on the same live socket. Where voyages asks for the list, this
+ * asks for one voyage's recorded path - the fixes the local /voyages/:id/track REST serves,
+ * drawn as a line on a chart ashore. It carries the voyage's id and nothing else; like its
+ * siblings it is a read of the boat's own store and reaches nothing near Signal K. The boat
+ * decimates a long track before she sends it, so a request cannot pull an unbounded stream over
+ * the wire (a day under way at 1 Hz is tens of thousands of fixes).
+ */
+export interface TrackRequest {
+  type: 'track'
+  id: string
+  /** Which voyage to draw, by its Voyage.id. */
+  voyageId: number
+}
+
+/** The boat's answer to one TrackRequest. The path or a reason, never both. */
+export type TrackResponse =
+  | { type: 'track'; id: string; result: TrackResult }
+  | { type: 'track'; id: string; error: { code: string; message: string } }
+
 export interface LiveResult extends Snapshot {
   /** Seconds since the newest delta touched any subscribed path; null before first delta. */
   data_age_s: number | null
@@ -321,6 +341,16 @@ export interface TrackPoint {
   lon: number
   /** Knots, rounded; null when unavailable. */
   sog: number | null
+}
+
+/**
+ * The boat's answer to one TrackRequest: one voyage's path, oldest fix first.
+ * `decimated` is true when the boat thinned a long track before sending it, so a reader can say
+ * the line is a faithful shape but not every recorded fix.
+ */
+export interface TrackResult {
+  track: TrackPoint[]
+  decimated: boolean
 }
 
 /** One nearby AIS vessel, sanitized and distance-filtered server-side. */
