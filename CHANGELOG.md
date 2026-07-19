@@ -13,6 +13,16 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.23] - 2026-07-19
+
+### Added
+
+- A track read over the live socket. A shore screen asks for one voyage by id and the
+  boat answers with its recorded path, oldest fix first. A long track is decimated at an
+  even stride before it crosses the wire, keeping the first and last fix, so a day under
+  way at roughly 1 Hz still fits a single reply; the local track REST is left untouched
+  and serves every fix. Read-only like its three siblings, and served from the same store.
+
 ## [0.1.20] - 2026-07-19
 
 ### Fixed
