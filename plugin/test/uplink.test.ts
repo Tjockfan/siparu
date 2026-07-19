@@ -368,6 +368,19 @@ describe('what the boat says about herself', () => {
     expect(dialling?.failures).toBe(2)
   })
 
+  it('keeps naming a revoked socket while it stands off, before the POST path catches up', () => {
+    // The socket took a 1008 and is standing well back to redial; the POST path has not yet
+    // had its own turn at the door to collect the matching 401. The revoked state must not
+    // vanish in that gap: the boat screen would blank the reason, and re-pairing now reads it
+    // to tell a dead token from a live one.
+    const s = reportedStatus(
+      { connected: false, lastFrameTs: 1_752_400_000_000, rejected: true },
+      post({ failures: 0 })
+    )
+    expect(s?.rejected).toBe(true)
+    expect(s?.lastError).toMatch(/no longer recognises/i)
+  })
+
   it('says nothing at all when the boat is not running', () => {
     expect(reportedStatus(null, null)).toBeNull()
   })

@@ -48,11 +48,24 @@ export interface UplinkStatus {
  * and so it is the one whose troubles are worth showing.
  */
 export function reportedStatus(
-  socket: { connected: boolean; lastFrameTs: number | null } | null | undefined,
+  socket: { connected: boolean; lastFrameTs: number | null; rejected?: boolean } | null | undefined,
   post: UplinkStatus | null
 ): UplinkStatus | null {
   if (socket?.connected) {
     return { lastSentTs: socket.lastFrameTs, failures: 0, rejected: false, lastError: null }
+  }
+  // A socket told "unknown token" names the cause even while it stands off to redial, before
+  // the POST path has had its own turn at the door. Losing it here would blank the one line
+  // that says why her screen is dead - and, now that re-pairing keys on it to tell a revoked
+  // token from a healthy one, would leave "Pair again" unable to recover from an unlink done
+  // from ashore.
+  if (socket?.rejected) {
+    return {
+      lastSentTs: socket.lastFrameTs,
+      failures: 0,
+      rejected: true,
+      lastError: 'Siparu no longer recognises this boat. Pair her again.'
+    }
   }
   return post
 }

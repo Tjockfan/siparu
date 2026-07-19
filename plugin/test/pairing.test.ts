@@ -231,6 +231,65 @@ describe('pair/approve', () => {
     expect(saved).toBe('untouched') // the stranger's token never reached the disk
   })
 
+  it('adopts a fresh boat when the token she held was revoked from ashore', async () => {
+    // The owner unlinked her from the portal: her token is dead and the relay, handed a spent
+    // proof, opens a boat of its own. With no live feed to protect, "Pair again" must take the
+    // new boat rather than refuse it as a hijack - the guard above defends a LIVE link, and
+    // once the relay has said "unknown" there is none. Refusing here is how a portal unlink
+    // strands her, the screen telling her to pair again at a button that cannot.
+    let saved: RemoteState | undefined | 'untouched' = 'untouched'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const answer = String(url).endsWith('/pair/approve')
+          ? { boat_id: 'a-fresh-boat', boat_token: 'fresh-token', claimed_by_email: null }
+          : { device_code: 'dc', user_code: 'WDJB-MJHT', expires_in: 3600 }
+        return new Response(JSON.stringify(answer), { status: 200 })
+      })
+    )
+
+    const handlers = routes({
+      remote: PAIRED,
+      uplink: { lastSentTs: null, failures: 5, rejected: true, lastError: 'gone' },
+      saved: (r) => (saved = r)
+    })
+    await call(handlers, '/pair/start')
+    const body = (await call(handlers, '/pair/approve')) as { state: string }
+
+    expect(body.state).toBe('paired')
+    expect(saved).toMatchObject({ boatId: 'a-fresh-boat', boatToken: 'fresh-token' })
+  })
+
+  it('REFUSES a different boat while her token is LIVE - the real hijack path', async () => {
+    // The refusal above leaves uplinkStatus() null, which takes the guard's pessimistic
+    // default, not the branch production hits. This pins the live case directly: a boat
+    // streaming fine (rejected:false) whose approval names a DIFFERENT boat is exactly the
+    // hijack the guard exists for, and it must be refused with nothing written. Without this,
+    // relaxing the guard to adopt-on-live would still pass every other test.
+    let saved: RemoteState | undefined | 'untouched' = 'untouched'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const answer = String(url).endsWith('/pair/approve')
+          ? { boat_id: 'someone-elses-boat', boat_token: 'their-token', claimed_by_email: null }
+          : { device_code: 'dc', user_code: 'WDJB-MJHT', expires_in: 3600 }
+        return new Response(JSON.stringify(answer), { status: 200 })
+      })
+    )
+
+    const handlers = routes({
+      remote: PAIRED,
+      uplink: { lastSentTs: 1_752_400_000_000, failures: 0, rejected: false, lastError: null },
+      saved: (r) => (saved = r)
+    })
+    await call(handlers, '/pair/start')
+    const body = (await call(handlers, '/pair/approve')) as { state: string; message: string }
+
+    expect(body.state).toBe('error')
+    expect(body.message).toMatch(/does not own this boat/i)
+    expect(saved).toBe('untouched') // a live link is never redirected by an approval
+  })
+
   it('still reports success when the confirmation cannot get through', async () => {
     // A confirmation that never lands is harmless: the old token simply lives longer.
     // Failing the pairing over it would be worse than the thing it protects against.

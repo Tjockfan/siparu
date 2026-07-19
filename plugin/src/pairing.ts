@@ -371,7 +371,16 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
         // leave the real owner's boat dark - the hijack, arriving by the back door, in a
         // response the boat asked for. The relay refuses this too; the boat refuses it
         // again, because a plugin that trusts whatever comes back has no defence at all.
-        if (previous && done.boat_id !== previous.boatId) {
+        //
+        // But only a LIVE link is worth defending. Once the relay has refused her token as
+        // unknown - because the owner unlinked her from the portal, where the relay can kill
+        // the token but cannot reach in to clear the copy on her disk - she is streaming to
+        // nobody, and a different boat here is not a feed being redirected but her owner's own
+        // way back. So "Pair again" recovers from a rejected screen without her first having
+        // to Turn off. The hijack this guards against needs a live token to steal; a dead one
+        // cannot be.
+        const linkAlive = !uplinkStatus()?.rejected
+        if (previous && linkAlive && done.boat_id !== previous.boatId) {
           deviceCode = userCode = expiresAt = null
           app.error(`pair approve returned a different boat (${done.boat_id}); refusing`)
           res.status(409).json({ state: 'error', message: NOT_YOUR_BOAT } satisfies PairScreen)
