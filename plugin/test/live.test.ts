@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
-import { PathSeriesResult, SnapshotsResult } from '../src/contract'
+import { PathSeriesResult, SnapshotsResult, VoyageListResult } from '../src/contract'
 import { FRAME_EVERY_MS, LiveSocket, LiveUplink, PING_EVERY_MS, STILL_FRAME_EVERY_MS } from '../src/live'
 
 /**
@@ -106,6 +106,10 @@ class FakeSocket implements LiveSocket {
   /** Only the snapshots answers she sent - the sibling of historyReplies. */
   snapshotsReplies(): Array<Record<string, unknown>> {
     return this.repliesOfType('snapshots')
+  }
+  /** Only the voyages answers she sent - the third sibling. */
+  voyagesReplies(): Array<Record<string, unknown>> {
+    return this.repliesOfType('voyages')
   }
   private repliesOfType(type: string): Array<Record<string, unknown>> {
     return this.sent
@@ -709,6 +713,99 @@ describe('the sibling the shore may say: asking for her snapshots', () => {
     await flush()
 
     expect(last().snapshotsReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+})
+
+describe('the third sibling the shore may say: asking for her voyages', () => {
+  const VOYAGES: VoyageListResult = {
+    voyages: [
+      {
+        id: 7,
+        start_ts: 1_752_400_000_000,
+        end_ts: 1_752_410_000_000,
+        start_lat: 43.5,
+        start_lon: 7.0,
+        end_lat: 43.7,
+        end_lon: 7.3,
+        distance_nm: 12.4,
+        hours_underway: 2.8,
+        avg_sog_kn: 4.4,
+        max_sog_kn: 6.1,
+        fuel_used_l: null,
+        start_port: null,
+        end_port: null,
+        status: 'closed'
+      }
+    ]
+  }
+
+  it('answers her voyages, tagged with the id that asked, and the count reaches the store', async () => {
+    const onVoyagesQuery = vi.fn().mockResolvedValue(VOYAGES)
+    const { live, last } = uplink({ onVoyagesQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'voyages', id: 'v1', limit: 50 }))
+    await flush()
+
+    // The count reached the store untouched, and the answer came back tagged with its id.
+    expect(onVoyagesQuery).toHaveBeenCalledWith(50)
+    expect(last().voyagesReplies()).toEqual([{ type: 'voyages', id: 'v1', result: VOYAGES }])
+    // A voyages request is neither of its siblings, nor answered twice.
+    expect(last().snapshotsReplies()).toHaveLength(0)
+    expect(last().historyReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('sends back a reason when the store cannot list them, rather than silence', async () => {
+    const onVoyagesQuery = vi.fn().mockRejectedValue(new Error('/var/db/voyages.ndjson unreadable'))
+    const { live, last } = uplink({ onVoyagesQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'voyages', id: 'v2', limit: 50 }))
+    await flush()
+
+    // A fixed message, not the caught error's text: that text can hold a data-dir path, and this
+    // reply crosses the wire to the shore.
+    expect(last().voyagesReplies()).toEqual([
+      { type: 'voyages', id: 'v2', error: { code: 'VOYAGES_FAILED', message: 'voyages query failed' } }
+    ])
+
+    live.stop()
+  })
+
+  it('acts on nothing else - a command wearing a voyages count is still not one', async () => {
+    const onVoyagesQuery = vi.fn().mockResolvedValue(VOYAGES)
+    const { live, last } = uplink({ onVoyagesQuery })
+    live.start()
+    last().open()
+
+    // A command wearing the request's clothes: an id and a numeric limit, everything but the
+    // type tag. The tag is the gate; if it ever stopped deciding, this is what would run.
+    last().say(JSON.stringify({ type: 'put', id: 'evil', limit: 50 }))
+    // And a voyages-tagged message whose count is not a number is not one either.
+    last().say(JSON.stringify({ type: 'voyages', id: 'v3', limit: 'all' }))
+    await flush()
+
+    expect(onVoyagesQuery).not.toHaveBeenCalled()
+    expect(last().voyagesReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('does nothing with a voyages request when the feature is not wired', async () => {
+    const { live, last } = uplink() // no onVoyagesQuery
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'voyages', id: 'v1', limit: 50 }))
+    await flush()
+
+    expect(last().voyagesReplies()).toHaveLength(0)
 
     live.stop()
   })

@@ -173,6 +173,25 @@ export type SnapshotsResponse =
   | { type: 'snapshots'; id: string; result: SnapshotsResult }
   | { type: 'snapshots'; id: string; error: { code: string; message: string } }
 
+/**
+ * The voyages RPC, a third sibling on the same live socket. Where history asks for one gauge's
+ * series and snapshots for whole rows over a window, this asks for the boat's recent voyages -
+ * the list the local /voyages REST serves. It carries no query, only how many of the newest to
+ * return; like its siblings it is a read of the boat's own store and reaches nothing near
+ * Signal K. The boat clamps the count, so a request cannot ask for more than she will give.
+ */
+export interface VoyagesRequest {
+  type: 'voyages'
+  id: string
+  /** How many of the newest voyages to return. Clamped boat-side to the REST bounds. */
+  limit: number
+}
+
+/** The boat's answer to one VoyagesRequest. The voyages or a reason, never both. */
+export type VoyagesResponse =
+  | { type: 'voyages'; id: string; result: VoyageListResult }
+  | { type: 'voyages'; id: string; error: { code: string; message: string } }
+
 export interface LiveResult extends Snapshot {
   /** Seconds since the newest delta touched any subscribed path; null before first delta. */
   data_age_s: number | null
@@ -274,6 +293,11 @@ export interface Voyage {
   start_port: string | null
   end_port: string | null
   status: 'open' | 'closed'
+}
+
+/** The boat's answer to one VoyagesRequest: her recent voyages, newest first. */
+export interface VoyageListResult {
+  voyages: Voyage[]
 }
 
 /** One aggregation window on the voyage stats card. */

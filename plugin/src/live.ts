@@ -23,7 +23,10 @@ import type {
   SnapshotsQuery,
   SnapshotsRequest,
   SnapshotsResponse,
-  SnapshotsResult
+  SnapshotsResult,
+  VoyageListResult,
+  VoyagesRequest,
+  VoyagesResponse
 } from './contract'
 
 /**
@@ -155,6 +158,13 @@ export interface LiveDeps {
    * so an old relay or a boat wired without it simply never grows the ear.
    */
   onSnapshotsQuery?: (query: SnapshotsQuery) => Promise<SnapshotsResult>
+  /**
+   * Answers a shore voyages request - her recent voyages, the list the local REST /voyages
+   * serves - from the same store. A third sibling of onHistoryQuery: a read, never a command,
+   * and it never reaches Signal K. Absent leaves the socket deaf to voyages requests, so an old
+   * relay or a boat wired without it simply never grows the ear.
+   */
+  onVoyagesQuery?: (limit: number) => Promise<VoyageListResult>
   debug: (msg: string) => void
   /** Injected in tests. In production this is the `ws` adapter at the bottom of the file. */
   connect?: (url: string, token: string) => LiveSocket
@@ -312,11 +322,13 @@ export class LiveUplink {
         return
       }
       // Beyond a pong, the shore may ask the boat to send back her own recorded history: one
-      // gauge's series (handleHistory) or whole snapshot rows (handleSnapshots). Neither is a
-      // command; each drops in silence anything that is not its own request, and anything that
-      // is neither is not acted on at all, because the shore may not steer a boat.
+      // gauge's series (handleHistory), whole snapshot rows (handleSnapshots) or her recent
+      // voyages (handleVoyages). None is a command; each drops in silence anything that is not
+      // its own request, and anything that is none is not acted on at all, because the shore
+      // may not steer a boat.
       this.handleHistory(gen, data)
       this.handleSnapshots(gen, data)
+      this.handleVoyages(gen, data)
     })
 
     sock.onClose((code) => {
@@ -467,11 +479,44 @@ export class LiveUplink {
   }
 
   /**
-   * Send a history or snapshots answer, but only if it still belongs to the socket that asked.
-   * A query reads the disk while the line may drop and redial underneath it; the generation
-   * guard is what keeps a slow answer from landing on a fresh connection that never asked.
+   * A voyages request from the shore, answered from the boat's own store - a third sibling of
+   * handleHistory, and just as narrow. Parse, act only if it is a voyages request, and read the
+   * store, never Signal K. The boat clamps the count before it reads, so a request cannot ask
+   * her for more than she will give.
    */
-  private reply(gen: number, msg: HistoryResponse | SnapshotsResponse): void {
+  private handleVoyages(gen: number, data: string): void {
+    const handler = this.deps.onVoyagesQuery
+    if (!handler) return
+
+    let msg: unknown
+    try {
+      msg = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (!isVoyagesRequest(msg)) return
+
+    const { id, limit } = msg
+    handler(limit).then(
+      (result) => this.reply(gen, { type: 'voyages', id, result }),
+      (err) => {
+        this.deps.debug(`voyages query failed: ${String(err)}`)
+        this.reply(gen, {
+          type: 'voyages',
+          id,
+          error: { code: 'VOYAGES_FAILED', message: 'voyages query failed' }
+        })
+      }
+    )
+  }
+
+  /**
+   * Send a history, snapshots or voyages answer, but only if it still belongs to the socket that
+   * asked. A query reads the disk while the line may drop and redial underneath it; the
+   * generation guard is what keeps a slow answer from landing on a fresh connection that never
+   * asked.
+   */
+  private reply(gen: number, msg: HistoryResponse | SnapshotsResponse | VoyagesResponse): void {
     if (gen !== this.gen || !this.sock) return
     try {
       this.sock.send(JSON.stringify(msg))
@@ -609,6 +654,17 @@ function isSnapshotsRequest(m: unknown): m is SnapshotsRequest {
     typeof o.query === 'object' &&
     o.query !== null
   )
+}
+
+/**
+ * A voyages request, told apart the same way: the type tag is the gate. It carries no query,
+ * only a count - so the tag, the id and a numeric limit are checked. The limit's bounds are the
+ * boat's to enforce (she clamps it before reading), so they are not re-checked here.
+ */
+function isVoyagesRequest(m: unknown): m is VoyagesRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return o.type === 'voyages' && typeof o.id === 'string' && typeof o.limit === 'number'
 }
 
 /**

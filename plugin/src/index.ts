@@ -340,6 +340,11 @@ export = (app: ServerAPI): Plugin => {
             // Her whole recorded rows over a window, the logbook read - the same store the local
             // /snapshots serves, reached here and nowhere near Signal K.
             onSnapshotsQuery: (q) => qs.snapshots(q, Date.now()),
+            // Her recent voyages, the list the local /voyages serves. The count is clamped to the
+            // same 1..500 bounds the REST route enforces, since vl.list does not clamp its own.
+            onVoyagesQuery: async (limit) => ({
+              voyages: vl.list(Math.min(Math.max(1, limit || 50), 500))
+            }),
             debug: (msg) => app.debug(msg)
           })
           liveUplink = ws
