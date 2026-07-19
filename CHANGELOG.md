@@ -13,6 +13,19 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-07-19
+
+### Fixed
+
+- A boat can be paired again after her token was revoked from the portal. When
+  an owner unpairs her from ashore, the relay revokes her token but cannot reach
+  the plugin to clear the copy on her disk; "Pair again" then presented that dead
+  token, the relay opened a fresh boat, and the plugin refused the different id
+  as a hijack, stranding her at a button that could not work. The hijack guard
+  now defends only a live link: a token the relay has already refused protects
+  nothing, so re-pairing adopts the new boat. Turning off first is no longer
+  needed to recover.
+
 ## [0.1.19] - 2026-07-19
 
 ### Security
@@ -483,7 +496,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.19...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.20...HEAD
+[0.1.20]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.20
 [0.1.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.19
 [0.1.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.18
 [0.1.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.17
