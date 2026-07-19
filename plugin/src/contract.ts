@@ -155,6 +155,24 @@ export type HistoryResponse =
   | { type: 'history'; id: string; result: PathSeriesResult }
   | { type: 'history'; id: string; error: { code: string; message: string } }
 
+/**
+ * The snapshots RPC, the sibling of HistoryRequest carried on the same live socket. Where
+ * HistoryRequest asks for one gauge's series shaped for a graph, this asks for whole snapshot
+ * rows over a window - the logbook read, the same the local /snapshots REST serves. It carries
+ * no `path`: the answer is rows, not a single series. Like its sibling it is a read of the
+ * boat's own store and reaches nothing near Signal K.
+ */
+export interface SnapshotsRequest {
+  type: 'snapshots'
+  id: string
+  query: SnapshotsQuery
+}
+
+/** The boat's answer to one SnapshotsRequest. The rows or a reason, never both. */
+export type SnapshotsResponse =
+  | { type: 'snapshots'; id: string; result: SnapshotsResult }
+  | { type: 'snapshots'; id: string; error: { code: string; message: string } }
+
 export interface LiveResult extends Snapshot {
   /** Seconds since the newest delta touched any subscribed path; null before first delta. */
   data_age_s: number | null

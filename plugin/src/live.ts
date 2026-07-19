@@ -16,7 +16,15 @@
  * fleet, and every owner would have to walk down to their boat to fix a bug that was ours.
  */
 import type { RemoteLink } from './remotelink'
-import type { HistoryRequest, HistoryResponse, PathSeriesResult, SnapshotsQuery } from './contract'
+import type {
+  HistoryRequest,
+  HistoryResponse,
+  PathSeriesResult,
+  SnapshotsQuery,
+  SnapshotsRequest,
+  SnapshotsResponse,
+  SnapshotsResult
+} from './contract'
 
 /**
  * How often a frame goes up while the socket is open, when she is under way.
@@ -140,6 +148,13 @@ export interface LiveDeps {
    * it, simply never grows the ear. It never reaches Signal K: it reads, it does not steer.
    */
   onHistoryQuery?: (path: string, query: SnapshotsQuery) => Promise<PathSeriesResult>
+  /**
+   * Answers a shore snapshots request - whole rows over a window, the logbook read - from the
+   * same store the local REST /snapshots serves. The sibling of onHistoryQuery: a read, never a
+   * command, and it never reaches Signal K. Absent leaves the socket deaf to snapshots requests,
+   * so an old relay or a boat wired without it simply never grows the ear.
+   */
+  onSnapshotsQuery?: (query: SnapshotsQuery) => Promise<SnapshotsResult>
   debug: (msg: string) => void
   /** Injected in tests. In production this is the `ws` adapter at the bottom of the file. */
   connect?: (url: string, token: string) => LiveSocket
@@ -296,10 +311,12 @@ export class LiveUplink {
         this.awaitingPong = false
         return
       }
-      // The one thing beyond a pong that the shore may say: asking the boat to send back her
-      // own recorded history. It is not a command - see handleHistory - and anything that is
-      // not one of these two is not acted on, because the shore may not steer a boat.
+      // Beyond a pong, the shore may ask the boat to send back her own recorded history: one
+      // gauge's series (handleHistory) or whole snapshot rows (handleSnapshots). Neither is a
+      // command; each drops in silence anything that is not its own request, and anything that
+      // is neither is not acted on at all, because the shore may not steer a boat.
       this.handleHistory(gen, data)
+      this.handleSnapshots(gen, data)
     })
 
     sock.onClose((code) => {
@@ -402,13 +419,13 @@ export class LiveUplink {
 
     const { id, path, query } = msg
     handler(path, query).then(
-      (result) => this.replyHistory(gen, { type: 'history', id, result }),
+      (result) => this.reply(gen, { type: 'history', id, result }),
       (err) => {
         // The caught text stays here, in the debug log - it can hold a data-dir path, and the
         // reply crosses the wire to the shore. What the shore gets is that the query failed,
         // which is all a screen waiting on a chart needs to stop waiting.
         this.deps.debug(`history query failed: ${String(err)}`)
-        this.replyHistory(gen, {
+        this.reply(gen, {
           type: 'history',
           id,
           error: { code: 'HISTORY_FAILED', message: 'history query failed' }
@@ -418,11 +435,43 @@ export class LiveUplink {
   }
 
   /**
-   * Send a history answer, but only if it still belongs to the socket that asked. A query
-   * reads the disk while the line may drop and redial underneath it; the generation guard is
-   * what keeps a slow answer from landing on a fresh connection that never made the request.
+   * A snapshots request from the shore, answered from the boat's own store - the mirror of
+   * handleHistory, and just as narrow. Parse, act only if it is a snapshots request, and read
+   * the store, never Signal K. The store read is already clamped (today-only for raw, a hard
+   * row cap for rollups), so a request cannot ask the boat for more than she will give.
    */
-  private replyHistory(gen: number, msg: HistoryResponse): void {
+  private handleSnapshots(gen: number, data: string): void {
+    const handler = this.deps.onSnapshotsQuery
+    if (!handler) return
+
+    let msg: unknown
+    try {
+      msg = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (!isSnapshotsRequest(msg)) return
+
+    const { id, query } = msg
+    handler(query).then(
+      (result) => this.reply(gen, { type: 'snapshots', id, result }),
+      (err) => {
+        this.deps.debug(`snapshots query failed: ${String(err)}`)
+        this.reply(gen, {
+          type: 'snapshots',
+          id,
+          error: { code: 'SNAPSHOTS_FAILED', message: 'snapshots query failed' }
+        })
+      }
+    )
+  }
+
+  /**
+   * Send a history or snapshots answer, but only if it still belongs to the socket that asked.
+   * A query reads the disk while the line may drop and redial underneath it; the generation
+   * guard is what keeps a slow answer from landing on a fresh connection that never asked.
+   */
+  private reply(gen: number, msg: HistoryResponse | SnapshotsResponse): void {
     if (gen !== this.gen || !this.sock) return
     try {
       this.sock.send(JSON.stringify(msg))
@@ -541,6 +590,22 @@ function isHistoryRequest(m: unknown): m is HistoryRequest {
     o.type === 'history' &&
     typeof o.id === 'string' &&
     typeof o.path === 'string' &&
+    typeof o.query === 'object' &&
+    o.query !== null
+  )
+}
+
+/**
+ * A snapshots request, told apart the same way as a history one: the type tag is the gate. It
+ * carries no path - the answer is rows, not one series - so only the tag, the id and a query
+ * object are checked. The query's own contents (bucket, range) are the store's to validate.
+ */
+function isSnapshotsRequest(m: unknown): m is SnapshotsRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return (
+    o.type === 'snapshots' &&
+    typeof o.id === 'string' &&
     typeof o.query === 'object' &&
     o.query !== null
   )

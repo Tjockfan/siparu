@@ -337,6 +337,9 @@ export = (app: ServerAPI): Plugin => {
             // read from the same store the local /snapshots serves. It reaches this query
             // service and nowhere near Signal K - a read, never a command.
             onHistoryQuery: (p, q) => qs.pathSeries(p, q, Date.now()),
+            // Her whole recorded rows over a window, the logbook read - the same store the local
+            // /snapshots serves, reached here and nowhere near Signal K.
+            onSnapshotsQuery: (q) => qs.snapshots(q, Date.now()),
             debug: (msg) => app.debug(msg)
           })
           liveUplink = ws

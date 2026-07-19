@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
-import { PathSeriesResult } from '../src/contract'
+import { PathSeriesResult, SnapshotsResult } from '../src/contract'
 import { FRAME_EVERY_MS, LiveSocket, LiveUplink, PING_EVERY_MS, STILL_FRAME_EVERY_MS } from '../src/live'
 
 /**
@@ -101,10 +101,17 @@ class FakeSocket implements LiveSocket {
 
   /** Only the history answers she sent - a request's reply, tagged by type. */
   historyReplies(): Array<Record<string, unknown>> {
+    return this.repliesOfType('history')
+  }
+  /** Only the snapshots answers she sent - the sibling of historyReplies. */
+  snapshotsReplies(): Array<Record<string, unknown>> {
+    return this.repliesOfType('snapshots')
+  }
+  private repliesOfType(type: string): Array<Record<string, unknown>> {
     return this.sent
       .filter((s) => s !== 'ping')
       .map((s) => JSON.parse(s) as Record<string, unknown>)
-      .filter((m) => m && m.type === 'history')
+      .filter((m) => m && m.type === type)
   }
 }
 
@@ -601,6 +608,107 @@ describe('the one thing the shore may say: asking for her history', () => {
 
     expect(sockets[0].historyReplies()).toHaveLength(0)
     expect(sockets[1].historyReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+})
+
+describe('the sibling the shore may say: asking for her snapshots', () => {
+  const ROWS: SnapshotsResult = {
+    rows: [
+      {
+        ts: 1_752_400_000_000,
+        lat: 43.5,
+        lon: 7.0,
+        sog: 3.2,
+        cog: null,
+        heading_mag: null,
+        heading_true: null,
+        rate_of_turn: null,
+        magnetic_variation: null,
+        magnetic_deviation: null,
+        nav_state: null,
+        wind_speed_apparent: null,
+        wind_angle_apparent: null,
+        wind_speed_true: null,
+        wind_gust: null,
+        wind_direction_true: null,
+        air_temp_k: null,
+        air_pressure_pa: null,
+        depth: null,
+        water_temp_k: null,
+        gps_satellites: null,
+        ais_class: null
+      }
+    ],
+    clamped: false
+  }
+
+  it('answers rows from her own store, tagged with the id that asked, and no path leaks in', async () => {
+    const onSnapshotsQuery = vi.fn().mockResolvedValue(ROWS)
+    const { live, last } = uplink({ onSnapshotsQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'snapshots', id: 's1', query: { bucket: 60 } }))
+    await flush()
+
+    // The query reached the store untouched - the same read the local /snapshots serves - and
+    // carried no path, because the answer is rows, not one series.
+    expect(onSnapshotsQuery).toHaveBeenCalledWith({ bucket: 60 })
+    expect(last().snapshotsReplies()).toEqual([{ type: 'snapshots', id: 's1', result: ROWS }])
+    // A snapshots request must not be mistaken for a history one, nor answered twice.
+    expect(last().historyReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('sends back a reason when the store cannot build the rows, rather than silence', async () => {
+    const onSnapshotsQuery = vi.fn().mockRejectedValue(new Error('bucket must be one of 1, 60, 360, 1440'))
+    const { live, last } = uplink({ onSnapshotsQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'snapshots', id: 's2', query: { bucket: 7 } }))
+    await flush()
+
+    // The failure carries a fixed message, not the caught error's text: that text can hold a
+    // data-dir path, and this reply crosses the wire to the shore.
+    expect(last().snapshotsReplies()).toEqual([
+      { type: 'snapshots', id: 's2', error: { code: 'SNAPSHOTS_FAILED', message: 'snapshots query failed' } }
+    ])
+
+    live.stop()
+  })
+
+  it('acts on nothing else - a command wearing a snapshots query is still not one', async () => {
+    const onSnapshotsQuery = vi.fn().mockResolvedValue(ROWS)
+    const onHistoryQuery = vi.fn().mockResolvedValue({ path: 'x', points: [], clamped: false })
+    const { live, last } = uplink({ onSnapshotsQuery, onHistoryQuery })
+    live.start()
+    last().open()
+
+    // A command wearing the request's clothes - an id and a valid query, everything but the
+    // type tag. The tag is the gate; if it ever stopped deciding, this is what would run.
+    last().say(JSON.stringify({ type: 'put', id: 'evil', path: 'x', query: { bucket: 60 } }))
+    await flush()
+
+    expect(onSnapshotsQuery).not.toHaveBeenCalled()
+    expect(onHistoryQuery).not.toHaveBeenCalled()
+    expect(last().snapshotsReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('does nothing with a snapshots request when the feature is not wired', async () => {
+    const { live, last } = uplink() // no onSnapshotsQuery
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'snapshots', id: 's1', query: { bucket: 60 } }))
+    await flush()
+
+    expect(last().snapshotsReplies()).toHaveLength(0)
 
     live.stop()
   })
