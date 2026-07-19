@@ -13,6 +13,8 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-07-19
+
 ### Security
 
 - The relay token is no longer kept in the plugin's options, where Signal K
@@ -31,6 +33,12 @@ every commit, and a fifth write route fails the build.
 
 ### Changed
 
+- The live socket's frame cadence now follows the boat's speed: every ten
+  seconds under way, once a minute at rest, instead of a fixed two seconds.
+  Two seconds sounds attentive until the bill arrives - one boat alone was
+  burning 43,000 relay invocations a day, most of them repeating that she had
+  not moved. A moored boat now says so once a minute, and a day of streaming
+  fits comfortably inside the relay's request budget.
 - `seasonStart` is validated against the calendar, so a typo like `99-99` falls
   back to the default instead of silently emptying the season statistics; the
   admin form carries the same pattern. Named-port coordinates must sit on the
@@ -475,7 +483,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.18...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.19...HEAD
+[0.1.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.19
 [0.1.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.18
 [0.1.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.17
 [0.1.16]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.16
