@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
-import { PathSeriesResult, SnapshotsResult, TrackResult, VoyageListResult } from '../src/contract'
+import { PathSeriesResult, PhaseListResult, SnapshotsResult, TrackResult, VoyageListResult } from '../src/contract'
 import { FRAME_EVERY_MS, LiveSocket, LiveUplink, PING_EVERY_MS, STILL_FRAME_EVERY_MS } from '../src/live'
 
 /**
@@ -114,6 +114,10 @@ class FakeSocket implements LiveSocket {
   /** Only the track answers she sent - the fourth sibling. */
   trackReplies(): Array<Record<string, unknown>> {
     return this.repliesOfType('track')
+  }
+  /** Only the phases answers she sent - the fifth sibling. */
+  phasesReplies(): Array<Record<string, unknown>> {
+    return this.repliesOfType('phases')
   }
   private repliesOfType(type: string): Array<Record<string, unknown>> {
     return this.sent
@@ -889,6 +893,89 @@ describe('the fourth sibling the shore may say: asking for one voyage track', ()
     await flush()
 
     expect(last().trackReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+})
+
+describe('the fifth sibling the shore may say: asking for her phases', () => {
+  const PHASES: PhaseListResult = {
+    phases: [
+      {
+        kind: 'anchored',
+        start_ts: 1_752_400_000_000,
+        end_ts: 1_752_410_000_000,
+        start_lat: 43.5,
+        start_lon: 7.0,
+        end_lat: 43.5,
+        end_lon: 7.0
+      }
+    ]
+  }
+
+  it('answers her phases, tagged with the id that asked, and the count reaches the store', async () => {
+    const onPhasesQuery = vi.fn().mockResolvedValue(PHASES)
+    const { live, last } = uplink({ onPhasesQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'phases', id: 'p1', limit: 50 }))
+    await flush()
+
+    expect(onPhasesQuery).toHaveBeenCalledWith(50)
+    expect(last().phasesReplies()).toEqual([{ type: 'phases', id: 'p1', result: PHASES }])
+    // A phases request is none of its siblings, nor answered twice.
+    expect(last().voyagesReplies()).toHaveLength(0)
+    expect(last().trackReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('sends back a reason when the store cannot list them, rather than silence', async () => {
+    const onPhasesQuery = vi.fn().mockRejectedValue(new Error('/var/db/phases.json unreadable'))
+    const { live, last } = uplink({ onPhasesQuery })
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'phases', id: 'p2', limit: 50 }))
+    await flush()
+
+    // A fixed message, not the caught error's text: that text can hold a data-dir path, and this
+    // reply crosses the wire to the shore.
+    expect(last().phasesReplies()).toEqual([
+      { type: 'phases', id: 'p2', error: { code: 'PHASES_FAILED', message: 'phases query failed' } }
+    ])
+
+    live.stop()
+  })
+
+  it('acts on nothing else - a command wearing a phases count is still not one', async () => {
+    const onPhasesQuery = vi.fn().mockResolvedValue(PHASES)
+    const { live, last } = uplink({ onPhasesQuery })
+    live.start()
+    last().open()
+
+    // A command in the request's clothes: id and a numeric limit, everything but the type tag.
+    last().say(JSON.stringify({ type: 'put', id: 'evil', limit: 50 }))
+    // And a phases-tagged message whose count is not a number is not one either.
+    last().say(JSON.stringify({ type: 'phases', id: 'p3', limit: 'all' }))
+    await flush()
+
+    expect(onPhasesQuery).not.toHaveBeenCalled()
+    expect(last().phasesReplies()).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('does nothing with a phases request when the feature is not wired', async () => {
+    const { live, last } = uplink() // no onPhasesQuery
+    live.start()
+    last().open()
+
+    last().say(JSON.stringify({ type: 'phases', id: 'p1', limit: 50 }))
+    await flush()
+
+    expect(last().phasesReplies()).toHaveLength(0)
 
     live.stop()
   })

@@ -29,7 +29,10 @@ import type {
   TrackResult,
   VoyageListResult,
   VoyagesRequest,
-  VoyagesResponse
+  VoyagesResponse,
+  PhaseListResult,
+  PhasesRequest,
+  PhasesResponse
 } from './contract'
 
 /**
@@ -177,6 +180,13 @@ export interface LiveDeps {
    * requests, so an old relay or a boat wired without it simply never grows the ear.
    */
   onTrackQuery?: (voyageId: number) => Promise<TrackResult>
+  /**
+   * Answers a shore phases request - her recent activity phases, the band the local REST /phases
+   * serves - from the same store. A fifth sibling of onHistoryQuery: a read, never a command, and
+   * it never reaches Signal K. Absent leaves the socket deaf to phases requests, so an old relay or
+   * a boat wired without it simply never grows the ear.
+   */
+  onPhasesQuery?: (limit: number) => Promise<PhaseListResult>
   debug: (msg: string) => void
   /** Injected in tests. In production this is the `ws` adapter at the bottom of the file. */
   connect?: (url: string, token: string) => LiveSocket
@@ -342,6 +352,7 @@ export class LiveUplink {
       this.handleSnapshots(gen, data)
       this.handleVoyages(gen, data)
       this.handleTrack(gen, data)
+      this.handlePhases(gen, data)
     })
 
     sock.onClose((code) => {
@@ -556,14 +567,46 @@ export class LiveUplink {
   }
 
   /**
-   * Send a history, snapshots, voyages or track answer, but only if it still belongs to the
-   * socket that asked. A query reads the disk while the line may drop and redial underneath it;
+   * A phases request from the shore, answered from the boat's own store - a fifth sibling of
+   * handleHistory, and just as narrow. Parse, act only if it is a phases request, and read the
+   * store, never Signal K. The boat clamps the count before it reads, so a request cannot ask her
+   * for more than she will give.
+   */
+  private handlePhases(gen: number, data: string): void {
+    const handler = this.deps.onPhasesQuery
+    if (!handler) return
+
+    let msg: unknown
+    try {
+      msg = JSON.parse(data)
+    } catch {
+      return
+    }
+    if (!isPhasesRequest(msg)) return
+
+    const { id, limit } = msg
+    handler(limit).then(
+      (result) => this.reply(gen, { type: 'phases', id, result }),
+      (err) => {
+        this.deps.debug(`phases query failed: ${String(err)}`)
+        this.reply(gen, {
+          type: 'phases',
+          id,
+          error: { code: 'PHASES_FAILED', message: 'phases query failed' }
+        })
+      }
+    )
+  }
+
+  /**
+   * Send a history, snapshots, voyages, track or phases answer, but only if it still belongs to
+   * the socket that asked. A query reads the disk while the line may drop and redial underneath it;
    * the generation guard is what keeps a slow answer from landing on a fresh connection that
    * never asked.
    */
   private reply(
     gen: number,
-    msg: HistoryResponse | SnapshotsResponse | VoyagesResponse | TrackResponse
+    msg: HistoryResponse | SnapshotsResponse | VoyagesResponse | TrackResponse | PhasesResponse
   ): void {
     if (gen !== this.gen || !this.sock) return
     try {
@@ -724,6 +767,17 @@ function isTrackRequest(m: unknown): m is TrackRequest {
   if (typeof m !== 'object' || m === null) return false
   const o = m as Record<string, unknown>
   return o.type === 'track' && typeof o.id === 'string' && typeof o.voyageId === 'number'
+}
+
+/**
+ * A phases request, told apart the same way as a voyages one: the type tag is the gate. It carries
+ * no query, only a count, so the tag, the id and a numeric limit are checked. The limit's bounds
+ * are the boat's to enforce (she clamps it before reading), so they are not re-checked here.
+ */
+function isPhasesRequest(m: unknown): m is PhasesRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return o.type === 'phases' && typeof o.id === 'string' && typeof o.limit === 'number'
 }
 
 /**

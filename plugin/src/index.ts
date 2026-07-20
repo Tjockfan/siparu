@@ -371,6 +371,11 @@ export = (app: ServerAPI): Plugin => {
             // crosses the wire: vl.track returns every recorded fix (a long voyage is tens of
             // thousands), which the local REST may serve but a single timed socket reply may not.
             onTrackQuery: (voyageId) => vl.track(voyageId, Date.now()).then(decimateTrack),
+            // Her recent activity phases, the band the local /phases serves - same store, clamped
+            // to the same 1..500 bounds the REST route enforces (pl.list does not clamp its own).
+            onPhasesQuery: async (limit) => ({
+              phases: pl.list(Math.min(Math.max(1, limit || 50), 500))
+            }),
             debug: (msg) => app.debug(msg)
           })
           liveUplink = ws
