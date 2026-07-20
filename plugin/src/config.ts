@@ -21,6 +21,14 @@ export interface VoyageOptions {
   mergeMaxGapMinutes: number
   mergeMaxHopNm: number
   mergeShortNm: number
+  /**
+   * Shortest activity phase (underway/anchored/moored/stopped) kept as its own
+   * band. A change of state that does not hold this long is a manoeuvre, not a
+   * phase, and folds into the surrounding one. Independent of the voyage
+   * thresholds above: phases are the raw band beneath the voyages, not the
+   * voyages themselves, so this never moves a recorded voyage boundary.
+   */
+  phaseMinMinutes: number
 }
 
 export interface Options {
@@ -64,7 +72,8 @@ export const DEFAULTS: Options = {
     closeMinutes: 5,
     mergeMaxGapMinutes: 45,
     mergeMaxHopNm: 0.5,
-    mergeShortNm: 1.0
+    mergeShortNm: 1.0,
+    phaseMinMinutes: 10
   },
   fuelRatePaths: []
 }
@@ -166,7 +175,8 @@ export function resolveOptions(raw: unknown): Options {
       closeMinutes: num(v.closeMinutes, DEFAULTS.voyage.closeMinutes, 1),
       mergeMaxGapMinutes: num(v.mergeMaxGapMinutes, DEFAULTS.voyage.mergeMaxGapMinutes, 0),
       mergeMaxHopNm: num(v.mergeMaxHopNm, DEFAULTS.voyage.mergeMaxHopNm, 0),
-      mergeShortNm: num(v.mergeShortNm, DEFAULTS.voyage.mergeShortNm, 0)
+      mergeShortNm: num(v.mergeShortNm, DEFAULTS.voyage.mergeShortNm, 0),
+      phaseMinMinutes: num(v.phaseMinMinutes, DEFAULTS.voyage.phaseMinMinutes, 1)
     },
     fuelRatePaths: Array.isArray(c.fuelRatePaths)
       ? c.fuelRatePaths.filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((p) => p.trim())
@@ -284,6 +294,13 @@ export const CONFIG_SCHEMA = {
           type: 'number',
           title: 'Merge: max length of the short leg (NM)',
           default: DEFAULTS.voyage.mergeShortNm
+        },
+        phaseMinMinutes: {
+          type: 'number',
+          title: 'Shortest activity phase (minutes)',
+          description:
+            'The raw underway/anchored/moored band beneath the voyages. A state that does not hold this long folds into the surrounding phase. Does not affect voyage detection.',
+          default: DEFAULTS.voyage.phaseMinMinutes
         }
       }
     },

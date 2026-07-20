@@ -35,6 +35,7 @@ import { LiveUplink } from './live'
 import { decimateTrack } from './track'
 import { reportedStatus, Uplink } from './uplink'
 import { VoyageLog } from './voyagelog'
+import { PhaseLog } from './phaselog'
 
 const PLUGIN_ID = 'siparu'
 
@@ -54,6 +55,7 @@ export = (app: ServerAPI): Plugin => {
   let rollups: RollupEngine | null = null
   let query: QueryService | null = null
   let voyages: VoyageLog | null = null
+  let phases: PhaseLog | null = null
   let uplink: Uplink | null = null
   let liveUplink: LiveUplink | null = null
   let timer: NodeJS.Timeout | null = null
@@ -155,6 +157,7 @@ export = (app: ServerAPI): Plugin => {
     const stored = Object.keys(numeric).length > 0 ? { ...snap, path_values: numeric } : snap
     await store.append(stored)
     if (voyages) await voyages.feed(stored)
+    if (phases) await phases.feed(stored)
     lastSnapshotTs = now
     const today = dayKey(now)
     if (today !== countedDay) {
@@ -258,6 +261,8 @@ export = (app: ServerAPI): Plugin => {
       query = qs
       const vl = new VoyageLog(st, opts, (msg) => app.debug(msg))
       voyages = vl
+      const pl = new PhaseLog(st, opts, (msg) => app.debug(msg))
+      phases = pl
 
       st.onHourClosed = async () => {
         await ru.catchUp(Date.now())
@@ -277,6 +282,7 @@ export = (app: ServerAPI): Plugin => {
           await ru.catchUp(Date.now())
           await st.enforceCap()
           await vl.init(Date.now())
+          await pl.init(Date.now())
           snapshotsToday = await qs.countToday(Date.now())
           countedDay = dayKey(Date.now())
           if (gen !== startGen) return // stopped while initializing
@@ -317,6 +323,8 @@ export = (app: ServerAPI): Plugin => {
             snapshots: (q: SnapshotsQuery) => qs.snapshots(q, Date.now()),
             voyages: async (limit: number) => vl.list(limit),
             voyageCurrent: async () => vl.current(),
+            phases: async (limit: number) => pl.list(limit),
+            phaseCurrent: async () => pl.current(),
             voyageStats: () => vl.stats(ru, Date.now()),
             voyageTrack: (id: number) => vl.track(id, Date.now()),
             aisTargets: async (maxNm?: number, maxAgeMin?: number, limit?: number) =>
@@ -422,12 +430,14 @@ export = (app: ServerAPI): Plugin => {
       uplink?.stop()
       liveUplink?.stop()
       if (voyages) await voyages.flush()
+      if (phases) await phases.flush()
       if (store) await store.flush()
       state = null
       store = null
       rollups = null
       query = null
       voyages = null
+      phases = null
       uplink = null
       liveUplink = null
       app.setPluginStatus('Stopped')

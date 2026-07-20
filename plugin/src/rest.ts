@@ -21,6 +21,8 @@ export interface RestDeps {
   voyageCurrent(): Promise<unknown>
   voyageStats(): Promise<unknown>
   voyageTrack(id: number): Promise<unknown>
+  phases(limit: number): Promise<unknown>
+  phaseCurrent(): Promise<unknown>
   aisTargets(maxNm?: number, maxAgeMin?: number, limit?: number): Promise<unknown>
   rollupHours(from: number, to: number): Promise<unknown>
   mapConfig(): unknown
@@ -127,6 +129,11 @@ export function registerRoutes(router: IRouter): void {
     if (!Number.isInteger(id)) throw new QueryError('BAD_PARAM', 'voyage id must be an integer')
     return d.voyageTrack(id)
   })
+  asyncGet('/phases', (d, req) => {
+    const limit = Math.min(Math.max(1, intParam(req, 'limit') ?? 50), 500)
+    return d.phases(limit)
+  })
+  asyncGet('/phases/current', (d) => d.phaseCurrent())
   asyncGet('/ais/targets', (d, req) =>
     d.aisTargets(intParam(req, 'max_nm'), intParam(req, 'max_age_min'), intParam(req, 'limit'))
   )

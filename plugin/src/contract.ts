@@ -287,6 +287,28 @@ export interface HealthResult {
   }
 }
 
+/** The activity a boat is in during one phase, from her speed and nav state. */
+export type PhaseKind = 'underway' | 'anchored' | 'moored' | 'stopped'
+
+/**
+ * One activity phase: a continuous stretch the boat spent under way, at anchor,
+ * on a mooring, or simply stopped. This is the raw band beneath the voyages -
+ * a single voyage can hold an anchored phase in the middle of it - and it is
+ * derived alongside the voyage engine, never from it, so it moves no recorded
+ * voyage. `stopped` is the honest answer when she is stationary but her nav
+ * state does not say whether she is anchored or moored.
+ */
+export interface Phase {
+  kind: PhaseKind
+  start_ts: number
+  /** Null while this is the current phase. */
+  end_ts: number | null
+  start_lat: number | null
+  start_lon: number | null
+  end_lat: number | null
+  end_lon: number | null
+}
+
 /**
  * A voyage: one continuous "underway" window, auto-detected from speed and
  * navigation state. Distances integrate haversine over consecutive fixes.
