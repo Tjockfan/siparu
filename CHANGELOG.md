@@ -13,6 +13,27 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.24] - 2026-07-20
+
+### Added
+
+- A fuel-source picker on the voyages screen. A boat where the same engine is
+  reported by more than one source counts its fuel twice, and only the owner
+  knows which reading is real; the picker lets her choose which
+  `propulsion.*.fuel.rate` paths feed the per-voyage figure. It appears only when
+  more than one engine reports fuel, and with nothing chosen every reporting
+  engine is summed, exactly as before. The choice is this plugin's own option,
+  saved through the same store the configuration screen writes and applied by a
+  restart that re-integrates each voyage from disk; nothing reaches the vessel,
+  and CI names the one new route in its read-only proof.
+
+### Fixed
+
+- The open voyage's fuel now moves live as the boat burns it, instead of only
+  after a restart. The dynamic gauge paths that carry `propulsion.*.fuel.rate`
+  reach disk on every snapshot but were withheld from the voyage engine's live
+  feed, so the running total waited for the next reconcile from disk to catch up.
+
 ## [0.1.23] - 2026-07-19
 
 ### Added
