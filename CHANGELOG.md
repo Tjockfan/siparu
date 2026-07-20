@@ -13,6 +13,25 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.25] - 2026-07-20
+
+### Changed
+
+- Engines and generators read as a matrix now, one parameter per row and one
+  instance per column, so the same reading lines up across a multi-engine boat
+  and a hot cylinder shows against its neighbours. Columns take their
+  running-light colour (port red, starboard green, center amber). Tanks read as
+  fill bars with a low-fuel accent.
+- The wide board runs the bridge full width with the engine, generator and tank
+  panels beside each other, and no longer pins a chart pane: the chart has its
+  own Map tab. The phone scrolls the matrix sideways behind a pinned label rail.
+
+### Fixed
+
+- A gearbox's oil temperature and pressure no longer share a row with the
+  engine's own oil readings on the matrix, which had quietly dropped one of the
+  pair on a boat reporting both.
+
 ## [0.1.24] - 2026-07-20
 
 ### Added
