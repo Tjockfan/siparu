@@ -74,6 +74,27 @@ every commit, and a fifth write route fails the build.
   way at roughly 1 Hz still fits a single reply; the local track REST is left untouched
   and serves every fix. Read-only like its three siblings, and served from the same store.
 
+## [0.1.22] - 2026-07-19
+
+### Added
+
+- A voyages read over the live socket. A shore screen asks for a boat's recent
+  voyages and she answers with the list her local /voyages REST already serves,
+  newest first, the count clamped to the same bounds. Read-only like its siblings,
+  reaching the voyage store and never Signal K; a request that is not one of the
+  known kinds is dropped in silence.
+
+## [0.1.21] - 2026-07-19
+
+### Added
+
+- A snapshots read over the live socket. The socket already carried one gauge's
+  history for a chart; it now also answers a request for whole recorded rows, the
+  logbook read the shore could not reach before. It parses, acts only on a
+  well-formed request, and reads the same store the local /snapshots REST serves,
+  never Signal K and never a command. Read-only; the type tag is the gate, and
+  anything that is not a known request is dropped in silence.
+
 ## [0.1.20] - 2026-07-19
 
 ### Fixed
@@ -557,7 +578,13 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.20...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.26...HEAD
+[0.1.26]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.26
+[0.1.25]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.25
+[0.1.24]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.24
+[0.1.23]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.23
+[0.1.22]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.22
+[0.1.21]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.21
 [0.1.20]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.20
 [0.1.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.19
 [0.1.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.18
