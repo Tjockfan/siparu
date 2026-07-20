@@ -241,6 +241,20 @@ describe('system readings', () => {
     expect(systemValue('propulsion.port.fuel.type', 'diesel')).toBe('diesel')
     expect(systemValue('propulsion.port.drive.type', 'sterndrive')).toBe('sterndrive')
   })
+
+  it("names a gearbox's oil apart from the engine's, which end in the same segment", () => {
+    // An engine's own oil and its gearbox's oil both end in oilTemperature/oilPressure, so subbed
+    // by their last segment a boat reporting both draws two "Port / Oil temperature" cells - and a
+    // screen that pivots them into a matrix would land them on one row and drop one. The gearbox
+    // paths get their own sub by their two-segment key, and the engine's keep the plain one.
+    expect(describePath('propulsion.port.oilTemperature')?.sub).toBe('Oil temperature')
+    expect(describePath('propulsion.port.transmission.oilTemperature')?.sub).toBe('Gearbox oil temperature')
+    expect(describePath('propulsion.port.oilPressure')?.sub).toBe('Oil pressure')
+    expect(describePath('propulsion.port.transmission.oilPressure')?.sub).toBe('Gearbox oil pressure')
+    // The reading itself is still kelvin/pascals - only the label was ambiguous, not the scale.
+    expect(systemValue('propulsion.port.transmission.oilTemperature', 355.15)).toBe('82.0 °C')
+    expect(systemValue('propulsion.port.transmission.oilPressure', 250000)).toBe('2.5 bar')
+  })
 })
 
 /**

@@ -30,6 +30,15 @@
   --alarm: #ff9f43;         /* accent is red, so alarm is orange */
   --warn: #d6a23c;
 
+  /* Running-light sides, for the engine matrix header band. Port red, starboard green as they are
+   * on the water; centre takes amber, which is not a light but reads as "neither side". SOLID
+   * fills on purpose: a translucent tint of these washed out on a bright screen and the owner
+   * could not see which column was which (measured twice). The band carries its own dark ground
+   * and light text so it reads the same in either theme. */
+  --nav-port-bg: #7d2427;   --nav-port-fg: #ffd7d9;
+  --nav-stbd-bg: #1c5e2e;   --nav-stbd-fg: #cdf3d6;
+  --nav-center-bg: #6e5214; --nav-center-fg: #f6e6bd;
+
   /* chart colors (Sparkline / Map JS read these) */
   --spark-gust: #e5484d;
   --spark-baro: #c7ced2;
@@ -62,6 +71,10 @@
 
   --alarm: #c2410c;
   --warn: #a16207;
+
+  --nav-port-bg: #b3272c;   --nav-port-fg: #ffffff;
+  --nav-stbd-bg: #1e7a38;   --nav-stbd-fg: #ffffff;
+  --nav-center-bg: #8a6410; --nav-center-fg: #ffffff;
 
   --spark-gust: #c92a30;
   --spark-baro: #5a6167;
@@ -430,27 +443,33 @@ body {
 /* ============================================================
    DASHBOARD BOARD  (.sp-board) - wide, everything at once
    ============================================================ */
-/* A row of two: a scrolling column of sections on the left, a fixed chart pane on the right. The
- * sections are the panels the boat justifies (bridge first), drawn at their natural height rather
- * than stretched to fill, so many readings sit at a glance and the column scrolls when she reports
- * more than fits. The chart stays put beside them and never reflows with the data. */
-.swiss .sp-board { flex-direction: row; }
-.swiss .sp-board .sp-cols {
-  flex: 1.15 1 0;
-  min-width: 0;
-  min-height: 0;
+/* The bridge full width across the top, then the systems side by side beneath it, the whole board
+ * scrolling as one when she reports more than fits. The bridge answers "where is she and what is
+ * she doing" - asked before any other - so it takes the top rather than a column beside the rest;
+ * the systems line up under it, engines against generators against tanks, read in one glance. The
+ * chart is not here: it has its own Map tab, and pinning it beside the readings only halved them. */
+.swiss .sp-board {
   overflow-y: auto;
   overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   background: var(--ink-band);
 }
-.swiss .sp-board .sp-mappane {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 0;
+/* The systems row. Each panel takes its content's width so the engine and generator matrices stay
+ * compact; the tanks grow into what is left, since a fill bar reads better long than a matrix does
+ * wide. They wrap to a second row when three will not fit rather than crushing the readings. */
+.swiss .sp-systems {
   display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: flex-start;
+}
+.swiss .sp-systems .sp-sec { flex: 0 1 auto; }
+.swiss .sp-systems .sp-sec-tanks { flex: 1 1 320px; min-width: 300px; }
+/* In the board a matrix is sized to its content rather than stretched: the readings sit compact
+ * and centred under coloured headers, the mockup's shape. On the phone the same matrix fills its
+ * pane (the 1fr default) instead. */
+.swiss .sp-board .sm-matrix {
+  grid-template-columns: minmax(94px, auto) repeat(var(--sm-cols, 1), minmax(90px, max-content));
+  width: fit-content;
 }
 .swiss .sp-sec { display: flex; flex-direction: column; gap: 2px; flex: none; }
 .swiss .sp-sec-h {
@@ -1500,6 +1519,162 @@ body {
   color: var(--muted);
   background: var(--cell);
 }
+
+/* ============================================================
+   SYSTEM MATRIX  (.sm-matrix) - engines and generators
+   ============================================================
+   One parameter per row, one instance per column, so a three-engine boat's three tachometers
+   sit side by side and a hot cylinder shows against its neighbours. The grid-template-columns
+   count is set inline from the data (a boat reports the instances it has); everything else is
+   here. The header band takes the running-light colour of its side. */
+.swiss .sm-matrix {
+  display: grid;
+  /* Label rail then one track per instance; the count comes in as --sm-cols from the data. On the
+   * phone the tracks share the pane (1fr); the wide board narrows the matrix to its content below. */
+  grid-template-columns: minmax(90px, auto) repeat(var(--sm-cols, 1), minmax(74px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  align-content: start;
+}
+/* Top-left cell over the parameter labels: empty, and quiet about it. */
+.swiss .sm-corner { background: var(--cell); }
+.swiss .sm-head {
+  padding: 8px 10px;
+  text-align: center;
+  font-family: var(--sp-font);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--cell);
+  color: var(--text);
+}
+.swiss .sm-head.sm-port { background: var(--nav-port-bg); color: var(--nav-port-fg); }
+.swiss .sm-head.sm-stbd { background: var(--nav-stbd-bg); color: var(--nav-stbd-fg); }
+.swiss .sm-head.sm-center { background: var(--nav-center-bg); color: var(--nav-center-fg); }
+/* The parameter label down the left rail. */
+.swiss .sm-rl {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--cell);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.swiss .sm-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 8px;
+  min-height: 46px;
+  background: var(--cell);
+}
+.swiss .sm-cell .sm-v {
+  font-family: var(--sp-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(16px, 4.4vw, 22px);
+  line-height: 1;
+  color: var(--text);
+  /* One line: the fixed columns below leave room, and a reading broken as "1612 / rpm" reads as
+   * two numbers. */
+  white-space: nowrap;
+}
+/* A column that does not report this parameter has an empty cell, not an invented reading. It
+ * keeps the grid square and says nothing. */
+.swiss .sm-cell.sm-empty { background: var(--cell); }
+/* A gauge that has gone quiet keeps its last reading and loses its confidence, the same sentence
+ * the flat cell told: the value fades and the age sits under it. */
+.swiss .sm-cell.quiet .sm-v { color: var(--muted); }
+.swiss .sm-cell .sm-age {
+  margin-top: 3px;
+  font-family: var(--sp-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+/* On the phone the three columns will not fit at a readable width, so the matrix scrolls sideways
+ * and keeps every instance rather than dropping one or making the owner pick. The label rail stays
+ * put as it scrolls, so which parameter a value belongs to is never off-screen. Fixed columns keep
+ * each reading on one line. The board sizes to content instead (see .sp-board .sm-matrix). */
+.swiss .sp-pane .sy-wrap { overflow-x: auto; }
+.swiss .sp-pane .sm-matrix {
+  grid-template-columns: 104px repeat(var(--sm-cols, 1), minmax(102px, max-content));
+}
+.swiss .sp-pane .sm-corner,
+.swiss .sp-pane .sm-rl {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+/* The fixed phone rail is too narrow for the longest labels ("Fuel used (since reset)", "Gearbox
+ * oil temperature"), and clipping the honesty caveat off a figure reads as a bug. Let the rail
+ * wrap to a second line instead; the board rail is auto-width and needs none of this. */
+.swiss .sp-pane .sm-rl {
+  white-space: normal;
+  line-height: 1.15;
+  padding-block: 6px;
+}
+
+/* ============================================================
+   TANKS  (.tk-list) - a level is a proportion, so it reads as a bar
+   ============================================================ */
+.swiss .tk-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--cell);
+}
+.swiss .tk {
+  display: grid;
+  grid-template-columns: minmax(82px, auto) 1fr 46px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+.swiss .tk:last-child { border-bottom: none; }
+.swiss .tk-l {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.swiss .tk-bar {
+  height: 8px;
+  background: var(--hair);
+  overflow: hidden;
+}
+.swiss .tk-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--band-muted);
+}
+/* A low fuel tank takes the accent - the bar and its figure both - because range is the reading
+ * a motorboat owner acts on. Other families stay neutral. */
+.swiss .tk.low .tk-bar > i { background: var(--accent); }
+.swiss .tk.low .tk-pct { color: var(--accent-soft); }
+.swiss .tk-pct {
+  text-align: right;
+  font-family: var(--sp-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--text);
+}
+/* A quiet tank keeps its last level, faded. */
+.swiss .tk.quiet .tk-bar > i { background: var(--muted); opacity: 0.5; }
+.swiss .tk.quiet .tk-pct { color: var(--muted); }
 
 /* The bridge grid is hidden rather than unmounted while a system panel is up, so its sparklines
    and the gust window keep their state and the screen does not flash on the way back. `hidden`

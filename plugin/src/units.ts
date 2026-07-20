@@ -331,6 +331,13 @@ const SYSTEM_METRIC: Record<string, SystemMetric> = {
  * subscribed paths, both end in `type`, and humanize() subs both as "Type". On a boat reporting
  * the pair, that is two Engine cells reading "Port / Type" - one saying "diesel", one saying
  * "sterndrive" - and nothing on the screen to tell them apart.
+ *
+ * `transmission.oilTemperature` and `transmission.oilPressure` are the same collision one nesting
+ * deeper: an engine's own oil and its gearbox's oil both end in `oilTemperature`/`oilPressure`,
+ * and lookup's last-segment fallback subs both as "Oil temperature"/"Oil pressure". On a boat
+ * reporting the pair that is two "Port / Oil temperature" cells at different readings; the screen
+ * that pivots them into a matrix would land them on one row and quietly drop one. Named here by
+ * their two-segment key, which lookup tries first, so the gearbox reading keeps its own row.
  */
 const SYSTEM_SUB: Record<string, string> = {
   'fuel.rate': 'Fuel rate',
@@ -343,7 +350,9 @@ const SYSTEM_SUB: Record<string, string> = {
   'fuel.used': 'Fuel used (since reset)',
   'fuel.pressure': 'Fuel pressure',
   'fuel.type': 'Fuel type',
-  'drive.type': 'Drive type'
+  'drive.type': 'Drive type',
+  'transmission.oilTemperature': 'Gearbox oil temperature',
+  'transmission.oilPressure': 'Gearbox oil pressure'
 }
 
 /**

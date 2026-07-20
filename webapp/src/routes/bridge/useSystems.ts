@@ -46,6 +46,50 @@ export interface SystemPanel {
   gauges: SystemGauge[];
 }
 
+/** One parameter across every instance: a row of the engine or generator matrix. */
+export interface SystemMatrixRow {
+  /** The parameter this row reads, "Revolutions" / "Coolant". Its cells share it. */
+  sub: string;
+  /** The gauge each instance reports for this parameter, absent where one is silent. */
+  cells: Record<string, SystemGauge | undefined>;
+}
+
+export interface SystemMatrix {
+  /** The instances, one column each, in the order the boat reports them. */
+  cols: string[];
+  /** The parameters, one row each, in first-seen order. */
+  rows: SystemMatrixRow[];
+}
+
+/**
+ * A panel's gauges rearranged so one parameter reads across every instance on a single row.
+ *
+ * The flat list draws each gauge once, in the boat's order, which puts a three-engine boat's
+ * three tachometers in three different places: you cannot see at a glance that one is running
+ * hot. This pivots the same gauges to columns-by-instance, rows-by-parameter, so the readings
+ * that mean the same thing sit side by side. It invents nothing - a column that does not report
+ * a parameter has no cell on that row - and it keeps a gauge whose `sub` is null (none does on
+ * an engine or generator today) as its own row rather than dropping it.
+ *
+ * Instance and parameter order both follow first appearance, so the boat's own wiring order
+ * survives the pivot the way it does in the flat list.
+ */
+export function toMatrix(gauges: SystemGauge[]): SystemMatrix {
+  const cols: string[] = [];
+  const rowOrder: string[] = [];
+  const at: Record<string, Record<string, SystemGauge>> = {};
+  for (const g of gauges) {
+    const row = g.sub ?? g.label;
+    if (!cols.includes(g.label)) cols.push(g.label);
+    if (!(row in at)) {
+      at[row] = {};
+      rowOrder.push(row);
+    }
+    at[row][g.label] = g;
+  }
+  return { cols, rows: rowOrder.map((sub) => ({ sub, cells: at[sub] })) };
+}
+
 /** The panels this frame justifies, in the order they are drawn, empty ones dropped. */
 export function systemPanels(snap: LiveSnapshot | null): SystemPanel[] {
   const byTab: Record<SystemTab, SystemGauge[]> = { engine: [], generator: [], tanks: [] };

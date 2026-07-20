@@ -14,9 +14,9 @@
  * a URL param (?a=engine) so the choice survives a reload and can be shared. That pane reads its
  * density off its OWN width through a container query, so a tablet in portrait, still below the
  * board threshold, gets the wider layout its width allows. On a wide screen the tabs are gone and
- * everything she reports is shown at once: a scrolling column of sections (the bridge, then each
- * system) beside a fixed chart pane. The sections are the panels she justifies, in their order,
- * so a boat with no generator has no generator section and nothing here lists them.
+ * everything she reports is shown at once: the bridge full width across the top, then her systems
+ * side by side beneath it. The sections are the panels she justifies, in their order, so a boat
+ * with no generator has no generator section and nothing here lists them.
  *
  * Live SignalK (2s) via useBridgeData; SOG/Depth animate, gust+baro sparklines, skeleton on
  * load. Loading is NOT absence: until the first frame lands every cell is drawn as a skeleton,
@@ -28,7 +28,6 @@ import { useSearchParams } from "react-router-dom";
 import AnimatedNumber from "../../components/AnimatedNumber";
 import { Sparkline } from "siparu-ui";
 import SystemsMarine from "./SystemsMarine";
-import MapMarine from "../map/MapMarine";
 import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
 import { depthDiagLabel } from "../../lib/depthDiag";
@@ -326,29 +325,31 @@ export default function BridgeMarine() {
   const showBridge = loading || bridgeHasReading(d) || panels.length === 0;
 
   // The board shows everything at once, so there is nothing to pick and no param to keep. The
-  // sections are the panels above, bridge first when present, each at its natural height in a
-  // column that scrolls when she reports more than fits; the chart sits in a fixed pane beside it.
+  // bridge runs full width across the top - it answers "where is she and what is she doing", the
+  // question asked before any other - and beneath it her systems sit side by side, so an owner
+  // reads position, then engines against generators against tanks, in one glance. The chart is not
+  // here: it has its own Map tab, and pinning a live chart beside the instruments only halved the
+  // room the readings had. A boat with no systems shows the bridge alone.
   if (wide) {
     return (
       <>
         <div className="sp-dash sp-board">
-          <div className="sp-cols">
-            {showBridge && (
-              <section className="sp-sec">
-                <h2 className="sp-sec-h">Bridge</h2>
-                <BridgeInstruments d={d} onBaro={openBaro} />
-              </section>
-            )}
-            {panels.map((p) => (
-              <section className="sp-sec" key={p.key}>
-                <h2 className="sp-sec-h">{p.name}</h2>
-                <SystemsMarine snap={d.snap} tab={p.key} />
-              </section>
-            ))}
-          </div>
-          <div className="sp-mappane">
-            <MapMarine />
-          </div>
+          {showBridge && (
+            <section className="sp-sec sp-sec-bridge">
+              <h2 className="sp-sec-h">Bridge</h2>
+              <BridgeInstruments d={d} onBaro={openBaro} />
+            </section>
+          )}
+          {panels.length > 0 && (
+            <div className="sp-systems">
+              {panels.map((p) => (
+                <section className={`sp-sec sp-sec-${p.key}`} key={p.key}>
+                  <h2 className="sp-sec-h">{p.name}</h2>
+                  <SystemsMarine snap={d.snap} tab={p.key} />
+                </section>
+              ))}
+            </div>
+          )}
         </div>
         <PairBand />
         {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
