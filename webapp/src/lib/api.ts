@@ -253,6 +253,10 @@ export type VoyageStatsCards = {
 
 export type TrackPoint = { ts: number; lat: number; lon: number; sog: number | null }
 
+/** Which engine fuel-rate paths feed the per-voyage fuel figure: the paths the
+ *  boat reports, and the subset currently counted (empty means all of them). */
+export type FuelPathsView = { available: string[]; selected: string[] }
+
 export type AisTarget = {
   mmsi: string
   name: string | null
@@ -360,6 +364,11 @@ export const api = {
     stats: () => http<VoyageStatsCards>('/voyages/stats'),
     current: () => http<Voyage | null>('/voyages/current'),
     track: (voyageId: number) => http<TrackPoint[]>(`/voyages/${voyageId}/track`)
+  },
+  config: {
+    fuelPaths: () => http<FuelPathsView>('/config/fuel-paths'),
+    // POST kept to one line so the CI read-only guard reads verb and path together, as with pairing.
+    setFuelPaths: (paths: string[]) => http<{ fuelRatePaths: string[] }>('/config/fuel-paths', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths }) })
   },
 
   tools: {

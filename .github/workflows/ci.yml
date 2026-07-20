@@ -70,22 +70,26 @@ jobs:
           offenders=$(grep -rniE "/signalk/v[0-9]+/api|localhost:[0-9]+|127\.0\.0\.1|\[::1\]" plugin/src) || true
           [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
 
-      - name: GET-only REST - pairing is the only exception, and it is named
+      - name: GET-only REST - pairing and the fuel-paths route are the only exceptions, and they are named
         run: |
           # rest.ts stays GET-only. The four pairing routes move the plugin's own
           # state - a code, an approval, a token - and call the relay outbound; the
-          # step above proves, independently, that none of it reaches the vessel.
-          # A fifth write route breaks this build on purpose: it needs a human.
+          # fuel-paths route saves the plugin's own options (which engine feeds
+          # voyage fuel). The step above proves, independently, that none of it
+          # reaches the vessel. A further write route breaks this build on purpose:
+          # it needs a human.
           offenders=$(grep -rnE "router\.(post|put|delete|patch)\(" plugin/src \
-            | grep -vE "router\.post\('/pair/(start|approve|deny|reset)'") || true
+            | grep -vE "router\.post\('(/pair/(start|approve|deny|reset)|/config/fuel-paths)'") || true
           [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
 
-      - name: Read-only proof - the webapp writes only to the pairing routes
+      - name: Read-only proof - the webapp writes only to the pairing and fuel-paths routes
         run: |
           # ui/src is the shared design system the webapp bundles; it is held to
-          # the same rule as the webapp source it was extracted from.
+          # the same rule as the webapp source it was extracted from. The webapp's
+          # only writes are pairing and the fuel-paths config route; both save the
+          # plugin's own state and neither reaches the vessel (proved above).
           offenders=$(grep -rnE "method: *['\"]?(PUT|POST|DELETE|PATCH)" webapp/src ui/src \
-            | grep -vE "'/pair/(start|approve|deny|reset)'") || true
+            | grep -vE "'(/pair/(start|approve|deny|reset)|/config/fuel-paths)'") || true
           [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
 
       - name: PWA shell - the static assets index.html names are in the clean checkout

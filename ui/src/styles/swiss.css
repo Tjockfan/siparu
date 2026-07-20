@@ -1137,6 +1137,37 @@ body {
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--band-muted);
 }
 .swiss .vy-hd b { color: var(--accent); font-family: var(--sp-mono); font-size: 12px; }
+.swiss .vy-hd-l { display: inline-flex; align-items: baseline; gap: 6px; }
+
+/* --- fuel source: header affordance + picker sheet (voyage) --- */
+.swiss .vy-fuelsrc {
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--accent); background: none;
+  border: 1px solid var(--rule); padding: 4px 9px; cursor: pointer;
+}
+.swiss .fs-note { margin: 0; font-family: var(--sp-font); font-size: 12px; line-height: 1.5; color: var(--muted); }
+.swiss .fs-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.swiss .fs-row {
+  position: relative;
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left;
+  padding: 11px 34px 11px 13px; background: var(--cell); border: 1.5px solid var(--rule); cursor: pointer;
+}
+.swiss .fs-row.on { border-color: var(--accent); }
+/* Selection is not signalled by colour alone: a filled square marks a counted
+   source, so the state survives colour-blindness and low-contrast displays. */
+.swiss .fs-row.on::after {
+  content: ""; position: absolute; top: 15px; right: 13px; width: 9px; height: 9px; background: var(--accent);
+}
+.swiss .fs-name { font-family: var(--sp-font); font-size: 15px; font-weight: 600; color: var(--text); }
+.swiss .fs-row.on .fs-name { color: var(--accent-soft); }
+.swiss .fs-path { font-family: var(--sp-mono); font-size: 11px; color: var(--muted); }
+.swiss .fs-apply {
+  flex: 1; font-family: var(--sp-font); font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-band); background: var(--accent);
+  border: none; padding: 13px; cursor: pointer;
+}
+.swiss .fs-apply:disabled { opacity: 0.55; cursor: default; }
+.swiss .fs-err { margin-top: 10px; font-family: var(--sp-font); font-size: 12px; color: var(--accent-soft); }
 
 /* --- voyage list --- */
 .swiss .vy-list { background: var(--cell); display: flex; flex-direction: column; }

@@ -25,6 +25,7 @@ import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQue
 import { DYNAMIC_PREFIXES, MetricsState, SUBSCRIBED_PATHS } from './metrics'
 import { QueryService } from './query'
 import { registerPairRoutes, retryPendingUnlinks } from './pairing'
+import { registerConfigRoutes } from './config-routes'
 import { RemoteLink, RemoteLinkStore } from './remotelink'
 import { registerRoutes, setRestDeps } from './rest'
 import { RollupEngine } from './rollup'
@@ -59,6 +60,14 @@ export = (app: ServerAPI): Plugin => {
   let unlinkRetryTimer: NodeJS.Timeout | null = null
   let unsubscribes: Array<() => void> = []
   let remoteLink: RemoteLinkStore | null = null
+  // The raw options as the server last saved them, so the fuel-paths route can
+  // change one field without dropping the rest. Refreshed on every start().
+  let currentConfig: object = {}
+  // The server hands start() a restart function that persists new options AND
+  // stops+starts the plugin to apply them. The fuel-paths route calls it so a
+  // new selection takes effect at once; savePluginOptions alone only persists.
+  // Null between stop() and the next start(), when there is nothing to restart.
+  let pluginRestart: ((configuration: object) => void) | null = null
 
   // Lazy because registerWithRouter can run before start(): the store must
   // exist for whichever of them asks first, and be the same one afterwards.
@@ -136,14 +145,16 @@ export = (app: ServerAPI): Plugin => {
     // keep showing the last one, but nothing measured it at `now`, and this row says
     // it did. A voyage is built from these rows.
     const snap = state.snapshot(now, true, INTERNAL.fabricationHorizonMs)
-    // Dynamic gauge history rides the same NDJSON row, but only on the store path:
-    // the voyage engine below reads the core snapshot and has no use for it, and the
-    // live frame builds its own `paths` separately. Added here, it reaches disk and
-    // the rollups without touching either.
+    // Dynamic gauge history (engine/tank/generator paths) rides the same NDJSON
+    // row. The voyage engine needs it too: per-voyage fuel is integrated from
+    // `propulsion.*.fuel.rate` off `path_values`, so the row it reconciles live
+    // must be the one that reached disk - not the core snapshot, which carries
+    // none. Feed both sinks the same `stored` row so the live figure matches the
+    // one a restart would replay; the live frame builds its own `paths` apart.
     const numeric = state.numericDynamicPaths(now, INTERNAL.fabricationHorizonMs)
     const stored = Object.keys(numeric).length > 0 ? { ...snap, path_values: numeric } : snap
     await store.append(stored)
-    if (voyages) await voyages.feed(snap)
+    if (voyages) await voyages.feed(stored)
     lastSnapshotTs = now
     const today = dayKey(now)
     if (today !== countedDay) {
@@ -225,8 +236,10 @@ export = (app: ServerAPI): Plugin => {
       'Kept aboard, proven ashore: records position, wind, depth and voyage history on the boat and serves a read-only dashboard. Never writes to the boat. Turn Signal K security on (add an admin user) before pairing: with it off these endpoints answer anyone on your network, and someone else can link this vessel to their account.',
     schema: CONFIG_SCHEMA,
 
-    start(config: object): void {
+    start(config: object, restart: (newConfiguration: object) => void): void {
       const gen = ++startGen
+      currentConfig = config
+      pluginRestart = restart
       opts = resolveOptions(config)
       const rl = ensureRemoteLink()
       migrateLegacyRemote(config, rl)
@@ -388,6 +401,7 @@ export = (app: ServerAPI): Plugin => {
 
     async stop(): Promise<void> {
       startGen++
+      pluginRestart = null
       if (timer) {
         clearInterval(timer)
         timer = null
@@ -451,6 +465,28 @@ export = (app: ServerAPI): Plugin => {
         },
         getPendingUnlinks: () => ensureRemoteLink().getPendingUnlinks(),
         addPendingUnlink: (p) => ensureRemoteLink().addPendingUnlink(p)
+      })
+
+      // The one webapp write that is not pairing: change which engine fuel-rate
+      // paths feed voyage fuel. Saves the plugin's own options only (the server
+      // then restarts the plugin to apply them), never the vessel's data bus -
+      // which is why rest.ts stays GET-only and this route is named in the CI
+      // read-only guard.
+      registerConfigRoutes(router, {
+        app,
+        getConfig: () => currentConfig,
+        fuelPathsView: () => ({
+          available: state
+            ? Object.keys(state.dynamicPaths(Date.now())).filter(
+                (p) => p.startsWith('propulsion.') && p.endsWith('.fuel.rate')
+              )
+            : [],
+          selected: opts?.fuelRatePaths ?? []
+        }),
+        // Apply through the server's restart (persist + stop + start), not
+        // savePluginOptions, so a picker save takes effect at once. Null only
+        // between stop() and start(), when there is no running plugin to restart.
+        restart: (configuration) => pluginRestart?.(configuration)
       })
     }
   }

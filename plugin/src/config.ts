@@ -34,6 +34,13 @@ export interface Options {
   relayUrl: string
   ports: PortEntry[]
   voyage: VoyageOptions
+  /**
+   * Engine fuel-rate paths that feed the per-voyage fuel figure. Empty sums
+   * every `propulsion.*.fuel.rate` the boat reports (the default); a non-empty
+   * list narrows the sum to exactly those - for a boat where more than one
+   * source reports the same engine and summing them double-counts.
+   */
+  fuelRatePaths: string[]
   // The relay credential deliberately does NOT live here. Plugin options are
   // served wholesale by GET /plugins/<id>/config, which with security off (the
   // default install) answers anyone on the boat's network. The token lives in
@@ -58,7 +65,8 @@ export const DEFAULTS: Options = {
     mergeMaxGapMinutes: 45,
     mergeMaxHopNm: 0.5,
     mergeShortNm: 1.0
-  }
+  },
+  fuelRatePaths: []
 }
 
 /** Values considered live-tunable internals, not user configuration. */
@@ -159,7 +167,10 @@ export function resolveOptions(raw: unknown): Options {
       mergeMaxGapMinutes: num(v.mergeMaxGapMinutes, DEFAULTS.voyage.mergeMaxGapMinutes, 0),
       mergeMaxHopNm: num(v.mergeMaxHopNm, DEFAULTS.voyage.mergeMaxHopNm, 0),
       mergeShortNm: num(v.mergeShortNm, DEFAULTS.voyage.mergeShortNm, 0)
-    }
+    },
+    fuelRatePaths: Array.isArray(c.fuelRatePaths)
+      ? c.fuelRatePaths.filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((p) => p.trim())
+      : DEFAULTS.fuelRatePaths
   }
 }
 
@@ -275,6 +286,14 @@ export const CONFIG_SCHEMA = {
           default: DEFAULTS.voyage.mergeShortNm
         }
       }
+    },
+    fuelRatePaths: {
+      type: 'array',
+      title: 'Fuel consumption source (advanced)',
+      description:
+        'Which engine fuel-rate paths feed the per-voyage fuel figure. Leave empty to sum every propulsion.*.fuel.rate the boat reports (the default). List specific paths (for example propulsion.port.fuel.rate) to count only those. Use this when more than one source reports the same engine and summing them doubles the fuel.',
+      default: [],
+      items: { type: 'string' }
     }
   }
 }

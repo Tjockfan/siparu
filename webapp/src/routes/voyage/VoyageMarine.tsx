@@ -5,11 +5,12 @@
  * Data comes from voyage/useVoyageData.ts; header + tab bar from Layout. */
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import type { Voyage, VoyageRollup, TrackPoint } from "../../lib/api";
+import type { Voyage, VoyageRollup, TrackPoint, FuelPathsView } from "../../lib/api";
 import { fmtCoordDM, fmtNum } from "../../lib/format";
 import { FUEL_MODES, fuelReadout, type FuelMode } from "../../lib/fuel";
 import { useVoyageData, type StatWindow } from "./useVoyageData";
 import VoyageTrackMap from "./VoyageTrackMap";
+import FuelSourceSheet, { fuelSourceSummary } from "./FuelSourceSheet";
 
 const FUEL_MODE_KEY = "siparu.fuelMode";
 
@@ -52,15 +53,36 @@ function routeLabel(v: Voyage): string | null {
 }
 
 export default function VoyageMarine() {
-  const d = useVoyageData();
+  // Bumped after a fuel-source change: the plugin restarts and re-integrates
+  // every voyage, so stats + list + current are re-fetched under the new figure.
+  const [reloadKey, setReloadKey] = useState(0);
+  const d = useVoyageData(reloadKey);
   const [win, setWin] = useState<StatWindow>("today");
   const [openId, setOpenId] = useState<number | null>(null);
   const [tracks, setTracks] = useState<Record<number, TrackPoint[]>>({});
   const [fuelMode, setFuelMode] = useState<FuelMode>(initFuelMode);
+  const [fuelView, setFuelView] = useState<FuelPathsView | null>(null);
+  const [showFuel, setShowFuel] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(FUEL_MODE_KEY, fuelMode);
   }, [fuelMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.config
+      .fuelPaths()
+      .then((v) => !cancelled && setFuelView(v))
+      .catch(() => {
+        /* the picker just stays hidden if the config read fails */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // Only offer the choice when there is one to make: more than one engine reports fuel.
+  const canPick = !!fuelView && fuelView.available.length > 1;
 
   const active = d.current && d.current.end_ts === null ? d.current : null;
 
@@ -96,8 +118,12 @@ export default function VoyageMarine() {
       <StatsGrid roll={roll} loading={d.loading} />
 
       <div className="vy-hd">
-        <span>Voyages</span>
-        <b>{d.list.length}</b>
+        <span className="vy-hd-l">Voyages <b>{d.list.length}</b></span>
+        {canPick && (
+          <button type="button" className="vy-fuelsrc" onClick={() => setShowFuel(true)}>
+            Fuel · {fuelSourceSummary(fuelView!)}
+          </button>
+        )}
       </div>
 
       {d.err ? (
@@ -121,6 +147,14 @@ export default function VoyageMarine() {
             />
           ))}
         </div>
+      )}
+
+      {showFuel && fuelView && (
+        <FuelSourceSheet
+          view={fuelView}
+          onClose={() => setShowFuel(false)}
+          onApplied={() => setReloadKey((k) => k + 1)}
+        />
       )}
     </div>
   );

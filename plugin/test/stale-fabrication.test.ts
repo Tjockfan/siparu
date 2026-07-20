@@ -40,11 +40,17 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
-/** index.ts writeSnapshot without the plumbing: the row that reaches disk. */
+/**
+ * index.ts writeSnapshot without the plumbing: the row that reaches disk, and
+ * the same one the voyage log reconciles. Dynamic gauge history (engine/tank
+ * fuel rates) rides `path_values` on that row; both sinks must see it.
+ */
 async function record(state: MetricsState, vlog: VoyageLog, now: number): Promise<void> {
   const snap = state.snapshot(now, true, INTERNAL.fabricationHorizonMs)
-  await store.append(snap)
-  await vlog.feed(snap)
+  const numeric = state.numericDynamicPaths(now, INTERNAL.fabricationHorizonMs)
+  const stored = Object.keys(numeric).length > 0 ? { ...snap, path_values: numeric } : snap
+  await store.append(stored)
+  await vlog.feed(stored)
 }
 
 describe('a recorded row is a measurement, not a memory', () => {
@@ -227,5 +233,39 @@ describe('the seam: a dead sensor reaches the voyage log', () => {
     // integrate against).
     expect(v?.hours_underway).toBeGreaterThan(0.6)
     expect(v?.distance_nm).toBeGreaterThan(4.0)
+  })
+})
+
+describe('the seam: engine fuel reaches the voyage log on the live feed', () => {
+  it('integrates per-voyage fuel from the recorded row without waiting for a restart', async () => {
+    // The voyage engine reads fuel off `path_values`, which rides the recorded
+    // row but not the core snapshot. writeSnapshot must feed the voyage log the
+    // same row it appends to disk; if it feeds the core snapshot instead, the
+    // live figure is null and only appears after a restart replays the disk
+    // rows - a bug the isolated integrateMetrics/VoyageLog tests cannot see
+    // because they build the row directly, bypassing this seam.
+    const state = new MetricsState(DEFAULTS)
+    const vlog = new VoyageLog(store, DEFAULTS, () => undefined)
+    await vlog.init(T0)
+
+    // Ten minutes under way at 8 kn, twin engines each burning 35 L/h (SI m3/s).
+    let lat = 43.0
+    for (let t = 0; t <= 10 * MINUTE; t += INTERNAL.samplePeriodMs) {
+      state.ingest('navigation.speedOverGround', 8 * KN, T0 + t)
+      state.ingest('navigation.position', { latitude: lat, longitude: 6.0 }, T0 + t)
+      state.ingest('navigation.state', 'under way using engine', T0 + t)
+      state.ingest('propulsion.port.fuel.rate', 35 / 3_600_000, T0 + t)
+      state.ingest('propulsion.starboard.fuel.rate', 35 / 3_600_000, T0 + t)
+      lat += 0.0000741
+      if (t % MINUTE === 0) await record(state, vlog, T0 + t)
+    }
+
+    const v = vlog.current()
+    expect(v).not.toBeNull()
+    // 70 L/h over the recorded 10-minute span (10 x 60 s segments) = 11.67 L,
+    // live, with no restart.
+    expect(v?.fuel_used_l).not.toBeNull()
+    expect(v?.fuel_used_l as number).toBeGreaterThan(11)
+    expect(v?.fuel_used_l as number).toBeLessThan(12.5)
   })
 })

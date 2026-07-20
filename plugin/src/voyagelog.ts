@@ -232,7 +232,8 @@ export class VoyageLog {
         }
         return this.readRows(fromTs, toTs)
       },
-      now
+      now,
+      this.opts.fuelRatePaths
     )
     // Drop window rows that precede the new boundary.
     const start = this.scanStart()

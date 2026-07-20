@@ -18,11 +18,13 @@ export interface VoyageData {
   err: string | null;
 }
 
-export function useVoyageData(): VoyageData {
+/** `reloadKey` re-fetches stats + list when it changes: after a fuel-path change
+ *  the plugin restarts and re-integrates every voyage, so the figures move. */
+export function useVoyageData(reloadKey = 0): VoyageData {
   const { data: current } = usePolling<Voyage | null>(
     api.voyage.current,
     60_000,
-    [],
+    [reloadKey],
     "voyage:current",
   );
 
@@ -39,6 +41,10 @@ export function useVoyageData(): VoyageData {
         if (!cancelled) {
           setStats(s);
           setList(l);
+          // Clear a stale error from a prior reload: without this, a failed fetch
+          // during the restart window would leave the banner up over good data,
+          // since only reloadKey re-runs this effect (not the 60s current poll).
+          setErr(null);
         }
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : "Could not load voyage data");
@@ -49,7 +55,7 @@ export function useVoyageData(): VoyageData {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   return { current: current ?? null, stats, list, loading, err };
 }

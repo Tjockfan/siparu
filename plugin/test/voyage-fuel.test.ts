@@ -90,4 +90,21 @@ describe('voyage fuel integration', () => {
     const m = integrateMetrics(rows)
     expect(m.fuel_used_l).toBe(0)
   })
+
+  it('narrows the sum to the configured fuel-rate paths', () => {
+    // A boat reporting one engine under two paths: summing both doubles it.
+    // port 35 + engine 35 = 70 L/h over 180 s = 0.05 h.
+    const rows = [0, 60, 120, 180].map((t) => row(t, { port: 35, engine: 35 }))
+    // Default (no list): every propulsion.*.fuel.rate is summed - 70 L/h.
+    expect(integrateMetrics(rows).fuel_used_l).toBeCloseTo(3.5, 6)
+    // Pinned to one path: only that engine counts - 35 L/h.
+    expect(integrateMetrics(rows, ['propulsion.engine.fuel.rate']).fuel_used_l).toBeCloseTo(1.75, 6)
+  })
+
+  it('returns null when the configured path is one the boat never reports', () => {
+    // Pinning a path the boat does not send is "cannot know", never a silent
+    // zero: no propulsion fuel rate matched the list.
+    const rows = [0, 180].map((t) => row(t, { port: 20 }))
+    expect(integrateMetrics(rows, ['propulsion.starboard.fuel.rate']).fuel_used_l).toBeNull()
+  })
 })

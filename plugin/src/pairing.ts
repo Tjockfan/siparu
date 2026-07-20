@@ -70,7 +70,7 @@ export type PairStatus = PairScreen & { security_off?: boolean; revoke_pending?:
  * Cast because securityStrategy is absent from @signalk/server-api's types, and an
  * unrecognised shape reads as secured rather than crying wolf.
  */
-function securityOff(app: ServerAPI, req: unknown): boolean {
+export function securityOff(app: ServerAPI, req: unknown): boolean {
   try {
     const ss = (
       app as unknown as {

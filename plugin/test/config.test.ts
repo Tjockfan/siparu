@@ -78,3 +78,22 @@ describe('the relay URL never carries the boat token in clear text', () => {
     expect(safeRelayUrl('https://relay.example')).toBe('https://relay.example')
   })
 })
+
+describe('the fuel-rate source list is a clean array of paths', () => {
+  it('keeps the configured paths, trimmed', () => {
+    expect(resolveOptions({ fuelRatePaths: ['propulsion.port.fuel.rate'] }).fuelRatePaths).toEqual([
+      'propulsion.port.fuel.rate'
+    ])
+    expect(resolveOptions({ fuelRatePaths: ['  propulsion.engine.fuel.rate  '] }).fuelRatePaths).toEqual([
+      'propulsion.engine.fuel.rate'
+    ])
+  })
+
+  it('drops blanks and non-strings, and defaults to empty (sum every engine)', () => {
+    expect(resolveOptions({}).fuelRatePaths).toEqual([])
+    expect(resolveOptions({ fuelRatePaths: 'not-an-array' }).fuelRatePaths).toEqual([])
+    expect(
+      resolveOptions({ fuelRatePaths: ['propulsion.port.fuel.rate', '', '   ', 3, null] }).fuelRatePaths
+    ).toEqual(['propulsion.port.fuel.rate'])
+  })
+})

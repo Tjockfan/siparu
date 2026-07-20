@@ -28,13 +28,20 @@ const M3_TO_L = 1000
  * reports none. Twin engines are added because a trip's fuel is the boat's, not
  * one shaft's; the null is load-bearing - it is the difference between "burned
  * nothing" and "cannot know", and only the second suppresses the figure.
+ *
+ * `allow`, when given, restricts the sum to exactly those paths. Summing every
+ * engine is wrong for a boat where more than one source reports the same one
+ * (two fuel-rate paths for one engine double the figure), and only the owner
+ * knows which is real. It is only ever passed non-empty; empty means "every
+ * engine", the default that keeps existing voyage history unchanged.
  */
-function engineFuelRate(pv: Snapshot['path_values']): number | null {
+function engineFuelRate(pv: Snapshot['path_values'], allow?: ReadonlySet<string>): number | null {
   if (!pv) return null
   let sum = 0
   let seen = false
   for (const path in pv) {
     if (path.startsWith('propulsion.') && path.endsWith('.fuel.rate')) {
+      if (allow && !allow.has(path)) continue
       const v = pv[path]
       if (typeof v === 'number' && Number.isFinite(v)) {
         sum += v
@@ -85,7 +92,8 @@ export interface VoyageMetrics {
 }
 
 /** Walk snapshots in chronological order and integrate distance / time / fuel. */
-export function integrateMetrics(snaps: VoyageRow[]): VoyageMetrics {
+export function integrateMetrics(snaps: VoyageRow[], fuelRatePaths?: readonly string[]): VoyageMetrics {
+  const fuelAllow = fuelRatePaths && fuelRatePaths.length > 0 ? new Set(fuelRatePaths) : undefined
   let distanceNm = 0
   let secondsUnderway = 0
   let maxSogKn = 0
@@ -103,7 +111,7 @@ export function integrateMetrics(snaps: VoyageRow[]): VoyageMetrics {
     const sog = s.sog
     const lat = s.lat
     const lon = s.lon
-    const fuelRate = engineFuelRate(s.path_values)
+    const fuelRate = engineFuelRate(s.path_values, fuelAllow)
     if (fuelRate !== null) sawFuel = true
 
     if (typeof sog === 'number') {
@@ -280,7 +288,8 @@ export async function reconcile(
   opts: VoyageOptions,
   ports: PortEntry[],
   readRange: (fromTs: number, toTs: number) => Promise<VoyageRow[]>,
-  now?: number
+  now?: number,
+  fuelRatePaths?: readonly string[]
 ): Promise<ReconcileState> {
   let openVoyage = state.voyages.find((v) => v.status === 'open') ?? null
   const sm = new VoyageStateMachine(opts, openVoyage !== null)
@@ -312,16 +321,16 @@ export async function reconcile(
       openVoyage.end_lat = row.lat
       openVoyage.end_lon = row.lon
       openVoyage.status = 'closed'
-      await applyMetrics(openVoyage, readRange, now)
+      await applyMetrics(openVoyage, readRange, now, fuelRatePaths)
       openVoyage.end_port = nearestPort(openVoyage.end_lat, openVoyage.end_lon, ports)
       openVoyage = null
     }
   }
 
-  if (openVoyage) await applyMetrics(openVoyage, readRange, now)
+  if (openVoyage) await applyMetrics(openVoyage, readRange, now, fuelRatePaths)
 
   state.voyages = await mergeContiguousVoyages(state.voyages, opts, async (v) => {
-    await applyMetrics(v, readRange, now)
+    await applyMetrics(v, readRange, now, fuelRatePaths)
     v.end_port = nearestPort(v.end_lat, v.end_lon, ports)
   })
   state.voyages.sort((a, b) => a.start_ts - b.start_ts)
@@ -336,10 +345,11 @@ export async function reconcile(
 export async function applyMetrics(
   v: Voyage,
   readRange: (fromTs: number, toTs: number) => Promise<VoyageRow[]>,
-  now?: number
+  now?: number,
+  fuelRatePaths?: readonly string[]
 ): Promise<void> {
   const endTs = v.end_ts ?? now ?? Date.now()
-  const m = integrateMetrics(await readRange(v.start_ts, endTs))
+  const m = integrateMetrics(await readRange(v.start_ts, endTs), fuelRatePaths)
   v.distance_nm = m.distance_nm
   v.hours_underway = m.hours_underway
   v.avg_sog_kn = m.avg_sog_kn
