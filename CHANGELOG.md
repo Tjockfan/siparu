@@ -7,9 +7,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The plugin is read-only by design. No release will ever add a write path to the vessel:
 `handleMessage`, PUT requests and NMEA 2000 output do not appear anywhere in this code base.
-The REST endpoints are GET-only but for the four pairing routes, which move this plugin's own
-state when somebody taps approve at the helm and send nothing to the boat. CI proves both on
-every commit, and a fifth write route fails the build.
+The REST endpoints are GET-only but for pairing and the fuel-source picker, which move this
+plugin's own state (a tap at the helm, a choice of which engine feeds voyage fuel) and send
+nothing to the boat. CI proves both on every commit, and a sixth write route fails the build.
 
 ## [Unreleased]
 

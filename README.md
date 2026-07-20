@@ -90,9 +90,14 @@ Mounted at `/plugins/siparu`:
 | `GET /voyages/current` | Currently open voyage, or `null` |
 | `GET /voyages/stats` | Today / yesterday / rolling 7 days / season aggregates |
 | `GET /voyages/:id/track` | Minute-cadence GPS track of one voyage |
+| `GET /ais/targets?max_nm=&max_age_min=&limit=` | Nearby AIS targets, from the vessels the server already tracks |
+| `GET /rollups/hourly?from=&to=` | Raw hourly rollup lines the dashboard derives its history series from |
+| `GET /map-config` | Resolved chart asset URLs, so the dashboard loads local charts or the remote tile server without guessing |
+| `GET /config/fuel-paths` | Which engine fuel-rate paths feed the per-voyage fuel figure, and the paths available to choose from |
 
-The reading surface above is GET-only. The one exception is pairing, which
-moves the plugin's own state and never touches the vessel's:
+The reading surface above is GET-only. Two flows move the plugin's own state and
+never touch the vessel's: pairing and the fuel-source picker. CI proves the point
+on every commit, and a sixth write route fails the build.
 
 | Endpoint | Description |
 |---|---|
@@ -100,6 +105,7 @@ moves the plugin's own state and never touches the vessel's:
 | `POST /pair/start` | Ask the relay for a code to show at the helm |
 | `POST /pair/approve` · `POST /pair/deny` | Answer a claim - the tap at the helm |
 | `POST /pair/reset` | Unpair |
+| `POST /config/fuel-paths` | Choose which engine fuel-rate paths feed the per-voyage fuel figure |
 
 ### The uplink, when she is paired
 
