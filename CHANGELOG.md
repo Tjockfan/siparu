@@ -13,6 +13,17 @@ every commit, and a fifth write route fails the build.
 
 ## [Unreleased]
 
+## [0.1.26] - 2026-07-20
+
+### Changed
+
+- Raise the under-way live cadence to 2 seconds from 10, so a moving boat
+  refreshes smoothly for a shore watching her. The standing cadence stays at 60
+  seconds, so a boat at anchor or in a berth costs nothing extra. The 10-second
+  floor was a free-tier request-ceiling workaround; the paid tier bills past the
+  ceiling rather than cutting the socket, and compute duration was never the
+  constraint (a 0.5% duty cycle against a far larger included pool).
+
 ## [0.1.25] - 2026-07-20
 
 ### Changed

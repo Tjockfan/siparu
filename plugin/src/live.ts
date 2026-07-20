@@ -35,15 +35,17 @@ import type {
 /**
  * How often a frame goes up while the socket is open, when she is under way.
  *
- * The relay's Durable Object bills one invocation per frame, and the free-tier ceiling is
- * 100,000 requests a day for the whole account. At two seconds that is 43,200 a day for ONE
- * connected boat - two boats exhausted the plan, which is what this number cost on 18 Jul.
- * Ten seconds is 8,640 a day, and at six knots a boat has moved about thirty metres between
- * frames, still around a boat length and imperceptible for a "where is she now" view. The
- * relay floor is 500ms, so this sits well clear of it. When she is not moving the cadence
- * drops much further still - see STILL_FRAME_EVERY_MS and the adaptive scheduler.
+ * The relay's Durable Object bills one invocation per frame. At two seconds that is 43,200 a day
+ * for one connected boat: on the free tier's 100,000/day account ceiling two boats exhausted the
+ * plan, which is why this ran at ten seconds through 18 Jul. On the paid tier that ceiling is
+ * gone - requests are billed past a monthly included amount rather than cut off, and a boat under
+ * way continuously costs a few cents a month over it. Duration was never the limit: measured at a
+ * 0.5% duty cycle, tens of GB-s a month against a far larger included pool. So two seconds, which
+ * is what a live view of a moving boat wants; the relay floor is 500ms, so it sits well clear.
+ * When she is not moving the cadence drops right down - see STILL_FRAME_EVERY_MS and the adaptive
+ * scheduler, which is where the real daily cost is still decided.
  */
-export const FRAME_EVERY_MS = 10_000
+export const FRAME_EVERY_MS = 2_000
 
 /**
  * How often a frame goes up while she is stationary - at anchor or in a berth, where the
