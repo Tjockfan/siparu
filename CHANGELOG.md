@@ -13,6 +13,23 @@ nothing to the boat. CI proves both on every commit, and a sixth write route fai
 
 ## [Unreleased]
 
+## [0.1.27] - 2026-07-21
+
+### Added
+
+- Activity phases: the raw band beneath the voyages. A boat is always in one
+  activity (under way, at anchor, on a mooring, or stopped), and she now records
+  that band as a sibling of the voyage engine without touching it: a separate
+  state machine and a separate file, so the voyage history is unaffected. A change
+  of state has to hold before it counts, so a brief stop does not split a passage.
+  Read over GET /phases and /phases/current, and over the live socket as a fifth
+  read-only sibling of the history, snapshots, voyages and track reads. Recorded
+  on the boat, kept nowhere ashore.
+
+### Changed
+
+- The closed-voyage time range reads with a plain hyphen.
+
 ## [0.1.26] - 2026-07-20
 
 ### Changed
@@ -578,7 +595,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.26...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.1.27...HEAD
+[0.1.27]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.27
 [0.1.26]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.26
 [0.1.25]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.25
 [0.1.24]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.24
