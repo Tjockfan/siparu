@@ -226,7 +226,7 @@ function VoyageRow({
 }) {
   const underway = v.end_ts === null;
   const fuel = fuelReadout(v.fuel_used_l, v.distance_nm, v.hours_underway, fuelMode);
-  const span = underway ? `${hhmm(v.start_ts)} →` : `${hhmm(v.start_ts)}–${hhmm(v.end_ts!)}`;
+  const span = underway ? `${hhmm(v.start_ts)} →` : `${hhmm(v.start_ts)}-${hhmm(v.end_ts!)}`;
   const avg = v.avg_sog_kn === null ? "·" : `${v.avg_sog_kn.toFixed(1)} kn`;
   const route = routeLabel(v);
 
