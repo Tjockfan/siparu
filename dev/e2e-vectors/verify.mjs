@@ -10,7 +10,10 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { ed25519PublicFromRaw, openFrame, signingInput, unb64u, verifyFrame } from './frame.mjs'
+import { ed25519PublicFromRaw, openFrame, signingInput, verifyFrame } from './frame.mjs'
+
+/** Key material out of the vector file, which is trusted input, not wire input. */
+const unb64u = (s) => Buffer.from(s, 'base64url')
 
 const here = dirname(fileURLToPath(import.meta.url))
 const v = JSON.parse(readFileSync(join(here, 'vectors.json'), 'utf8'))
@@ -33,7 +36,7 @@ check('the boat signature verifies', verifyFrame(v.frame, boatPub))
 for (const d of v.devices) {
   let plaintext = null
   try {
-    plaintext = openFrame(v.frame, d.kid, unb64u(d.private), unb64u(d.public))
+    plaintext = openFrame(v.frame, boatPub, d.kid, unb64u(d.private), unb64u(d.public))
   } catch (err) {
     console.log(`      ${d.kid}: ${err.message}`)
   }
@@ -45,12 +48,29 @@ for (const d of v.devices) {
   const [a, b] = v.devices
   let opened = false
   try {
-    openFrame(v.frame, a.kid, unb64u(b.private), unb64u(b.public))
+    openFrame(v.frame, boatPub, a.kid, unb64u(b.private), unb64u(b.public))
     opened = true
   } catch {
     opened = false
   }
   check('a device cannot open the wrapped key of another', !opened)
+}
+
+/**
+ * A reader must run the proof layer itself. Decryption says nothing about the
+ * timestamp, which travels in the open, so a device that only decrypts would
+ * show a relay's replayed frame as a current position.
+ */
+{
+  let opened = false
+  try {
+    const d = v.devices[0]
+    openFrame(v.must_not_verify.ts_rewritten, boatPub, d.kid, unb64u(d.private), unb64u(d.public))
+    opened = true
+  } catch {
+    opened = false
+  }
+  check('a device refuses a frame whose timestamp was rewritten', !opened)
 }
 
 for (const [name, frame] of Object.entries(v.must_not_verify)) {

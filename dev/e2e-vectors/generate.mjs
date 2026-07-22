@@ -13,15 +13,10 @@
  *   node dev/e2e-vectors/generate.mjs > dev/e2e-vectors/vectors.json
  */
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
-import {
-  FRAME_VERSION,
-  b64u,
-  rawPrivate,
-  rawPublic,
-  sealFrame,
-  signingInput,
-  unb64u
-} from './frame.mjs'
+import { FRAME_VERSION, b64u, rawPrivate, rawPublic, sealFrame, signingInput } from './frame.mjs'
+
+/** Plain decoding, for building tampered vectors on purpose. Wire input goes through strictDecode. */
+const unb64u = (s) => Buffer.from(s, 'base64url')
 
 const identity = generateKeyPairSync('ed25519')
 const ephemeral = generateKeyPairSync('x25519')
@@ -64,7 +59,12 @@ const frame = sealFrame({
   devices,
   identity: identity.privateKey,
   ephemeral,
-  bodyNonce: randomBytes(12)
+  bodyNonce: randomBytes(12),
+  // The cleartext alarm severity, the first extension field the format
+  // carries. It is in the vectors from the start so that both implementations
+  // sign extensions from the start: a field that arrives after the signing
+  // input is settled is a field that arrives unsigned.
+  extensions: { alert: 'warning' }
 })
 
 /** A frame whose ciphertext moved by one bit. The signature must fail on it. */
@@ -92,6 +92,49 @@ const wrapSwapped = structuredClone(frame)
     { kid: b.kid, wrap: a.wrap }
   ]
 }
+
+/**
+ * A frame whose ephemeral key was respelled without changing a single decoded
+ * byte. A forgiving base64 decoder verifies this happily, because the
+ * signature is computed over decoded bytes: the text can be rewritten in
+ * flight while the signature stays valid. Both implementations must reject the
+ * spelling, not merely the bytes.
+ */
+const ephRespelled = structuredClone(frame)
+{
+  // Thirty-two bytes encode to forty-three characters, and the last of those
+  // carries four meaningful bits and two spare ones. Flipping the lowest spare
+  // bit picks a different character that decodes to exactly the same bytes.
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+  const last = ephRespelled.eph.slice(-1)
+  ephRespelled.eph = ephRespelled.eph.slice(0, -1) + alphabet[alphabet.indexOf(last) ^ 1]
+  // The vector is worthless unless the bytes really are identical: that is the
+  // whole point, a signature over decoded bytes cannot tell the two apart.
+  if (!unb64u(ephRespelled.eph).equals(unb64u(frame.eph))) {
+    throw new Error('respelling changed the decoded bytes, the vector would prove nothing')
+  }
+  if (ephRespelled.eph === frame.eph) throw new Error('respelling did not change the text')
+}
+
+/** A frame with whitespace pushed into the ciphertext text. Same bytes to a lax decoder. */
+const bodyWhitespace = structuredClone(frame)
+bodyWhitespace.body = `${bodyWhitespace.body.slice(0, 8)}\n${bodyWhitespace.body.slice(8)}`
+
+/**
+ * A frame relabelled as version 257. With an eight-bit version field this
+ * collides with version 1 and verifies, which is a downgrade path through the
+ * version negotiation the spec relies on.
+ */
+const versionRewritten = structuredClone(frame)
+versionRewritten.v = 257
+
+/**
+ * A frame whose alarm severity was downgraded in transit. This is why
+ * extension fields are signed: unsigned, a hostile relay could turn an alarm
+ * into a normal reading and swallow the notification the owner was owed.
+ */
+const alertDowngraded = structuredClone(frame)
+alertDowngraded.alert = 'normal'
 
 process.stdout.write(
   `${JSON.stringify(
@@ -122,7 +165,11 @@ process.stdout.write(
       must_not_verify: {
         body_bit_flipped: bodyFlipped,
         ts_rewritten: tsChanged,
-        wraps_swapped: wrapSwapped
+        wraps_swapped: wrapSwapped,
+        eph_respelled: ephRespelled,
+        body_whitespace: bodyWhitespace,
+        version_rewritten: versionRewritten,
+        alert_downgraded: alertDowngraded
       }
     },
     null,
