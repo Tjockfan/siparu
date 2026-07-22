@@ -406,6 +406,9 @@ export = (app: ServerAPI): Plugin => {
               phases: pl.list(Math.min(Math.max(1, limit || 50), 500))
             }),
             seal: (frame) => sealer.seal(frame),
+            // Her recorded past follows her present: while frames are sealed, a history
+            // question is refused rather than answered in the clear.
+            sealed: () => sealer.active(),
             debug: (msg) => app.debug(msg)
           })
           liveUplink = ws

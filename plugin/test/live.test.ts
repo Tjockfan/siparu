@@ -215,6 +215,75 @@ describe('reporting sealed', () => {
   })
 })
 
+describe('what she answers while she is sealing', () => {
+  const ask = (type: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ type, id: `w-1.${type}-req`, ...extra })
+
+  it('refuses a history question rather than answering it in the clear', () => {
+    // Sealing the live frames and answering the past in the clear would leave the promise
+    // holding for the present and broken for the bigger half: one snapshots page carries a
+    // day of positions where a frame carries one.
+    const asked: string[] = []
+    const { live, last } = uplink({
+      sealed: () => true,
+      onHistoryQuery: async (p) => {
+        asked.push(p)
+        return { path: p, points: [] } as never
+      }
+    })
+    live.start()
+    last().open()
+    last().say(ask('history', { path: 'navigation.speedOverGround', query: { bucket: 1 } }))
+
+    // The store was never read, and the shore was told why rather than left waiting.
+    expect(asked).toHaveLength(0)
+    const reply = last().historyReplies().at(-1) as Record<string, unknown>
+    expect(reply.type).toBe('history')
+    expect(reply.id).toBe('w-1.history-req')
+    expect(reply.error).toMatchObject({ code: 'SEALED' })
+  })
+
+  it('refuses every kind of question, not only the ones with a query', () => {
+    const { live, last } = uplink({ sealed: () => true })
+    live.start()
+    last().open()
+
+    for (const type of ['snapshots', 'voyages', 'track', 'phases']) {
+      last().say(ask(type))
+      const reply = last().repliesOfType(type).at(-1) as { error?: { code?: string } } | undefined
+      expect(reply?.error?.code, type).toBe('SEALED')
+    }
+  })
+
+  it('answers normally when she is not sealing', async () => {
+    const { live, last } = uplink({
+      sealed: () => false,
+      onVoyagesQuery: async () => ({ voyages: [] }) as never
+    })
+    live.start()
+    last().open()
+    last().say(ask('voyages', { limit: 5 }))
+    await flush()
+
+    const reply = last().repliesOfType('voyages').at(-1) as { error?: unknown } | undefined
+    expect(reply?.error).toBeUndefined()
+  })
+
+  it('still says nothing to a message that is not a question at all', () => {
+    // The shore may not steer a boat, and a refusal is still a reply. Anything that is not one
+    // of the five reads gets no answer, sealing or not.
+    const { live, last } = uplink({ sealed: () => true })
+    live.start()
+    last().open()
+    const before = last().historyReplies().length
+
+    last().say(JSON.stringify({ type: 'put', path: 'steering.rudderAngle', value: 0.3 }))
+    last().say('not json at all')
+
+    expect(last().historyReplies()).toHaveLength(before)
+  })
+})
+
 describe('holding the socket open', () => {
   it('sends a frame on the cadence, not on every tick of the boat', () => {
     const { live, last } = uplink()

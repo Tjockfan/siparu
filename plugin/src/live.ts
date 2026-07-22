@@ -162,6 +162,15 @@ export interface LiveDeps {
    */
   seal?: (frame: unknown) => { mode: 'clear' } | { mode: 'sealed'; frame: unknown } | { mode: 'blocked' }
   /**
+   * Whether her reports are being sealed right now.
+   *
+   * Asked before any recorded data is sent back to the shore. Sealing the live frames and
+   * then answering a history question in the clear would leave the promise holding for the
+   * present and broken for the past - and the past is the bigger half: one snapshots page
+   * carries a day of positions, where a frame carries one.
+   */
+  sealed?: () => boolean
+  /**
    * Answers a shore history request from the boat's own store, the same read the local REST
    * /snapshots serves. Absent leaves the socket answering nothing but the keepalive, exactly
    * as it did before there was a history channel - so an old relay, or a boat wired without
@@ -352,6 +361,38 @@ export class LiveUplink {
         this.awaitingPong = false
         return
       }
+      // While she is sealing, her records do not leave in the clear. The question is answered
+      // rather than ignored, so a screen waiting on a chart stops waiting and can say why: an
+      // encrypted boat is not a broken one, and silence here would read as the latter.
+      //
+      // She refuses rather than sealing the answer, and that is the honest state of things
+      // today: the readers that hold a key cannot yet ask, and sealing a reply nobody can open
+      // would look like an answer and be a silence. The envelope comes with the reader.
+      if (this.deps.sealed?.()) {
+        const asked = rpcEnvelope(data)
+        if (asked) {
+          const refusal = {
+            code: 'SEALED',
+            message: 'This boat is encrypted. Her records open in the Siparu app.'
+          }
+          // Spelled out per type rather than widened, so the reply keeps the exact shape the
+          // shore's own union expects: an answer has to match the question it belongs to.
+          this.reply(
+            gen,
+            asked.type === 'history'
+              ? { type: 'history', id: asked.id, error: refusal }
+              : asked.type === 'snapshots'
+                ? { type: 'snapshots', id: asked.id, error: refusal }
+                : asked.type === 'voyages'
+                  ? { type: 'voyages', id: asked.id, error: refusal }
+                  : asked.type === 'track'
+                    ? { type: 'track', id: asked.id, error: refusal }
+                    : { type: 'phases', id: asked.id, error: refusal }
+          )
+        }
+        return
+      }
+
       // Beyond a pong, the shore may ask the boat to send back her own recorded history: one
       // gauge's series (handleHistory), whole snapshot rows (handleSnapshots), her recent voyages
       // (handleVoyages) or one voyage's path (handleTrack). None is a command; each drops in
@@ -834,4 +875,36 @@ function wsConnect(url: string, token: string): LiveSocket {
         cb(res.statusCode ?? 0)
       )
   }
+}
+
+/**
+ * The bare envelope of a request off the shore socket: which kind it is, and the id that must
+ * come back with the answer.
+ *
+ * Deliberately not one of the five typed guards above. This is used to REFUSE, not to act, so
+ * it must recognise a question it will not read the rest of - and a refusal that only worked
+ * for well-formed queries would leave a screen hanging on a slightly wrong one.
+ */
+export function rpcEnvelope(
+  data: string
+): { type: 'history' | 'snapshots' | 'voyages' | 'track' | 'phases'; id: string } | null {
+  let msg: unknown
+  try {
+    msg = JSON.parse(data)
+  } catch {
+    return null
+  }
+  if (!msg || typeof msg !== 'object') return null
+  const { type, id } = msg as { type?: unknown; id?: unknown }
+  if (typeof id !== 'string' || !id) return null
+  if (
+    type === 'history' ||
+    type === 'snapshots' ||
+    type === 'voyages' ||
+    type === 'track' ||
+    type === 'phases'
+  ) {
+    return { type, id }
+  }
+  return null
 }
