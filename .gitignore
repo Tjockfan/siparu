@@ -16,7 +16,14 @@ dist/
 .sandbox/
 
 # Local dev tooling (synthetic data feeder, not shipped)
-dev/
+# The crypto vectors are the exception, and the pattern has to exclude the
+# contents rather than the directory: git will not descend into an excluded
+# directory, so a bare "dev/" makes the re-include below unreachable. The
+# vectors are an agreement between two implementations in two languages and so
+# must be versioned, even though they ship with nothing (package.json "files"
+# keeps them out of the npm package).
+dev/*
+!dev/e2e-vectors/
 
 # npm pack output
 *.tgz
