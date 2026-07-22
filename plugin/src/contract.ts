@@ -426,3 +426,84 @@ export interface AisFeed {
 export interface ApiError {
   error: { code: string; message: string }
 }
+
+/**
+ * The sealed frame, and the key material around it.
+ *
+ * These shapes belong here rather than beside the sealing code because they are
+ * the only part of the encryption three separate programs have to agree on: the
+ * plugin that seals, the relay that verifies and forwards, and the client that
+ * opens. The algorithms are an implementation detail of each; the bytes on the
+ * wire are not.
+ *
+ * The full protocol, including what the relay can and cannot see, is specified
+ * separately. What matters at this boundary: the relay carries the frame and
+ * verifies its signature, and cannot read the body.
+ */
+
+/** One content key, encrypted to one device. */
+export interface WrappedKey {
+  /**
+   * The device this wrap is for. Opaque and random: it travels in the clear on
+   * every frame, so a readable id would hand the carrier a device inventory.
+   */
+  kid: string
+  /** The content key, sealed to that device. base64url. */
+  wrap: string
+}
+
+/**
+ * One telemetry frame, sealed to the boat's authorised devices and signed by
+ * her identity key.
+ *
+ * Only `boat` and `ts` are legible in transit, and both are inside the
+ * signature: rewriting a departure time is the attack the proof layer exists to
+ * defeat. `body` holds the report, encrypted once under a content key that is
+ * then wrapped separately to each device in `keys`.
+ *
+ * Extension fields are permitted, must be strings, and are covered by the
+ * signature. `alert` is the first of them.
+ */
+export interface SealedFrame {
+  /** Format version. Sixteen bits on the wire. */
+  v: number
+  boat: string
+  /** Epoch ms, UTC, as the boat recorded it. Signed. */
+  ts: number
+  /** Ephemeral X25519 public key, this frame only. base64url. */
+  eph: string
+  /** Body nonce. base64url. */
+  nonce: string
+  /** The report, encrypted. base64url of ciphertext followed by tag. */
+  body: string
+  keys: WrappedKey[]
+  /** Ed25519 over the ciphertext, the cleartext metadata and any extensions. base64url. */
+  sig: string
+  [extension: string]: unknown
+}
+
+/**
+ * How loud an alert is, and the only thing about it that travels in the clear.
+ *
+ * The carrier has to know a notification is due, so severity cannot be sealed.
+ * What kind of alert it is stays encrypted: fuel, fire and shore power are
+ * indistinguishable from outside. It rides in the `alert` extension field, and
+ * so is signed, which is what stops a carrier downgrading an alarm to normal
+ * and swallowing the notification.
+ */
+export type AlertLevel = 'normal' | 'warning' | 'alarm'
+
+/** The public halves a device needs in order to reach one boat. base64url, raw. */
+export interface BoatPublicKeys {
+  /** Ed25519. Verifies her frames. */
+  identity: string
+  /** X25519. Receives what a device seals to her. */
+  inbox: string
+}
+
+/** One authorised device, as the boat is told about it. */
+export interface DevicePublicKey {
+  kid: string
+  /** Raw 32-byte X25519 public key, base64url. */
+  pub: string
+}

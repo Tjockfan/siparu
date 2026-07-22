@@ -44,6 +44,9 @@ import {
   verify,
   type KeyObject
 } from 'crypto'
+import type { AlertLevel, SealedFrame, WrappedKey } from './contract'
+
+export type { AlertLevel, SealedFrame, WrappedKey }
 
 export const FRAME_VERSION = 1
 
@@ -83,34 +86,6 @@ export interface DeviceKey {
   kid: string
   /** Raw 32-byte X25519 public key. */
   pub: Buffer
-}
-
-/** One content key, wrapped to one device. */
-export interface WrappedKey {
-  kid: string
-  wrap: string
-}
-
-/**
- * A sealed frame, as it goes on the wire. Only `boat` and `ts` are legible in
- * transit. Extension fields added by later versions are permitted and are
- * covered by the signature; they must be strings, so that two implementations
- * cannot disagree about how to serialise them.
- */
-export interface SealedFrame {
-  v: number
-  boat: string
-  ts: number
-  /** Ephemeral X25519 public key, this frame only. */
-  eph: string
-  nonce: string
-  /** The report, encrypted once under a content key. */
-  body: string
-  /** That content key, wrapped separately to each authorised device. */
-  keys: WrappedKey[]
-  /** Ed25519 over the ciphertext, the cleartext metadata and any extensions. */
-  sig: string
-  [extension: string]: unknown
 }
 
 const b64u = (buf: Buffer): string => buf.toString('base64url')
@@ -351,10 +326,14 @@ export interface SealOptions {
   identity: KeyObject
   /**
    * Cleartext fields carried beside the sealed body, signed but not encrypted.
-   * The alarm severity flag lives here. Keys must be lower-case ASCII and
-   * values strings.
+   * Keys must be lower-case ASCII and values strings.
+   *
+   * `alert` is named explicitly rather than left to the index signature so
+   * that a severity is spelled the way the carrier expects: it is the one
+   * field a relay reads and acts on, and a typo in it means a push that never
+   * arrives, which is a silence nobody notices.
    */
-  extensions?: Record<string, string>
+  extensions?: { alert?: AlertLevel } & Record<string, string>
 }
 
 /**
