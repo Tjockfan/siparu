@@ -19,7 +19,13 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { generateKeyPairSync, type KeyObject } from 'crypto'
-import { ed25519PrivateFromRaw, rawPrivate, rawPublic, x25519PrivateFromRaw } from './sealing'
+import {
+  ed25519PrivateFromRaw,
+  publicFromPrivate,
+  rawPrivate,
+  rawPublic,
+  x25519PrivateFromRaw
+} from './sealing'
 
 /** The boat's own key pair, in the form the sealing code wants it. */
 export interface BoatKeys {
@@ -88,22 +94,27 @@ export class BoatKeyStore {
       return
     }
     try {
-      // Rebuilding the key objects is the check, and it is the whole check.
-      // Node validates an OKP JWK on import: a truncated scalar, or a private
-      // half that does not match the public one stored beside it, is refused
-      // here rather than at the first frame nobody can verify. Both failures
-      // are torn-write shaped, and both are pinned by test, because this leans
-      // on runtime behaviour rather than on anything written above.
-      this.keys = {
-        identity: ed25519PrivateFromRaw(
-          Buffer.from(raw.identity.priv, 'base64url'),
-          Buffer.from(raw.identity.pub, 'base64url')
-        ),
-        inbox: x25519PrivateFromRaw(
-          Buffer.from(raw.inbox.priv, 'base64url'),
-          Buffer.from(raw.inbox.pub, 'base64url')
-        )
-      }
+      // Two failures are being caught here, both torn-write shaped, and only
+      // one of them by the runtime.
+      //
+      // A truncated scalar is refused by Node on import. A private half that
+      // does not match the public one stored beside it is NOT: Node 20 and 22
+      // import that pair without complaint, and only Node 26 rejects it. A
+      // boat that loaded such a file would sign with one key and publish
+      // another, and every frame she sent would fail verification everywhere,
+      // silently. So the halves are checked against each other explicitly,
+      // by deriving the public one from the private one.
+      const identity = ed25519PrivateFromRaw(
+        Buffer.from(raw.identity.priv, 'base64url'),
+        Buffer.from(raw.identity.pub, 'base64url')
+      )
+      const inbox = x25519PrivateFromRaw(
+        Buffer.from(raw.inbox.priv, 'base64url'),
+        Buffer.from(raw.inbox.pub, 'base64url')
+      )
+      assertHalvesAgree(identity, Buffer.from(raw.identity.pub, 'base64url'))
+      assertHalvesAgree(inbox, Buffer.from(raw.inbox.pub, 'base64url'))
+      this.keys = { identity, inbox }
     } catch {
       this.keys = undefined
     }
@@ -151,6 +162,13 @@ export class BoatKeyStore {
     }
     this.writeChain = this.writeChain.then(run, run)
     return this.writeChain
+  }
+}
+
+/** The stored public half must be the one this private half actually implies. */
+function assertHalvesAgree(priv: KeyObject, storedPub: Buffer): void {
+  if (!publicFromPrivate(priv).equals(storedPub)) {
+    throw new Error('stored key halves belong to different pairs')
   }
 }
 

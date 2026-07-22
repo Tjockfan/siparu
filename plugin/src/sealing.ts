@@ -227,6 +227,20 @@ export function rawPublic(key: KeyObject): Buffer {
   return Buffer.from(jwk.x, 'base64url')
 }
 
+/**
+ * The public half a private key actually implies, derived from the private
+ * half rather than read from whatever was stored beside it.
+ *
+ * Needed because Node will happily import a JWK whose public and private
+ * halves belong to different pairs. Node 20 and 22 accept it; Node 26 refuses
+ * it. Anything relying on the runtime to catch a mismatched pair therefore
+ * works on the machine it was written on and fails in the field, so the check
+ * is made here and made the same way everywhere.
+ */
+export function publicFromPrivate(key: KeyObject): Buffer {
+  return rawPublic(createPublicKey(key))
+}
+
 /** Raw 32-byte private scalar (X25519) or seed (Ed25519). */
 export function rawPrivate(key: KeyObject): Buffer {
   const jwk = key.export({ format: 'jwk' }) as { d?: string }
