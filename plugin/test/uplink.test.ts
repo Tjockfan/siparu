@@ -59,6 +59,36 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('the slow path while she is sealing', () => {
+  it('sends her clock and nothing else', async () => {
+    // This path exists to say "she is still here" when the socket will not stay up. The relay
+    // keeps nothing of what it is told, but the frame still crosses the internet in the clear,
+    // and that is what sealing exists to stop. Without this the promise would hold on a good
+    // connection and lapse on a bad one - which is the connection that matters.
+    const calls = relayAnswers(ok())
+    const up = uplink({ sealing: () => true })
+
+    up.start()
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    up.stop()
+
+    expect(calls).toHaveLength(1)
+    expect(Object.keys(calls[0].body as object)).toEqual(['ts'])
+    expect(JSON.stringify(calls[0].body)).not.toContain('43.5')
+  })
+
+  it('sends the whole frame when she is not sealing', async () => {
+    const calls = relayAnswers(ok())
+    const up = uplink({ sealing: () => false })
+
+    up.start()
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    up.stop()
+
+    expect(calls[0].body).toMatchObject({ lat: 43.5 })
+  })
+})
+
 describe('a paired boat', () => {
   it('sends her frame to the relay, signed with the token she was given', async () => {
     const calls = relayAnswers(ok())

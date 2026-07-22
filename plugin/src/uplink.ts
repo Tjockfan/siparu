@@ -75,6 +75,17 @@ export interface UplinkDeps {
   getRemote: () => RemoteLink | undefined
   /** The frame to send: the live snapshot, exactly as the local dashboard reads it. */
   frame: () => unknown
+  /**
+   * Whether her reports are being sealed right now.
+   *
+   * This path exists to say "she is still here" when the socket will not stay up, and the
+   * relay keeps nothing of what it is told - but the frame still crosses the internet in the
+   * clear, and that is precisely what sealing exists to stop. So when sealing is on, this
+   * path sends her CLOCK and nothing else: enough to record that she called in, and nothing
+   * a carrier was not already going to know. Without this the promise would hold on a good
+   * connection and quietly lapse on a bad one, which is the connection that matters.
+   */
+  sealing?: () => boolean
   debug: (msg: string) => void
   /** Send interval. The product's promise is a minute; tests need it shorter. */
   intervalMs?: number
@@ -215,7 +226,7 @@ export class Uplink {
           'content-type': 'application/json',
           authorization: `Bearer ${remote.boatToken}`
         },
-        body: JSON.stringify(this.deps.frame()),
+        body: JSON.stringify(this.deps.sealing?.() ? { ts: Date.now() } : this.deps.frame()),
         signal: controller.signal
       })
 

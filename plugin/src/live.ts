@@ -153,6 +153,15 @@ export interface LiveDeps {
   /** The live snapshot, exactly as the local dashboard reads it. */
   frame: () => unknown
   /**
+   * The switch between reporting in the clear and reporting sealed, asked once per frame.
+   *
+   * Absent means clear, which is what a build with no sealer configured does. When it
+   * answers 'blocked' NOTHING is sent: screens are authorised and none of them could be
+   * sealed to, and a cleartext frame in that moment would be a quiet betrayal of the only
+   * promise the shore half makes.
+   */
+  seal?: (frame: unknown) => { mode: 'clear' } | { mode: 'sealed'; frame: unknown } | { mode: 'blocked' }
+  /**
    * Answers a shore history request from the boat's own store, the same read the local REST
    * /snapshots serves. Absent leaves the socket answering nothing but the keepalive, exactly
    * as it did before there was a history channel - so an old relay, or a boat wired without
@@ -399,7 +408,19 @@ export class LiveUplink {
       // which the scheduler treats as under way - the safe side, keeping her fresh.
       const sog = (frame as { sog?: unknown }).sog
       this.lastSog = typeof sog === 'number' && Number.isFinite(sog) ? sog : null
-      this.sock.send(JSON.stringify(frame))
+
+      // Her speed is read off the cleartext above and stays aboard: it only decides how soon
+      // the next frame goes. What leaves is whatever the sealer hands back.
+      const verdict = this.deps.seal?.(frame) ?? { mode: 'clear' as const }
+      if (verdict.mode === 'blocked') {
+        // Silence, and the cadence is not touched: she tries again on the next tick, and her
+        // owner sees a boat that has stopped reporting rather than one reporting in the open.
+        return
+      }
+
+      this.sock.send(
+        JSON.stringify(verdict.mode === 'sealed' ? { type: 'sealed', frame: verdict.frame } : frame)
+      )
       this.lastFrameTs = Date.now()
     } catch (e) {
       // The socket died under her. Treat it as the drop it is, rather than throwing inside a

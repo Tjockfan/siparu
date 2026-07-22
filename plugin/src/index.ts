@@ -36,6 +36,7 @@ import { decimateTrack } from './track'
 import { reportedStatus, Uplink } from './uplink'
 import { BoatKeyStore } from './keystore'
 import { KeySync } from './keysync'
+import { Sealer } from './sealer'
 import { VoyageLog } from './voyagelog'
 import { PhaseLog } from './phaselog'
 
@@ -344,6 +345,31 @@ export = (app: ServerAPI): Plugin => {
             dataDir: () => app.getDataDirPath()
           })
 
+          // Her own two keys, made the first time she is paired and published to the shore so
+          // a phone can recognise her signature and seal a question back to her. The same poll
+          // brings back the screens her owner has authorised, which is what decides whether
+          // she reports in the clear or sealed.
+          const boatKeys = new BoatKeyStore(app.getDataDirPath())
+          boatKeys.load()
+          const ks = new KeySync({
+            relayUrl: opts.relayUrl,
+            getRemote: () => rl.getRemote(),
+            keys: boatKeys,
+            debug: (msg) => app.debug(msg)
+          })
+          keySync = ks
+          ks.start()
+
+          // Sealed the moment there is somebody to seal to, and not before. A boat whose
+          // owner has authorised no screen keeps reporting exactly as she does today, which
+          // is what lets this ship without taking anyone's live view away.
+          const sealer = new Sealer({
+            keys: boatKeys,
+            devices: () => ks.devices(),
+            boatId: () => rl.getRemote()?.boatId,
+            debug: (msg) => app.debug(msg)
+          })
+
           // Ashore. Only started once the vessel's own recording is up, because that is
           // the order of the promises: her history is hers whether or not anyone ever
           // pays for the remote half, and it must not wait on a network to begin.
@@ -379,31 +405,19 @@ export = (app: ServerAPI): Plugin => {
             onPhasesQuery: async (limit) => ({
               phases: pl.list(Math.min(Math.max(1, limit || 50), 500))
             }),
+            seal: (frame) => sealer.seal(frame),
             debug: (msg) => app.debug(msg)
           })
           liveUplink = ws
           ws.start()
 
-          // Her own two keys, made the first time she is paired and published to the shore
-          // so a phone can recognise her signature and seal a question back to her. Nothing
-          // reads them yet on either side; what matters now is that a vessel already in
-          // service arrives at that day with an identity, rather than having to be paired
-          // again for a feature she never asked for.
-          const boatKeys = new BoatKeyStore(app.getDataDirPath())
-          boatKeys.load()
-          const ks = new KeySync({
-            relayUrl: opts.relayUrl,
-            getRemote: () => rl.getRemote(),
-            keys: boatKeys,
-            debug: (msg) => app.debug(msg)
-          })
-          keySync = ks
-          ks.start()
 
           const up = new Uplink({
             relayUrl: opts.relayUrl,
             getRemote: () => rl.getRemote(),
             frame: () => live(),
+            // The slow path must not carry in the clear what the socket is encrypting.
+            sealing: () => sealer.active(),
             debug: (msg) => app.debug(msg),
             liveHealthy: () => ws.healthy()
           })

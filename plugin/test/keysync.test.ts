@@ -44,7 +44,12 @@ let dir: string
 /** Every sync a test starts, stopped with it: real timers outlive the test that made them. */
 const running: Array<{ stop: () => void }> = []
 
-function relayAnswers(...answers: Array<Response | Error>) {
+/**
+ * Each answer is a FACTORY, not a Response: a Response body may be read once, so replaying
+ * the same object turns the second poll into a parse failure and every assertion after it
+ * into a lie about what the code did.
+ */
+function relayAnswers(...answers: Array<(() => Response) | Error>) {
   const calls: Array<{ url: string; token: string | null; body: Record<string, unknown> }> = []
   let i = 0
   vi.stubGlobal(
@@ -58,7 +63,7 @@ function relayAnswers(...answers: Array<Response | Error>) {
       })
       const answer = answers[Math.min(i++, answers.length - 1)]
       if (answer instanceof Error) throw answer
-      return answer
+      return answer()
     })
   )
   return calls
@@ -101,7 +106,7 @@ afterEach(async () => {
 
 describe('a boat publishing her own public halves', () => {
   it('sends both halves under her token and records that they landed', async () => {
-    const calls = relayAnswers(answered({ devices: [], keys: 'ok' })())
+    const calls = relayAnswers(answered({ devices: [], keys: 'ok' }))
     const { sync, keys } = keysync()
 
     sync.start()
@@ -113,11 +118,11 @@ describe('a boat publishing her own public halves', () => {
     // What is sent is what she keeps, and only the public halves of it.
     expect(calls[0].body).toEqual(keys.publicKeys())
     expect(JSON.stringify(calls[0].body)).not.toContain('priv')
-    expect(sync.status()).toEqual({ state: 'published', lastError: null })
+    expect(sync.status()).toEqual({ state: 'published', lastError: null, devices: 0 })
   })
 
   it('makes her keys only once she is paired', async () => {
-    const calls = relayAnswers(answered({ devices: [], keys: 'ok' })())
+    const calls = relayAnswers(answered({ devices: [], keys: 'ok' }))
     const { sync, keys } = keysync({ getRemote: () => undefined })
 
     sync.start()
@@ -131,15 +136,52 @@ describe('a boat publishing her own public halves', () => {
     expect(sync.status().state).toBe('idle')
   })
 
-  it('says nothing twice: a published boat stops asking', async () => {
-    const calls = relayAnswers(answered({ devices: [], keys: 'ok' })())
+  it('says her keys once and then only asks', async () => {
+    // Publishing is write-once ashore, so there is nothing to gain by repeating it - but the
+    // device list is a live answer, not a fact, so the poll itself never stops.
+    const calls = relayAnswers(answered({ devices: [], keys: 'ok' }))
+    const { sync } = keysync()
+
+    sync.start()
+    await until(() => calls.length > 1)
+
+    expect(calls[0].body).toHaveProperty('identity')
+    expect(calls[1].body).toEqual({})
+  })
+
+  it('learns which screens may read her, and forgets none of them on a bad poll', async () => {
+    // A failed request must not empty the list: a boat that stopped sealing because a request
+    // timed out would be a boat whose privacy depends on the weather.
+    const device = { kid: 'kid-phone', pub: 'A'.repeat(43) }
+    const calls = relayAnswers(
+      answered({ devices: [device], keys: 'ok' }),
+      new Error('offline')
+    )
+    const { sync } = keysync()
+
+    sync.start()
+    await until(() => calls.length > 1)
+
+    expect(sync.devices()).toEqual([device])
+    expect(sync.status().devices).toBe(1)
+  })
+
+  it('drops a malformed device rather than the whole list', async () => {
+    // This is fed straight into a key agreement, so it is checked by shape, not trusted.
+    const good = { kid: 'kid-good', pub: 'A'.repeat(43) }
+    const calls = relayAnswers(
+      answered({
+        devices: [good, { kid: 'kid-bad', pub: 'too short' }, { pub: 'B'.repeat(43) }, 42],
+        keys: 'ok'
+      })
+    )
     const { sync } = keysync()
 
     sync.start()
     await until(() => calls.length > 0)
-    await quietly()
+    await until(() => sync.devices().length > 0)
 
-    expect(calls).toHaveLength(1)
+    expect(sync.devices()).toEqual([good])
   })
 
   it('keeps knocking while the relay is unreachable, backing off as it goes', async () => {
@@ -152,25 +194,25 @@ describe('a boat publishing her own public halves', () => {
     await until(() => calls.length > 1)
 
     expect(calls.length).toBeGreaterThan(1)
-    expect(sync.status()).toEqual({
+    expect(sync.status()).toMatchObject({
       state: 'failing',
       lastError: 'Cannot reach Siparu. Is the boat online?'
     })
   })
 
-  it('stops for good when the shore already holds different keys', async () => {
-    // The vessel's row ashore was published by another copy of her, or her own keys.json
-    // was lost and rebuilt. Devices recognise her by what is ashore, so asking again cannot
-    // help: the cure is an unlink and a fresh pairing, and the message says so.
-    const calls = relayAnswers(answered({ devices: [], keys: 'mismatch' })())
+  it('stops offering her keys when the shore already holds different ones', async () => {
+    // The vessel's row ashore was published by another copy of her, or her own keys.json was
+    // lost and rebuilt. Devices recognise her by what is ashore, so offering hers again cannot
+    // help: the cure is an unlink and a fresh pairing, and the message says so. The poll goes
+    // on regardless, because the device list is still worth having.
+    const calls = relayAnswers(answered({ devices: [], keys: 'mismatch' }))
     const { sync } = keysync()
 
     sync.start()
-    await until(() => calls.length > 0)
-    await quietly()
+    await until(() => calls.length > 1)
 
-    expect(calls).toHaveLength(1)
-    expect(sync.status()).toEqual({
+    expect(calls[1].body).toEqual({})
+    expect(sync.status()).toMatchObject({
       state: 'mismatch',
       lastError: 'Siparu already holds different keys for this boat. Unlink her and pair again.'
     })
@@ -180,7 +222,7 @@ describe('a boat publishing her own public halves', () => {
     // An older relay that knows nothing about keys answers the device list and no verdict.
     // Reading that as success would leave a boat certain she is published while the shore
     // holds nothing, and she would seal to screens that can never verify her.
-    const calls = relayAnswers(answered({ devices: [] })())
+    const calls = relayAnswers(answered({ devices: [] }))
     const { sync } = keysync()
 
     sync.start()
@@ -190,7 +232,7 @@ describe('a boat publishing her own public halves', () => {
   })
 
   it('names an unlinked boat rather than retrying her forever in silence', async () => {
-    const calls = relayAnswers(answered({ error: 'unknown_token' }, 401)())
+    const calls = relayAnswers(answered({ error: 'unknown_token' }, 401))
     const { sync } = keysync()
 
     sync.start()
@@ -203,7 +245,7 @@ describe('a boat publishing her own public halves', () => {
   })
 
   it('sends the same keys on a later run, because publishing is write-once ashore', async () => {
-    const calls = relayAnswers(answered({ devices: [], keys: 'ok' })())
+    const calls = relayAnswers(answered({ devices: [], keys: 'ok' }))
 
     const first = keysync()
     first.sync.start()

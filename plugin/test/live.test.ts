@@ -162,6 +162,59 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('reporting sealed', () => {
+  it('sends the sealed envelope instead of the frame', () => {
+    // The wiring, pinned where it lives. The sealer is proved next door; what is proved here
+    // is that its answer is the thing that reaches the wire.
+    const { live, last } = uplink({
+      seal: () => ({ mode: 'sealed', frame: { v: 1, boat: 'boat-1', body: 'ciphertext' } })
+    })
+    live.start()
+    last().open()
+
+    const sent = last().frames()[0] as Record<string, unknown>
+    expect(sent.type).toBe('sealed')
+    expect(sent.frame).toEqual({ v: 1, boat: 'boat-1', body: 'ciphertext' })
+    // And the cleartext she was about to send is nowhere on the wire.
+    expect(JSON.stringify(sent)).not.toContain('43.5')
+  })
+
+  it('sends NOTHING when the sealer is blocked', () => {
+    // Screens are authorised and none can be sealed to. A cleartext frame here would be the
+    // quiet betrayal the whole switch exists to prevent, so the socket carries nothing and
+    // her owner sees a boat that stopped reporting.
+    const { live, last } = uplink({ seal: () => ({ mode: 'blocked' }) })
+    live.start()
+    last().open()
+
+    expect(last().frames()).toHaveLength(0)
+  })
+
+  it('sends the plain frame when the sealer says nobody is authorised', () => {
+    const { live, last } = uplink({ seal: () => ({ mode: 'clear' }) })
+    live.start()
+    last().open()
+
+    expect(last().frames()[0]).toMatchObject({ lat: 43.5 })
+  })
+
+  it('keeps her cadence off the cleartext speed while sending sealed', () => {
+    // Her speed decides how soon the next frame goes, and it is read off the frame BEFORE
+    // sealing. If that reading moved after the switch, a boat under way would drop to the
+    // resting cadence the day she started sealing, and nobody would connect the two.
+    const { live, last } = uplink({
+      frame: () => ({ ts: 1, sog: 3.2 }),
+      seal: () => ({ mode: 'sealed', frame: { body: 'ciphertext' } })
+    })
+    live.start()
+    last().open()
+    expect(last().frames()).toHaveLength(1)
+
+    vi.advanceTimersByTime(FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(2)
+  })
+})
+
 describe('holding the socket open', () => {
   it('sends a frame on the cadence, not on every tick of the boat', () => {
     const { live, last } = uplink()
