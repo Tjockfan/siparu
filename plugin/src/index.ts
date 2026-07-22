@@ -34,6 +34,8 @@ import { dayKey } from './time'
 import { LiveUplink } from './live'
 import { decimateTrack } from './track'
 import { reportedStatus, Uplink } from './uplink'
+import { BoatKeyStore } from './keystore'
+import { KeySync } from './keysync'
 import { VoyageLog } from './voyagelog'
 import { PhaseLog } from './phaselog'
 
@@ -58,6 +60,7 @@ export = (app: ServerAPI): Plugin => {
   let phases: PhaseLog | null = null
   let uplink: Uplink | null = null
   let liveUplink: LiveUplink | null = null
+  let keySync: KeySync | null = null
   let timer: NodeJS.Timeout | null = null
   let unlinkRetryTimer: NodeJS.Timeout | null = null
   let unsubscribes: Array<() => void> = []
@@ -381,6 +384,22 @@ export = (app: ServerAPI): Plugin => {
           liveUplink = ws
           ws.start()
 
+          // Her own two keys, made the first time she is paired and published to the shore
+          // so a phone can recognise her signature and seal a question back to her. Nothing
+          // reads them yet on either side; what matters now is that a vessel already in
+          // service arrives at that day with an identity, rather than having to be paired
+          // again for a feature she never asked for.
+          const boatKeys = new BoatKeyStore(app.getDataDirPath())
+          boatKeys.load()
+          const ks = new KeySync({
+            relayUrl: opts.relayUrl,
+            getRemote: () => rl.getRemote(),
+            keys: boatKeys,
+            debug: (msg) => app.debug(msg)
+          })
+          keySync = ks
+          ks.start()
+
           const up = new Uplink({
             relayUrl: opts.relayUrl,
             getRemote: () => rl.getRemote(),
@@ -434,6 +453,7 @@ export = (app: ServerAPI): Plugin => {
       setRestDeps(null)
       uplink?.stop()
       liveUplink?.stop()
+      keySync?.stop()
       if (voyages) await voyages.flush()
       if (phases) await phases.flush()
       if (store) await store.flush()
@@ -445,6 +465,7 @@ export = (app: ServerAPI): Plugin => {
       phases = null
       uplink = null
       liveUplink = null
+      keySync = null
       app.setPluginStatus('Stopped')
     },
 
@@ -477,6 +498,7 @@ export = (app: ServerAPI): Plugin => {
           // now streaming perfectly well.
           uplink?.reset()
           liveUplink?.reset()
+          keySync?.reset()
         },
         getPendingUnlinks: () => ensureRemoteLink().getPendingUnlinks(),
         addPendingUnlink: (p) => ensureRemoteLink().addPendingUnlink(p)
