@@ -274,6 +274,13 @@ export function ed25519PublicFromRaw(raw: Buffer): KeyObject {
   return createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: b64u(raw) }, format: 'jwk' })
 }
 
+export function ed25519PrivateFromRaw(priv: Buffer, pub: Buffer): KeyObject {
+  return createPrivateKey({
+    key: { kty: 'OKP', crv: 'Ed25519', x: b64u(pub), d: b64u(priv) },
+    format: 'jwk'
+  })
+}
+
 /**
  * Derive the key and nonce that wrap the content key for one device.
  *
