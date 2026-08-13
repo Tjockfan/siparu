@@ -139,9 +139,7 @@ describe('the relay saying a screen ashore has opened', () => {
       onSnapshotsQuery: store as never,
       onVoyagesQuery: store as never,
       onTrackQuery: store as never,
-      onPhasesQuery: store as never,
-      onAlertRulesQuery: store as never,
-      onSetAlertRules: store as never
+      onPhasesQuery: store as never
     })
     live.start()
     last().open()

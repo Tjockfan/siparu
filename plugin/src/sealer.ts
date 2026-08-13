@@ -13,8 +13,7 @@
  * (nobody is, or not one of their keys can be used). The second is deliberately not a
  * fallback: silence is visible on her owner's screen, and a leak is not.
  */
-import { verifyRuleProof, type ParsedRuleWrite } from './alertrules'
-import type { AlertLevel, AlertNote, DevicePublicKey } from './contract'
+import type { DevicePublicKey } from './contract'
 import type { BoatKeyStore } from './keystore'
 import {
   MAX_DEVICES,
@@ -57,27 +56,6 @@ export interface SealerDeps {
   debug: (msg: string) => void
 }
 
-/**
- * The block size a sealed sentence is padded up to before it is encrypted.
- *
- * Ciphertext length is the one thing about a note that a carrier and Apple can both measure,
- * and message lengths differ enough between conditions to be a hint about which one rang.
- * Padding to a block makes every ordinary note the same size on the wire. It is a cheap
- * measure against a weak channel, which is the right trade when the alternative is leaving a
- * hint in something the whole product is built to keep unreadable.
- */
-export const NOTE_BLOCK_BYTES = 256
-
-/** One sealed sentence, padded so its length says nothing about which condition it is. */
-function paddedNote(note: unknown): string {
-  const json = JSON.stringify(note)
-  const bytes = Buffer.byteLength(json, 'utf8')
-  const block = Math.ceil(bytes / NOTE_BLOCK_BYTES) * NOTE_BLOCK_BYTES
-  // Trailing spaces, so the reader is an ordinary JSON.parse rather than a length header
-  // both sides have to agree about.
-  return json + ' '.repeat(block - bytes)
-}
-
 /** What became of the last thing she was asked to send. For diagnosis, never for a decision. */
 export interface SealState {
   mode: 'sealed' | 'blocked' | 'none'
@@ -88,8 +66,6 @@ export interface SealState {
 export class Sealer {
   /** What was said about the last batch of unusable keys, so it is said once, not per frame. */
   private lastComplaint = ''
-  /** What was said about the last unsealable note, for the same reason. */
-  private lastNoteComplaint = ''
   private lastMode: SealState['mode'] = 'none'
   private lastReason: string | null = null
 
@@ -107,79 +83,9 @@ export class Sealer {
     return { mode: this.lastMode, reason: this.lastReason }
   }
 
-  /**
-   * Seal one live report, carrying how loud she is as a signed extension.
-   *
-   * The severity is the one field a carrier is meant to read, because it has to know that a
-   * notification is due; signing it is what stops it deciding that one is not. What the
-   * condition actually is stays in the body.
-   *
-   * Sent on every frame, including when nothing is wrong. Ashore the bell rings on the rise
-   * and the fall back to normal is what re-arms it, so a boat that mentioned her severity
-   * only while something was wrong would ring for her first alarm of the day and stay silent
-   * for every one after it.
-   */
-  seal(frame: unknown, alert?: AlertLevel, note?: AlertNote, risenAt?: number): SealVerdict {
-    const extensions: Record<string, string> = {}
-    if (alert) extensions.alert = alert
-    // Which event the severity is about. Signed like the severity and for the same reason: a
-    // carrier that could rewrite it would decide which alarms are new, which is the same
-    // switch as deciding which ones are loud.
-    //
-    // Left off entirely while nothing audible has ever stood, so the ordinary quiet day sends
-    // exactly what it sent before this existed - and an older shore, which never reads this
-    // field, keeps working off the severity alone.
-    if (risenAt !== undefined && risenAt > 0) extensions.alert_at = String(Math.trunc(risenAt))
-    // A note that cannot be sealed does not stop the frame. The cost of leaving it out is a
-    // generic notification, which is what every notification was until today; the cost of
-    // refusing the frame would be a boat that goes quiet on her owner's screen because she
-    // could not write a sentence.
-    if (note) {
-      const sealed = this.sealNote(note)
-      if (sealed) extensions.note = sealed
-    }
-    return this.sealPayload(frame, Object.keys(extensions).length > 0 ? extensions : undefined)
-  }
-
-  /**
-   * One sentence, sealed to the same screens and signed on its own.
-   *
-   * A whole frame rather than a bare ciphertext, because the carrier lifts this out and hands
-   * it to Apple by itself: alone on that path it still has to prove whose it is and when it
-   * was made. The signature is what stops a carrier writing its own sentence into a
-   * notification, and `boat` and `ts` are what stop it replaying yesterday's.
-   *
-   * Its wrapped keys are inside its signature, so the carrier passes the block on whole. It
-   * cannot drop the other devices' wraps to save room, and it is not asked to understand any
-   * of it.
-   */
-  private sealNote(note: AlertNote): string | undefined {
-    const devices = this.deps.devices()
-    const boat = this.deps.boatId()
-    const keys = this.deps.keys.get()
-    if (devices.length === 0 || !boat || !keys) return undefined
-
-    try {
-      const { frame } = sealFrame({
-        boat,
-        ts: Date.now(),
-        plaintext: paddedNote(note),
-        devices: devices.slice(0, MAX_DEVICES).map((d) => ({
-          kid: d.kid,
-          pub: Buffer.from(d.pub, 'base64url')
-        })),
-        identity: keys.identity
-      })
-      this.lastNoteComplaint = ''
-      return Buffer.from(JSON.stringify(frame), 'utf8').toString('base64url')
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : 'could not seal this note'
-      if (reason !== this.lastNoteComplaint) {
-        this.deps.debug(`sealing the alert note: ${reason}`)
-        this.lastNoteComplaint = reason
-      }
-      return undefined
-    }
+  /** Seal one live report. */
+  seal(frame: unknown): SealVerdict {
+    return this.sealPayload(frame)
   }
 
   /**
@@ -220,50 +126,6 @@ export class Sealer {
     } catch {
       return undefined
     }
-  }
-
-  /**
-   * Whether a rule write was really made by the device it names.
-   *
-   * The only question of this kind the boat ever asks. Every other message from the shore is a
-   * read, and a read needs no proof: the answer is sealed to her owner's screens whoever asked,
-   * so a stranger learns nothing from a reply he cannot open. A write is different, because her
-   * inbox key is public - without this, anybody who knew it could silence her alarms, and the
-   * owner would find out the next time something went wrong and his phone stayed quiet.
-   *
-   * The device list is the one the key poll keeps current, so a screen removed ashore loses the
-   * ability to write within one interval, exactly as it loses the ability to read. That is what
-   * makes revocation mean something here, and it costs no extra machinery.
-   *
-   * False on anything at all: an unknown device, a boat that is not paired, a proof that does
-   * not hold. The caller answers such a write with silence rather than a refusal.
-   */
-  proves(req: ParsedRuleWrite): boolean {
-    const boat = this.deps.boatId()
-    const keys = this.deps.keys.get()
-    if (!boat || !keys) return false
-    // The same slice the frame path applies, so writing and reading are the same authority. A
-    // screen past the ceiling receives no frames at all (sealFrame skips it and names it in
-    // `rejected`), and a device that cannot read a word she says has no business deciding when
-    // her alarms are heard.
-    //
-    // Exactly one match, and a list carrying the same kid twice is refused rather than resolved
-    // by taking the first. The list is assembled ashore over a channel the boat does not
-    // control, so "which of these two keys did the owner mean" is a question with no safe
-    // answer: taking either would let a duplicate row decide who may silence her.
-    const named = this.deps
-      .devices()
-      .slice(0, MAX_DEVICES)
-      .filter((d) => d.kid === req.kid)
-    const [device] = named
-    if (named.length !== 1 || !device) return false
-    return verifyRuleProof({
-      req,
-      boat,
-      inboxPriv: rawPrivate(keys.inbox),
-      inboxPub: publicFromPrivate(keys.inbox),
-      devicePub: Buffer.from(device.pub, 'base64url')
-    })
   }
 
   private sealPayload(payload: unknown, extensions?: Record<string, string>): SealVerdict {

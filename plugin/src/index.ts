@@ -19,8 +19,6 @@ import * as path from 'node:path'
 import type { Plugin, ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
 import { buildAisFeed, clampAisQuery } from './ais'
-import { AlarmWatch, NOTIFICATIONS_PREFIX } from './alarms'
-import { AlertRuleStore } from './alertrules'
 import { chartsDir, resolveMapConfig } from './charts'
 import { CONFIG_SCHEMA, DEFAULTS, INTERNAL, Options, resolveOptions } from './config'
 import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQuery } from './contract'
@@ -73,8 +71,6 @@ export = (app: ServerAPI): Plugin => {
   let boatKeyStore: BoatKeyStore | null = null
   /** Held for the same reason: the poll writes the sealing latch without awaiting it. */
   let sealingLatch: SealingLatch | null = null
-  /** Held for the same reason: a rule list written by a device may still be landing. */
-  let alertRuleStore: AlertRuleStore | null = null
   let timer: NodeJS.Timeout | null = null
   let unlinkRetryTimer: NodeJS.Timeout | null = null
   let unsubscribes: Array<() => void> = []
@@ -344,35 +340,15 @@ export = (app: ServerAPI): Plugin => {
 
           primeFromModel(s, Date.now())
 
-          // How loud she is, kept beside the gauges rather than among them. Empty on start
-          // and refilled by the subscription's first pass, so a condition standing across a
-          // plugin restart is heard again rather than remembered wrongly.
-          const alarms = new AlarmWatch((msg) => app.debug(msg))
-
-          // Which of those conditions may ring a pocket. Read off her own disk, so a choice her
-          // owner made survives the restart Signal K performs on every config save. Empty until
-          // a device writes one, and empty means loud: everything rings, which is what she did
-          // before this existed.
-          const alertRules = new AlertRuleStore(app.getDataDirPath(), (msg) => app.debug(msg))
-          alertRuleStore = alertRules
-          alertRules.load()
-
-          // Bound once and handed to both the severity word and the sentence beside it, so the
-          // two can never disagree about what was muted.
-          const audible = (p: string, s: 'warning' | 'alarm'): boolean => alertRules.rings(p, s)
-
           app.subscriptionmanager.subscribe(
             {
               // Cast: server-api brands Context/Path as nominal string types.
               context: 'vessels.self' as never,
               // Core paths by name, plus one wildcard per dynamic family so
-              // engine/tank/generator paths flow in without naming each one, plus the
-              // notification tree - which is not a gauge and never becomes one: it is read
-              // for how loud she is and nothing else.
+              // engine/tank/generator paths flow in without naming each one.
               subscribe: [
                 ...SUBSCRIBED_PATHS,
-                ...DYNAMIC_PREFIXES.map((p) => `${p}*`),
-                'notifications.*'
+                ...DYNAMIC_PREFIXES.map((p) => `${p}*`)
               ].map((p) => ({
                 path: p as never,
                 period: INTERNAL.samplePeriodMs,
@@ -386,14 +362,7 @@ export = (app: ServerAPI): Plugin => {
               for (const update of delta.updates ?? []) {
                 if (!('values' in update) || !Array.isArray(update.values)) continue
                 for (const pv of update.values) {
-                  // Sorted here, and not left to the state to sort out. It would drop a
-                  // notification today - the path is in none of the dynamic families and the
-                  // value is an object rather than a reading - but that is a consequence of
-                  // the gauge rules, not a decision about notifications, and widening those
-                  // rules one day must not quietly turn `notifications.tanks.fuel.0` into
-                  // something the dashboard draws a dial for.
-                  if (pv.path.startsWith(NOTIFICATIONS_PREFIX)) alarms.ingest(pv.path, pv.value, arrived)
-                  else s.ingest(pv.path, pv.value, arrived, update.$source)
+                  s.ingest(pv.path, pv.value, arrived, update.$source)
                 }
               }
             }
@@ -501,62 +470,7 @@ export = (app: ServerAPI): Plugin => {
             onPhasesQuery: async (limit) => ({
               phases: pl.list(Math.min(Math.max(1, limit || 50), 500))
             }),
-            // What she is going by, and what she could be asked about. The paths go out only
-            // inside a sealed answer: which notifications a vessel is wired for says a good deal
-            // about what is aboard her.
-            onAlertRulesQuery: async () => ({
-              rules: alertRules.rules(),
-              ts: alertRules.ts(),
-              known: alarms.knownPaths()
-            }),
-            // The one write. Proof first, and nothing at all is said to a write that fails it:
-            // her inbox key is public, so an unproven write is a stranger, and a refusal would
-            // only confirm to him that he had found a boat. A proven device is answered whatever
-            // the outcome, because a screen that wrote a list she would not take has to hear why.
-            onSetAlertRules: async (req) => {
-              if (!seal.proves(req)) {
-                app.debug(`alert rules: a write claiming device ${req.kid} did not prove it`)
-                return undefined
-              }
-              const refusal = await alertRules.apply(req, Date.now())
-              return refusal
-                ? { type: 'setalertrules', id: req.id, error: refusal }
-                : {
-                    type: 'setalertrules',
-                    id: req.id,
-                    result: { rules: alertRules.rules(), ts: alertRules.ts() }
-                  }
-            },
-            // Sealed, with how loud she is carried in the clear beside it and signed. That
-            // one word is what lets the shore ring a pocket for an alarm it cannot read; the
-            // conditions themselves go inside the body, where the carrier cannot follow.
-            // Severity is sent on every frame, normal included: ashore the fall back to
-            // normal is what re-arms the bell.
-            //
-            // The note is the same condition the body's list puts first, sealed a second time
-            // on its own. The body reaches a screen that is open; the note is what reaches a
-            // pocket, because the carrier lifts it out and hands it to Apple without being
-            // able to read a word of it.
-            // The rules filter the flag and the sentence, never the body: `alarms` below is the
-            // unfiltered list, so a muted condition is still on the screen of anybody who opens
-            // the app. He asked not to be woken, not to be kept in the dark.
-            //
-            // Filtering aboard rather than ashore is what keeps the carrier from learning WHAT
-            // was muted, and from being in a position to decide it was not muted. It does not
-            // hide that something happened: the body is encrypted with a stream cipher and is
-            // not padded, so a standing condition adds its own length to every frame that
-            // carries it, and a carrier watching sizes can see the step. Narrower than it
-            // sounds - the frame already varies with how many gauges a boat publishes - but the
-            // honest statement is "the carrier cannot read it", not "the carrier cannot tell".
-            // Padding the body would close it and costs bandwidth on every frame; open as its
-            // own decision rather than settled quietly here.
-            seal: (frame) =>
-              seal.seal(
-                { ...(frame as Record<string, unknown>), alarms: alarms.conditions() },
-                alarms.level(audible),
-                alarms.note(audible),
-                alarms.risenAt(audible)
-              ),
+            seal: (frame) => seal.seal(frame),
             // A screen ashore has opened, so the list of screens she seals to is worth
             // re-reading now rather than at the end of a five minute poll. That poll is what
             // decides whether a phone authorised a minute ago can open anything, and the moment
@@ -636,8 +550,6 @@ export = (app: ServerAPI): Plugin => {
       // lands leaves a rename running against a directory the caller may remove.
       if (boatKeyStore) await boatKeyStore.flush()
       if (sealingLatch) await sealingLatch.flush()
-      // A rule write is answered before its rename has necessarily landed, for the same reason.
-      if (alertRuleStore) await alertRuleStore.flush()
       state = null
       store = null
       rollups = null
@@ -650,7 +562,6 @@ export = (app: ServerAPI): Plugin => {
       sealer = null
       boatKeyStore = null
       sealingLatch = null
-      alertRuleStore = null
       app.setPluginStatus('Stopped')
     },
 

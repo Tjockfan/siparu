@@ -147,8 +147,8 @@ describe('sealing a fresh frame', () => {
     expect(() => JSON.parse(decoded) as unknown).toThrow()
     expect(decoded).not.toContain('lat')
     // And the field list is pinned, so a later cleartext field cannot be added
-    // without this test being read again. That is the point: the alarm flag is
-    // already one such field, and each new one widens what the relay sees.
+    // without this test being read again. That is the point: every extension
+    // rides in the clear, and each new one widens what the relay sees.
     expect(Object.keys(frame).sort()).toEqual([
       'alert',
       'boat',
@@ -362,8 +362,8 @@ function b64uOf(n: number): string {
 
 describe('the frame type', () => {
   it('allows an extension field without a cast', () => {
-    // The alarm severity flag has to be expressible, and a type that forbade
-    // it would push every caller into `as unknown as`.
+    // An extension field has to be expressible, and a type that forbade it
+    // would push every caller into `as unknown as`.
     const frame: SealedFrame = {
       v: 1,
       boat: 'b',

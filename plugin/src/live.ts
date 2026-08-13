@@ -16,12 +16,7 @@
  * fleet, and every owner would have to walk down to their boat to fix a bug that was ours.
  */
 import type { RemoteLink } from './remotelink'
-import { parseRuleWrite, type ParsedRuleWrite } from './alertrules'
 import type {
-  AlertRulesReadResult,
-  AlertRulesRequest,
-  AlertRulesResponse,
-  SetAlertRulesResponse,
   HistoryRequest,
   HistoryResponse,
   PathSeriesResult,
@@ -230,26 +225,6 @@ export interface LiveDeps {
    * a boat wired without it simply never grows the ear.
    */
   onPhasesQuery?: (limit: number) => Promise<PhaseListResult>
-  /**
-   * Answers which conditions the owner asked to hear about, and which ones this vessel is known
-   * to raise at all. A read like its five siblings: her own file and her own notification tree,
-   * never Signal K. Absent leaves the socket deaf to the question, so an old relay or a boat
-   * wired without it simply never grows the ear.
-   */
-  onAlertRulesQuery?: () => Promise<AlertRulesReadResult>
-  /**
-   * Takes the one thing a device writes: the list of which conditions may ring a pocket.
-   *
-   * Unlike every other handler here this one is a write, and the difference is carried in its
-   * return type. Answering `undefined` means the write is dropped in silence, which is what
-   * happens to one whose proof does not hold: a stranger who guesses at the boat's inbox key
-   * learns nothing, and is handed no sealed frame he could not open anyway. Every outcome a
-   * proven device can reach is answered, refusals included, because a screen that wrote a list
-   * she would not take has to be able to say why.
-   *
-   * It reaches the plugin's own data directory and nothing else. No delta, no PUT, no gear.
-   */
-  onSetAlertRules?: (req: ParsedRuleWrite) => Promise<SetAlertRulesResponse | undefined>
   /**
    * Told that a screen ashore has just started watching her.
    *
@@ -491,9 +466,7 @@ export class LiveUplink {
                 ? { type: 'voyages', id: asked.id, error: refusal }
                 : asked.type === 'track'
                   ? { type: 'track', id: asked.id, error: refusal }
-                  : asked.type === 'phases'
-                    ? { type: 'phases', id: asked.id, error: refusal }
-                    : { type: 'alertrules', id: asked.id, error: refusal }
+                  : { type: 'phases', id: asked.id, error: refusal }
         )
       }
     })
@@ -535,15 +508,11 @@ export class LiveUplink {
 
   /**
    * The whole inbound surface: the shore may ask the boat to send back her own recorded
-   * history, and one thing more. One gauge's series (handleHistory), whole snapshot rows
-   * (handleSnapshots), her recent voyages (handleVoyages), one voyage's path (handleTrack),
-   * her phases (handlePhases) or the alert rules she is going by (handleAlertRules). Six
-   * reads; each drops in silence anything that is not its own request.
-   *
-   * The seventh, handleSetAlertRules, is the only write, and it is the only message here that
-   * has to prove who sent it. Nothing about it steers the vessel: it names which conditions
-   * may ring a pocket, and the boat keeps that list in a file of her own. Anything that is
-   * none of the seven is not acted on at all, because the shore may not steer a boat.
+   * history, and nothing else. One gauge's series (handleHistory), whole snapshot rows
+   * (handleSnapshots), her recent voyages (handleVoyages), one voyage's path (handleTrack)
+   * or her phases (handlePhases). Five reads; each drops in silence anything that is not its
+   * own request, and anything that is none of the five is not acted on at all, because the
+   * shore may not steer a boat.
    *
    * The text handed here is either what arrived on the socket or what came out of a sealed
    * envelope. It makes no difference to what may be asked: the guards are the same guards.
@@ -554,8 +523,6 @@ export class LiveUplink {
     this.handleVoyages(gen, text)
     this.handleTrack(gen, text)
     this.handlePhases(gen, text)
-    this.handleAlertRules(gen, text)
-    this.handleSetAlertRules(gen, text)
   }
 
   /**
@@ -797,75 +764,6 @@ export class LiveUplink {
   }
 
   /**
-   * The rules she is going by, and the notification paths she is known to raise - a sixth
-   * sibling of handleHistory, and just as narrow. Parse, act only if it is an alert rules
-   * request, and read her own file and her own notification tree, never Signal K.
-   */
-  private handleAlertRules(gen: number, data: string): void {
-    const handler = this.deps.onAlertRulesQuery
-    if (!handler) return
-
-    let msg: unknown
-    try {
-      msg = JSON.parse(data)
-    } catch {
-      return
-    }
-    if (!isAlertRulesRequest(msg)) return
-
-    const { id } = msg
-    handler().then(
-      (result) => this.reply(gen, { type: 'alertrules', id, result }),
-      (err) => {
-        this.deps.debug(`alert rules read failed: ${String(err)}`)
-        this.reply(gen, {
-          type: 'alertrules',
-          id,
-          error: { code: 'ALERTRULES_FAILED', message: 'alert rules read failed' }
-        })
-      }
-    )
-  }
-
-  /**
-   * The one write, and the only message on this socket that has to say who sent it.
-   *
-   * Parsed here no further than the proof needs, because the proof is computed over raw fields
-   * and a message rewritten on the way to being understood is a message whose proof no longer
-   * covers what arrived. Whether the list means anything to this build is decided after the
-   * sender is established, so that a device she answers to is told what was wrong with it.
-   *
-   * A write whose proof does not hold is answered with nothing at all. The handler says so by
-   * returning undefined, and the silence is deliberate: an outsider who guessed at the boat's
-   * inbox key gets no confirmation that he found it, and no sealed frame minted on his behalf.
-   */
-  private handleSetAlertRules(gen: number, data: string): void {
-    const handler = this.deps.onSetAlertRules
-    if (!handler) return
-
-    let msg: unknown
-    try {
-      msg = JSON.parse(data)
-    } catch {
-      return
-    }
-    const req = parseRuleWrite(msg)
-    if (!req) return
-
-    handler(req).then(
-      (answer) => {
-        if (answer) this.reply(gen, answer)
-      },
-      (err) => {
-        // Not answered, and not guessed at either. A throw here is a fault aboard rather than
-        // a verdict about the sender, and inventing a refusal would tell a screen its list was
-        // rejected when nobody ever looked at it.
-        this.deps.debug(`alert rules write failed: ${String(err)}`)
-      }
-    )
-  }
-
-  /**
    * Send a history, snapshots, voyages, track or phases answer, but only if it still belongs to
    * the socket that asked. A query reads the disk while the line may drop and redial underneath it;
    * the generation guard is what keeps a slow answer from landing on a fresh connection that
@@ -887,7 +785,6 @@ export class LiveUplink {
       | VoyagesResponse
       | TrackResponse
       | PhasesResponse
-      | AlertRulesResponse
   ): void {
     if (gen !== this.gen || !this.sock) return
     try {
@@ -905,8 +802,6 @@ export class LiveUplink {
       | VoyagesResponse
       | TrackResponse
       | PhasesResponse
-      | AlertRulesResponse
-      | SetAlertRulesResponse
   ): void {
     if (gen !== this.gen || !this.sock) return
     try {
@@ -1093,16 +988,6 @@ function isPhasesRequest(m: unknown): m is PhasesRequest {
 }
 
 /**
- * An alert rules read, told apart the same way: the type tag is the gate. It carries nothing but
- * an id, because there is nothing to ask about - the answer is the whole of what she holds.
- */
-function isAlertRulesRequest(m: unknown): m is AlertRulesRequest {
-  if (typeof m !== 'object' || m === null) return false
-  const o = m as Record<string, unknown>
-  return o.type === 'alertrules' && typeof o.id === 'string'
-}
-
-/**
  * The real socket.
  *
  * `ws` is here rather than the platform's own WebSocket because the compatibility floor is Node
@@ -1148,7 +1033,7 @@ function wsConnect(url: string, token: string): LiveSocket {
 export function rpcEnvelope(
   data: string
 ): {
-  type: 'history' | 'snapshots' | 'voyages' | 'track' | 'phases' | 'alertrules'
+  type: 'history' | 'snapshots' | 'voyages' | 'track' | 'phases'
   id: string
 } | null {
   let msg: unknown
@@ -1165,15 +1050,10 @@ export function rpcEnvelope(
     type === 'snapshots' ||
     type === 'voyages' ||
     type === 'track' ||
-    type === 'phases' ||
-    type === 'alertrules'
+    type === 'phases'
   ) {
     return { type, id }
   }
-  // A rule write is deliberately not among these. A refusal exists so that a screen waiting on
-  // an answer stops waiting, and no screen writes a list in the clear: the app seals its
-  // questions whenever the boat is sealing, so a cleartext write to a sealed boat is not a
-  // screen at all. Answering one would only tell whoever sent it that he had found a boat.
   return null
 }
 

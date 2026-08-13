@@ -84,23 +84,6 @@ describe('plugin lifecycle', () => {
     expect(app.calls.errors).toEqual([])
   })
 
-  it('asks the server for the notification tree, not only the gauges', async () => {
-    // Without this one line she is deaf to every alarm aboard, and the failure is silent in
-    // the worst way: frames keep flowing, sealed and signed, all of them saying nothing is
-    // wrong. Nothing else in the chain can notice that the boat never mentioned it.
-    const createPlugin = await loadFactory()
-    const app = fakeApp(dir)
-    const plugin = createPlugin(app)
-    plugin.start({})
-    await waitFor(() => app.calls.subscribes === 1)
-
-    expect(app.calls.subscribed).toContain('notifications.*')
-    // And the gauges are still there, which is what makes this an addition rather than a swap.
-    expect(app.calls.subscribed).toContain('navigation.position')
-    await plugin.stop()
-    expect(app.calls.errors).toEqual([])
-  })
-
   it('stop during async init leaks no subscription (config-save restart race)', async () => {
     const createPlugin = await loadFactory()
     const app = fakeApp(dir)

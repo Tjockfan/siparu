@@ -44,9 +44,9 @@ import {
   verify,
   type KeyObject
 } from 'crypto'
-import type { AlertLevel, SealedFrame, WrappedKey } from './contract'
+import type { SealedFrame, WrappedKey } from './contract'
 
-export type { AlertLevel, SealedFrame, WrappedKey }
+export type { SealedFrame, WrappedKey }
 
 export const FRAME_VERSION = 1
 
@@ -156,10 +156,10 @@ export function u64be(n: number): Buffer {
  * Extension fields, in one canonical order, so that a later version can add a
  * field and have it signed without this function being touched.
  *
- * The alarm severity flag is the first of these and shows why it matters: it
- * is cleartext by necessity, since the relay has to know a push is due. If it
- * were outside the signature a hostile relay could downgrade an alarm to
- * normal and swallow the notification, or invent one that never happened.
+ * The `id` a sealed answer carries shows why the signature matters: it is
+ * cleartext by necessity, since the relay routes by it, and if it were outside
+ * the signature a hostile relay could hand a screen the answer to a different
+ * question.
  *
  * Keys are restricted to lower-case ASCII so that sorting cannot differ
  * between implementations, and values to strings so that number formatting
@@ -475,13 +475,8 @@ export interface SealOptions {
   /**
    * Cleartext fields carried beside the sealed body, signed but not encrypted.
    * Keys must be lower-case ASCII and values strings.
-   *
-   * `alert` is named explicitly rather than left to the index signature so
-   * that a severity is spelled the way the carrier expects: it is the one
-   * field a relay reads and acts on, and a typo in it means a push that never
-   * arrives, which is a silence nobody notices.
    */
-  extensions?: { alert?: AlertLevel } & Record<string, string>
+  extensions?: Record<string, string>
 }
 
 /**

@@ -31,17 +31,7 @@ swift dev/e2e-vectors/Verify.swift                                 # device side
 npx vitest run plugin/test/sealing.test.ts                         # the shipping module
 ```
 
-The rule write proof is a second format with its own file, and its own four
-commands:
-
-```sh
-node dev/e2e-vectors/generate-rules.mjs > dev/e2e-vectors/rule-vectors.json
-node dev/e2e-vectors/verify-rules.mjs                              # boat side
-swift dev/e2e-vectors/VerifyRules.swift                            # device side
-npx vitest run plugin/test/alertrules.test.ts                      # the shipping module
-```
-
-The answers she seals to a question are a third file, and the one command that
+The answers she seals to a question are a second file, and the one command that
 produces them runs the shipping uplink rather than the sealing module:
 
 ```sh
@@ -126,47 +116,16 @@ attack rather than an illustration:
 | `eph_respelled` | A different spelling of identical bytes is refused, so the signature commits to the text on the wire |
 | `body_whitespace` | Same, through a character a lax decoder ignores |
 | `version_rewritten` | The version field cannot wrap and collide with another version |
-| `alert_downgraded` | Extension fields are signed, so an alarm cannot be turned into a normal reading in transit |
+| `alert_downgraded` | Extension fields are signed, so none can be rewritten in transit |
 
 The last four exist because a security review found them. The format changed
 to close them, before anything shipped, which was the point of doing this
 first.
 
-## The rule write vectors
-
-`rule-vectors.json` fixes the one message that travels the other way and is not
-a read: the list of which conditions may raise the alarm flag. A read needs no
-proof of its sender, because the answer is sealed to the owner's screens
-whoever asked. A write does, because the boat's inbox key is public, and
-without one anybody who knew it could silence an owner's alarms.
-
-The proof creates no new credential. It is an HMAC under a key derived from the
-X25519 private half the device already holds to open her frames: whoever has
-that key is reading every report she sends, so there is no fresh secret to
-steal.
-
-| Vector | What it proves |
-|---|---|
-| `rules_reordered` | The rules are covered in the order sent, so a carrier cannot shuffle them |
-| `ts_rewritten` | The timestamp is covered, which is what the replay floor rests on |
-| `id_rewritten` | The write is bound to its envelope, so a proof cannot be moved to another request |
-| `ring_relaxed` | A severity cannot be loosened in transit |
-| `rule_dropped` | The count is covered, so an entry cannot be removed from the list |
-| `path_rewritten` | A mute cannot be moved from one condition to another |
-| `kid_borrowed` | Knowing an authorised key id is not enough without its private half |
-
-Verified by hand on Node 26 and on Swift 6.3.1 / CryptoKit under macOS 26,
-against the file Node produced, with no adaptation on either side. The Node 20
-floor and Node 22 cover it in CI, where both vector tests run. Both verifiers were
-mutation-checked rather than trusted: drifting the HKDF info string turns the
-proof checks red while the committed input bytes stay green, and dropping the
-rules from the input turns both red. A verifier that cannot be made to fail is
-not measuring anything.
-
 ## Not decided here
 
-This directory fixes the format. Key lifecycle, pairing, the notification
-preference channel and the plan metadata belong to the specification, and
+This directory fixes the format. Key lifecycle, pairing and the plan metadata
+belong to the specification, and
 replay defence belongs to the client: a reader must remember the newest
 timestamp it has accepted, because no stateless check can catch a whole frame
 delivered twice.

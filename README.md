@@ -148,20 +148,10 @@ that sends a position in the clear, because a boat whose privacy depends on the
 state of a list held elsewhere does not have any.
 
 Once a device is named, the report is encrypted to it and the relay carries a
-block it cannot read. Three things stay legible beside it, and they are worth
-stating plainly because they are what a carrier can see:
-
-- Her identifier and the time she sent the frame, so it can be routed at all.
-- How loud she is: `normal`, `warning` or `alarm`, and nothing about what is
-  wrong. A carrier has to know a notification is due, and this field is inside
-  her signature so that it cannot decide one is not.
-- When the newest audible condition began, as a moment in time. Without it a
-  second alarm raised while a first one stands is indistinguishable from the
-  first one still standing, and the second would never be announced. It says
-  that an event is a different event; what the event is stays encrypted.
-
-Taken together, a carrier can see that something is wrong aboard, roughly how
-serious, and when each one started. It cannot see what any of them is.
+block it cannot read. Two things stay legible beside it, and they are worth
+stating plainly because they are what a carrier can see: her identifier and
+the time she sent the frame, so it can be routed at all. Both are inside her
+signature, so neither can be rewritten in transit.
 
 Voyage detection opens after sustained movement, closes after sustained
 stillness, and folds short docking manoeuvres into the preceding voyage. Its
