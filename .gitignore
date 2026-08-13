@@ -1,0 +1,29 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.log
+.env
+.env.*
+.DS_Store
+
+# Webapp build output - shipped via package.json "files", not committed.
+# Anchored: a bare "public/" matches at any depth, which also swallowed the
+# webapp/public source tree, so a fresh clone built a PWA with no favicon and no
+# manifest. Only the generated top-level directory belongs here.
+/public/
+
+# Local test sandbox
+.sandbox/
+
+# Local dev tooling (synthetic data feeder, not shipped)
+# The crypto vectors are the exception, and the pattern has to exclude the
+# contents rather than the directory: git will not descend into an excluded
+# directory, so a bare "dev/" makes the re-include below unreachable. The
+# vectors are an agreement between two implementations in two languages and so
+# must be versioned, even though they ship with nothing (package.json "files"
+# keeps them out of the npm package).
+dev/*
+!dev/e2e-vectors/
+
+# npm pack output
+*.tgz

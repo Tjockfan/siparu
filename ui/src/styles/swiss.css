@@ -1,0 +1,1857 @@
+/* ============================================================
+   SIPARU - Swiss-brutalist design system
+   Single red accent · Archivo · sharp corners · no shadow · no gradient.
+   Two themes (data-theme axis):
+     - NIGHT = default (dark grey layers + red accent; red light
+       preserves night vision - bridge default)
+     - DAY   = [data-theme="day"] light theme
+   All component classes are scoped under .swiss. Tokens live on :root.
+   ============================================================ */
+
+/* ---------- TOKENS · NIGHT (default) ---------- */
+:root {
+  --sp-font: "Archivo", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --sp-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --cell: #1a1d21;          /* card / surface - dark grey, not black */
+  --ink-band: #101214;      /* chrome + grid gaps + wind band */
+  --text: #e8eaed;          /* primary text on cells */
+  --muted: #8b9095;
+  --band-muted: #969ba1;    /* muted text on dark bands */
+  --chrome-text: #f2f3f5;
+  --accent: #e5484d;        /* accent: index, active tab, sparkline, needles */
+  --accent-block: #7d2427;  /* solid accent fill cells */
+  /* Text and marks drawn ON an --accent-block fill, and nowhere else. In day it is
+     plain white, so a rule that puts it on a --cell surface paints white on white:
+     that is how the largest figure on the Voyage screen came to be invisible to
+     every owner running the light theme. On a cell, the colour is --text. */
+  --on-block: #ffecec;
+  --accent-soft: #f2a6a9;   /* soft accent text on dark */
+  --on-accent: #140606;     /* text on solid accent */
+  --rule: rgba(255, 255, 255, 0.16);  /* heavy brutalist border/rule */
+  --hair: rgba(255, 255, 255, 0.085); /* subtle in-cell divider */
+
+  --alarm: #ff9f43;         /* accent is red, so alarm is orange */
+  --warn: #d6a23c;
+
+  /* Running-light sides, for the engine matrix header band. Port red, starboard green as they are
+   * on the water; centre takes amber, which is not a light but reads as "neither side". SOLID
+   * fills on purpose: a translucent tint of these washed out on a bright screen and the owner
+   * could not see which column was which (measured twice). The band carries its own dark ground
+   * and light text so it reads the same in either theme. */
+  --nav-port-bg: #7d2427;   --nav-port-fg: #ffd7d9;
+  --nav-stbd-bg: #1c5e2e;   --nav-stbd-fg: #cdf3d6;
+  --nav-center-bg: #6e5214; --nav-center-fg: #f6e6bd;
+
+  /* chart colors (Sparkline / Map JS read these) */
+  --spark-gust: #e5484d;
+  --spark-baro: #c7ced2;
+  --map-sea: #101418;
+  --map-grid: rgba(255, 255, 255, 0.06);
+  --map-land: #1e2226;
+  --map-ring: rgba(255, 255, 255, 0.14);
+  --map-ais: #9aa1a6;
+  --map-ais-hi: #e5484d;
+  --map-vessel: #e5484d;
+  --map-land-text: rgba(255, 255, 255, 0.34);
+  --ctrl-icon-filter: invert(0.85); /* MapLibre +/- icons are dark - brighten at night */
+}
+
+/* ---------- TOKENS · DAY ---------- */
+:root[data-theme="day"] {
+  --cell: #ffffff;
+  --ink-band: #e9e7e3;
+  --text: #17191c;
+  --muted: #6b7075;
+  --band-muted: #5f6569;
+  --chrome-text: #17191c;
+  --accent: #c92a30;
+  --accent-block: #b3272c;
+  --on-block: #ffffff;
+  --accent-soft: #a33236;
+  --on-accent: #ffffff;
+  --rule: rgba(0, 0, 0, 0.2);
+  --hair: rgba(0, 0, 0, 0.09);
+
+  --alarm: #c2410c;
+  --warn: #a16207;
+
+  --nav-port-bg: #b3272c;   --nav-port-fg: #ffffff;
+  --nav-stbd-bg: #1e7a38;   --nav-stbd-fg: #ffffff;
+  --nav-center-bg: #8a6410; --nav-center-fg: #ffffff;
+
+  --spark-gust: #c92a30;
+  --spark-baro: #5a6167;
+  --map-sea: #dfe6ea;
+  --map-grid: rgba(0, 0, 0, 0.05);
+  --map-land: #cfd6da;
+  --map-ring: rgba(0, 0, 0, 0.12);
+  --map-ais: #6a7176;
+  --map-ais-hi: #c92a30;
+  --map-vessel: #c92a30;
+  --map-land-text: rgba(0, 0, 0, 0.35);
+  --ctrl-icon-filter: none;
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+html, body, #root { height: 100%; }
+/* Mobile browser toolbar + iOS rubber-band: NO page-level scroll/bounce -
+   each screen manages its own scroll area inside .sp-screen. */
+html, body { overflow: hidden; overscroll-behavior: none; background: var(--ink-band); }
+body {
+  margin: 0;
+  background: var(--ink-band);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.swiss, .swiss * { box-sizing: border-box; }
+.swiss {
+  font-family: var(--sp-font);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Screen = flex column, position:fixed -> locked to the viewport (also anchors sheet/scrim).
+   IMPORTANT: on iOS PWA standalone, a position:fixed element is locked to the LAYOUT
+   viewport. Since status-bar-style is now "black" (opaque), the layout viewport
+   origin drops BELOW the status bar and fills to the physical bottom - `inset:0`
+   covers the full screen, flush to the glass. Do NOT use `height:100vh`: 100vh = LARGE
+   viewport (844), but a fixed element is pinned to the clipped layout viewport (797), so
+   the extra 47px overflows OFF-screen and stays invisible (the bar never reaches bottom).
+   Top/bottom safe-area insets live in .head (top) / .tab/.foot (bottom) padding; with an
+   opaque bar the top inset drops to 0, nothing to touch. */
+.sp-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ink-band);
+  color: var(--text);
+  transition: background 0.25s, transform 0.3s ease;
+}
+
+/* Edge-swipe exit to Landing: the surface slides right. transform is applied
+   ONLY in this state - otherwise absent, so that position:fixed portal children
+   (Sheet/UserMenu) don't suffer a containing-block shift. */
+.sp-screen.sp-leaving { transform: translateX(100%); }
+
+.swiss [hidden] { display: none !important; }
+
+/* tabular figures default for numeric readouts */
+.sp-n, .sp-num { font-variant-numeric: tabular-nums; }
+
+/* Legacy theme .t-section (App/RequireAuth/ErrorBoundary Suspense + route loading
+   fallback text) takes the accent color. */
+.t-section { color: var(--accent); }
+
+/* ============================================================
+   BRAND MARK  (.sp-glyph) - the mark set beside a wordmark
+   ============================================================ */
+/* The mark's viewBox is cropped to the ink, so the box is the glyph: no dead
+   space to measure around or pull back out of layout. It is sized in em off the
+   font-size each .sp-lockup carries, which is also the size its wordmark
+   inherits. That is why the wordmark's font-size lives on the lockup and not on
+   the wordmark itself: one number per surface feeds both, so the mark tracks
+   automatically if a wordmark is ever resized, and no surface can drift into
+   rendering the brand at its own size. 0.62em lands the ink at about 0.85 of
+   cap height. Width stays auto: the viewBox is 22:7 and setting both distorts.
+   Also used outside .swiss (auth gate, loader). */
+.sp-glyph {
+  flex: none;
+  display: block;
+  height: 0.62em;
+  width: auto;
+}
+.sp-lockup { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+
+/* ============================================================
+   HEADER BAR  (.head)
+   ============================================================ */
+.swiss .head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--ink-band);
+  color: var(--chrome-text);
+  padding: calc(6px + env(safe-area-inset-top)) 16px 13px;
+}
+.swiss .head .mkwrap { display: flex; align-items: center; min-width: 0; }
+.swiss .head .sp-lockup { font-size: 19px; }
+.swiss .head .mk {
+  font-family: var(--sp-font);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: var(--chrome-text);
+  white-space: nowrap;
+}
+.swiss .head .mk .lt { font-weight: 300; opacity: 0.55; }
+.swiss .head .mkflag { display: inline-flex; align-items: center; margin-left: 9px; flex: none; }
+.swiss .head .mkflag svg { display: block; border-radius: 3px; }
+.swiss .head .back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rule);
+  margin-right: 10px;
+  color: var(--chrome-text);
+  cursor: pointer;
+  background: none;
+  flex: none;
+}
+.swiss .head .back svg { width: 15px; height: 15px; }
+.swiss .head .ctx {
+  font-family: var(--sp-font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 4px 7px;
+  margin-left: 11px;
+  flex: none;
+}
+.swiss .head .r { display: flex; align-items: center; gap: 11px; flex: none; }
+.swiss .head .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--accent-soft);
+}
+.swiss .head .live .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+}
+.swiss .head .live.is-stale { color: var(--band-muted); }
+.swiss .head .live.is-stale .dot { background: var(--band-muted); animation: none; }
+.swiss .head .live .dot { animation: spPulse 2s ease-in-out infinite; }
+.swiss .head .clk {
+  font-family: var(--sp-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--chrome-text);
+  opacity: 0.82;
+  font-variant-numeric: tabular-nums;
+}
+/* user-menu trigger (avatar initial) */
+.swiss .head .umenu-btn {
+  width: 30px; height: 30px;
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--chrome-text);
+  font-family: var(--sp-font);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+  transition: transform 0.12s var(--ease-snap);
+}
+.swiss .head .umenu-btn:active { transform: scale(0.94); }
+
+@keyframes spPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ============================================================
+   BOTTOM TAB BAR  (.tabbar) - Bridge
+   ============================================================ */
+.swiss .tabbar { flex: none; display: flex; background: var(--ink-band); }
+.swiss .tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  /* Bottom padding kept SHORT: with the opaque black status bar the viewport
+     now reaches the glass (tabBot=797=screen bottom). The old
+     calc(13px+env(safe-area-inset-bottom))=47px left a large gap under the
+     labels. 12px flat = labels near the very bottom, with a small margin to the
+     home indicator. Adjust the single value to move them up or down. */
+  padding: 11px 0 12px;
+  color: #79817f;
+  text-decoration: none;
+  position: relative;
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: color 0.15s;
+}
+.swiss .tab + .tab { border-left: 1px solid rgba(255, 255, 255, 0.09); }
+.swiss .tab svg { width: 21px; height: 21px; }
+.swiss .tab .tl {
+  font-family: var(--sp-font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.swiss .tab.on { color: var(--chrome-text); }
+/* Active-tab line: a layoutId-driven .tind instead of a static ::before -
+   when the tab changes, the line SLIDES to the newly active tab. */
+.swiss .tab .tind {
+  position: absolute;
+  top: 0; left: -0.5px; right: -0.5px;
+  height: 3px;
+  background: var(--accent);
+}
+
+/* ============================================================
+   DESKTOP SIDE RAIL  (.sp-rail)
+   ============================================================ */
+/* On a wide screen the screen becomes a row: the rail on the left, the content column filling the
+   rest. The rail is mounted only above the breakpoint and the top header + bottom tab bar only
+   below it (Layout branches on the same width), so a phone never sees any of this and the two
+   never stack. The content column takes min-width:0 so a wide child (the map canvas) cannot push
+   the layout past the viewport. */
+@media (min-width: 1000px) {
+  .swiss.sp-wide { flex-direction: row; }
+  .swiss.sp-wide > main { min-width: 0; }
+}
+.swiss .sp-rail {
+  flex: none;
+  width: 216px;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-band);
+  color: var(--chrome-text);
+  border-right: 1px solid var(--rule);
+  padding: calc(16px + env(safe-area-inset-top)) 0 16px;
+}
+.swiss .sp-rail .sp-brand { font-size: 19px; padding: 0 18px 22px; }
+.swiss .sp-rail .mk {
+  font-family: var(--sp-font);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: var(--chrome-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+/* The same four destinations the bottom bar carries, drawn down the rail. The active marker is a
+   left edge rather than the sliding top line: vertical travel between rows would need a layout
+   animation for little gain, and a steady edge reads cleanly at rest. */
+.swiss .sp-rail .rnav-list { display: flex; flex-direction: column; }
+.swiss .sp-rail .rnav {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 18px;
+  color: #79817f;
+  text-decoration: none;
+  font-family: var(--sp-font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  position: relative;
+  transition: color 0.15s;
+}
+.swiss .sp-rail .rnav svg { width: 20px; height: 20px; flex: none; }
+.swiss .sp-rail .rnav:hover { color: var(--chrome-text); }
+.swiss .sp-rail .rnav.on { color: var(--chrome-text); }
+.swiss .sp-rail .rnav.on::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+/* Footer, pushed to the bottom: the chrome that lives in the header on a phone. */
+.swiss .sp-rail .rfoot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 16px 18px 0;
+}
+.swiss .sp-rail .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--accent-soft);
+}
+.swiss .sp-rail .live .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: spPulse 2s ease-in-out infinite;
+}
+.swiss .sp-rail .live.is-stale { color: var(--band-muted); }
+.swiss .sp-rail .live.is-stale .dot { background: var(--band-muted); animation: none; }
+.swiss .sp-rail .clk {
+  font-family: var(--sp-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--chrome-text);
+  opacity: 0.82;
+  font-variant-numeric: tabular-nums;
+}
+.swiss .sp-rail .umenu-btn {
+  width: 30px; height: 30px;
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--chrome-text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s var(--ease-snap);
+}
+.swiss .sp-rail .umenu-btn:active { transform: scale(0.94); }
+
+/* ============================================================
+   TELEMETRY - brutalist modular grid
+   ============================================================ */
+/* The bridge is laid out from what the boat actually reports, so the cell count is hers to
+ * choose and no picture of it can be drawn here. What used to live at this line was a
+ * `grid-template-areas` map naming five rows for exactly eight cells: a boat with no wind
+ * instrument still owned a wind box, and adding a reading meant redrawing the map by hand.
+ *
+ * Two tiers, and both are flex on purpose. Grid was measured and rejected: a grid has no
+ * per-item grow, so any cell count that is not a multiple of the column count leaves trailing
+ * tracks painting the container. The shore learned this at 1023px (portal.css:474-489) and
+ * reverted it. Here the container is DARKER than a cell, so the same defect reads as black
+ * void on a night bridge - harder to catch, same bug. Flex grows every item, so the count
+ * stops mattering, which is the entire point.
+ *
+ * Measured at every count from 13 readings down to 1, both engines, phone and iPad: bare
+ * glass stays at 0.0-2.3%, which is where the eight-cell picture sat (1.2%). Deleting the map
+ * and stopping there reads 39-65%. See dev/verify/bridge_hole.py.
+ */
+/* The dashboard is one panel on a phone (a tab row over the bridge or one system) and the whole
+ * board on a wide screen. The phone stays a single column; the board (.sp-board) is set below. */
+.swiss .sp-dash {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ============================================================
+   DASHBOARD BOARD  (.sp-board) - wide, everything at once
+   ============================================================ */
+/* The bridge full width across the top, then the systems side by side beneath it, the whole board
+ * scrolling as one when she reports more than fits. The bridge answers "where is she and what is
+ * she doing" - asked before any other - so it takes the top rather than a column beside the rest;
+ * the systems line up under it, engines against generators against tanks, read in one glance. The
+ * chart is not here: it has its own Map tab, and pinning it beside the readings only halved them. */
+.swiss .sp-board {
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--ink-band);
+}
+/* The systems row. Each panel takes its content's width so the engine and generator matrices stay
+ * compact; the tanks grow into what is left, since a fill bar reads better long than a matrix does
+ * wide. They wrap to a second row when three will not fit rather than crushing the readings. */
+.swiss .sp-systems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: flex-start;
+}
+.swiss .sp-systems .sp-sec { flex: 0 1 auto; }
+.swiss .sp-systems .sp-sec-tanks { flex: 1 1 320px; min-width: 300px; }
+/* The trip computer reads as a column beside the systems, not as a strip across the board. Its
+ * cells are the ordinary matrix ones, which grow from a 158px basis, so eight of them left to
+ * themselves span the full width and push the systems row onto a second line. Held to a section
+ * width and two cells per row: that is the shape an owner scans the passage average against the
+ * live gauge sitting next to it, which is the whole reason the panel is on this screen. */
+.swiss .sp-systems .sp-sec-trip { flex: 0 1 340px; min-width: 300px; }
+.swiss .sp-sec-trip .grid .matrix > .c { flex: 1 1 calc(50% - 2px); }
+/* In the board a matrix is sized to its content rather than stretched: the readings sit compact
+ * and centred under coloured headers, the mockup's shape. On the phone the same matrix fills its
+ * pane (the 1fr default) instead. */
+.swiss .sp-board .sm-matrix {
+  grid-template-columns: minmax(94px, auto) repeat(var(--sm-cols, 1), minmax(90px, max-content));
+  width: fit-content;
+}
+.swiss .sp-sec { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.swiss .sp-sec-h {
+  margin: 0;
+  padding: 11px 14px 5px;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--ink-band);
+}
+/* In the board the bridge grid is one section among several, not a pane to fill: flatten its
+ * vertical grow so band and matrix stack at their content height and the column, not the grid,
+ * owns the scroll. */
+.swiss .sp-board .grid { flex: none; }
+.swiss .sp-board .grid .band,
+.swiss .sp-board .grid .matrix { flex: none; }
+.swiss .sp-board .sy-wrap { flex: none; }
+/* Dense cells: a moderate fixed height and number, so a mixed dashboard reads as many equal
+ * readings rather than a few pane-filling heroes. The single bridge screen keeps its large type;
+ * these overrides apply only inside the board. */
+.swiss .sp-board .c { min-height: 94px; }
+.swiss .sp-board .c-sog .n { font-size: 40px; }
+.swiss .sp-board .grid .matrix .n { font-size: 34px; }
+.swiss .sp-board .c-state .s { font-size: 22px; }
+.swiss .sp-board .sy-n { font-size: 34px; }
+/* At the board's section width the position cell is narrow enough that the 18px coordinate would
+ * wrap its hemisphere letter onto a second line. A smaller figure on one line reads better than a
+ * broken one; it stays right-aligned beside its label. */
+.swiss .sp-board .c-pos .coords { font-size: 14px; white-space: nowrap; }
+/* The phone panel is the container each cell reads its width from (container-type), NOT the
+ * window: a tablet in portrait sits below the board threshold and shows this one pane, which must
+ * lay out for its own width rather than a phone's. inline-size, not size: size would need a
+ * definite height and collapse the flex fill to zero. */
+.swiss .sp-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+  container-name: pane;
+}
+
+.swiss .grid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-band);
+  gap: 2px;
+  min-height: 0;
+}
+/* The band answers "where is she and what is she doing" - the question you ask before any
+ * other. Weights, not positions: a member she does not report is not rendered, and grow
+ * spreads her share over the rest. No arithmetic and no table of fallbacks to keep in sync. */
+.swiss .grid .band {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: stretch;
+  gap: 2px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+/* Everything else she reports, equal cells, wrapping. */
+.swiss .grid .matrix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex: 2 1 0;
+  min-height: 0;
+  align-content: stretch;
+}
+/* A tier with no members is not rendered at all, and then the survivor takes the glass.
+ * `display: none` would NOT do: :only-child counts a hidden sibling, and the empty tier kept
+ * its share and painted 58-72% of the bridge black. The rule that says "no box for a reading
+ * she does not send" has to hold for the box that holds the boxes. */
+.swiss .grid > .band:only-child,
+.swiss .grid > .matrix:only-child,
+.swiss .grid > .c-quiet:only-child { flex: 1 1 auto; }
+
+/* The diagnosis a boat with no instruments on the bus gets instead of a blank screen. Not an
+ * alarm: a quiet panel alongside is a normal state, and painting it red would teach the crew
+ * to ignore red. */
+.swiss .c-quiet { justify-content: center; gap: 10px; }
+.swiss .c-quiet .meta {
+  font-family: var(--sp-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 42ch;
+}
+
+/* Weights carry the composition; the basis stops the weights from lying on a phone. The 1B
+ * design was drawn at 1440px, where SOG's 2/5 share is 576px. On a 390px phone that same
+ * share is 148px, and a 104px "8.4" does not fit in it: measured, 14px of the number was
+ * clipped away by .c's overflow:hidden, silently. Position was worse - its label and coords
+ * sit in a row, and 86px of the longitude was cut off. So the band wraps: it keeps the
+ * weights where there is room for them and stacks where there is not. min() rather than a
+ * bare basis, because a bare 200px would lay a 200px cell into a narrower pane and push the
+ * bridge off the phone - the same floor the matrix needs. */
+.swiss .grid .band > .c-sog { flex: 2 1 min(200px, 100%); }
+.swiss .grid .band > .c-state { flex: 1 1 min(100px, 100%); }
+.swiss .grid .band > .c-pos { flex: 2 1 min(200px, 100%); }
+/* min() is load-bearing, not decoration: a bare 158px basis lays a 158px cell into a pane
+ * narrower than that and drags the bridge sideways off the phone.
+ *
+ * The basis IS the column count - flex has no --cols to set - and the count decides how tall
+ * the cells end up. Measured with ten matrix readings: at 158px an iPad Air picks five
+ * columns, so ten cells land in two rows and each cell is 341px tall with a 46px number in
+ * it. One step up and the same iPad picks four columns, three rows, 221px. The phone must
+ * keep 158: at 210 it drops to a single column, which is a list, not a bridge. */
+.swiss .grid .matrix > .c { flex: 1 1 min(158px, 100%); min-width: 0; }
+/* The step up is asked of the PANE, not the window, so a phone keeps 158 while a tablet in
+   portrait (still one pane, below the board threshold) gets the wider basis its own width earns.
+   .sp-pane carries container-type; the wide board draws its cells outside any pane, so they hold
+   the 158 basis above rather than stepping up. */
+@container pane (min-width: 600px) {
+  .swiss .grid .matrix > .c { flex-basis: min(210px, 100%); }
+}
+.swiss .c {
+  background: var(--cell);
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transition: background 0.25s;
+  min-width: 0;
+}
+.swiss .c .t {
+  font-family: var(--sp-font);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.swiss .c .t .sub { color: var(--muted); }
+.swiss .n {
+  font-family: var(--sp-font);
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  line-height: 0.82;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.swiss .n .u {
+  font-family: var(--sp-font);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-size: 0.26em;
+  color: var(--muted);
+  margin-left: 0.3em;
+}
+
+/* The value is centred in the space under its label, not pinned to the floor. space-between
+ * parks the number at the bottom edge and leaves the top of a tall cell empty - a spreadsheet
+ * pushed to the bottom rather than a gauge. On a phone the cells are short enough that it
+ * barely shows; on a tall iPad cell it is the whole "too much whitespace" complaint. The
+ * label stays a top heading; margin-block:auto floats the value in what is left. */
+.swiss .c-sog { justify-content: flex-start; }
+.swiss .c-sog .n { font-size: 104px; margin-block: auto; }
+.swiss .c-state {
+  /* A solid red fill read as an "alarm" (Anchored is a safe state) -
+     reduced to a thin red accent, neutral background. */
+  background: var(--cell);
+  color: var(--text);
+  border-left: 2px solid var(--accent);
+  justify-content: flex-start;
+}
+.swiss .c-state .t { color: var(--accent); }
+.swiss .c-state .s {
+  font-family: var(--sp-font);
+  font-weight: 300;
+  font-size: 30px;
+  line-height: 0.92;
+  letter-spacing: -0.01em;
+  /* The state and its fix line are one thought and stay together: margin-top:auto on the
+     state and margin-bottom:auto on the fix line push the pair to the centre as a block,
+     rather than centring the state alone and stranding the fix line at the floor. */
+  margin-top: auto;
+  /* If Anchored/Underway/Moored doesn't fit the narrow cell, break onto 2 lines at a soft hyphen. */
+  overflow-wrap: break-word;
+  hyphens: manual;
+}
+.swiss .c-state .meta {
+  font-family: var(--sp-mono);
+  font-size: 10px;
+  color: var(--accent-soft);
+  margin-top: 8px;
+  margin-bottom: auto;
+  letter-spacing: 0.02em;
+}
+/* Every matrix cell is the same kind of thing - one reading, one number - so it gets one
+ * rule. Twenty hand-written px literals used to live here, one per named box, which is what
+ * a picture costs: a new reading meant picking a size for it by hand. */
+.swiss .grid .matrix > .c { justify-content: flex-start; }
+.swiss .grid .matrix .n { font-size: 46px; }
+/* Centre the number in the space below the label. Direct child only, so the composite cells
+ * keep their own layout: baro's number is nested in .left, and gust has a sparkline and a
+ * window selector instead of a bare number - neither matches, both are left alone. */
+.swiss .grid .matrix > .c > .n { margin-block: auto; }
+.swiss .c-depth .meta {
+  font-family: var(--sp-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  white-space: pre-line; /* deliberate "\n" break in the label (narrow cell) */
+}
+
+/* Wind used to be ONE cell carrying five readings, a sparkline and a window selector on a
+ * dark band. That box could not answer the only question this layout asks of a cell - "does
+ * she report this?" - because she can report true wind and no apparent angle, gusts and no
+ * direction. Four readings, four cells, four independent answers. The dark band went with it:
+ * a matrix cell is a matrix cell, and the tier is the composition now. */
+.swiss .c-gust {
+  /* Gust carries a sparkline and its 1/6/12/24h window selector, so it asks for two cells'
+     worth of width. That is a weight, not a position: in a narrow pane it wraps like
+     everything else, and min() stops it laying a 316px cell into a 200px pane. */
+  flex: 2 1 min(316px, 100%);
+}
+.swiss .c-gust .lab {
+  font-family: var(--sp-mono); font-size: 10px; color: var(--accent-soft); letter-spacing: 0.03em;
+}
+.swiss .c-gust .lab b { color: var(--text); }
+.swiss .spark { display: block; width: 100%; max-width: 220px; height: 42px; }
+
+@media (max-width: 410px) {
+  .swiss .c-state .s { font-size: 27px; }
+  .swiss .grid .c-pos .coords { font-size: 13.5px; white-space: nowrap; }
+  .swiss .spark { max-width: 150px; }
+  .swiss .gustseg button { padding: 4px 7px; font-size: 9px; }
+}
+
+/* gust window selector (1/6/12/24h) - segmented, on dark band */
+.swiss .gustseg { display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.2); }
+.swiss .gustseg button {
+  font-family: var(--sp-font); font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 4px 7px; background: none; border: none;
+  color: var(--band-muted); cursor: pointer;
+}
+.swiss .gustseg button + button { border-left: 1px solid rgba(255, 255, 255, 0.16); }
+.swiss .gustseg button.on { background: var(--accent); color: var(--on-accent); }
+
+/* baro - cell band, sparkline */
+.swiss .c-baro { flex-direction: row; align-items: center; gap: 16px; }
+.swiss .c-baro .left {
+  display: flex; flex-direction: column; justify-content: center; gap: 6px; flex: none;
+}
+.swiss .c-baro .trend {
+  font-family: var(--sp-mono); font-size: 11px; color: var(--muted); font-weight: 500;
+}
+.swiss .c-baro .trend.ok { color: var(--accent); }
+.swiss .c-baro .trend.warn { color: var(--warn); }
+.swiss .c-baro .trend.alarm { color: var(--alarm); }
+.swiss .c-baro .sparkwrap {
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+  align-items: flex-end; gap: 5px; min-width: 0;
+}
+.swiss .c-baro .sparkwrap .lab {
+  font-family: var(--sp-mono); font-size: 10px; color: var(--muted); letter-spacing: 0.03em;
+}
+.swiss .spark-b { display: block; width: 100%; max-width: 220px; height: 38px; }
+.swiss .c-baro.tap { cursor: pointer; }
+
+/* Baro detail popup (BaroPopup.tsx) - large pannable chart inside the Sheet body */
+.swiss .baro-pop { display: flex; flex-direction: column; gap: 14px; }
+.swiss .bp-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.swiss .bp-now {
+  font-family: var(--sp-font); font-weight: 600; font-size: 34px; color: var(--accent);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1;
+}
+.swiss .bp-now .bp-u { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 4px; }
+.swiss .bp-delta { font-family: var(--sp-mono); font-size: 12px; color: var(--muted); }
+.swiss .bp-seg { margin-left: auto; }
+.swiss .bp-chart {
+  display: block; width: 100%; height: auto; touch-action: none; user-select: none;
+  -webkit-user-select: none; overflow: hidden;
+}
+.swiss .bp-grid { stroke: var(--hair); stroke-width: 1; }
+.swiss .bp-ylab, .swiss .bp-xlab {
+  fill: var(--muted); font-family: var(--sp-mono); font-size: 9px;
+}
+.swiss .bp-ylab { text-anchor: end; }
+/* .bp-area fill uses an inline url(#bp-grad) gradient - no CSS fill so it isn't overridden */
+.swiss .bp-line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.swiss .bp-dot { fill: var(--accent); }
+.swiss .bp-msg { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; }
+/* Baro popup frame uses the accent color (this popup only - scoped via :has) */
+.swiss .sheet:has(.baro-pop) { border-color: var(--accent); }
+.swiss .sheet:has(.baro-pop) .sheet-head { border-bottom-color: var(--accent); }
+
+/* position */
+.swiss .c-pos { flex-direction: row; align-items: center; gap: 16px; }
+.swiss .c-pos .t { flex: none; }
+.swiss .c-pos .coords {
+  margin-left: auto; text-align: right;
+  font-family: var(--sp-font); font-weight: 400; font-size: 18px; line-height: 1.32;
+  letter-spacing: -0.01em; color: var(--text); font-variant-numeric: tabular-nums;
+}
+
+/* skeleton shimmer (telemetry load) */
+.swiss .skel {
+  display: inline-block; border-radius: 0;
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--muted) 18%, transparent) 25%,
+    color-mix(in oklab, var(--muted) 32%, transparent) 37%,
+    color-mix(in oklab, var(--muted) 18%, transparent) 63%);
+  background-size: 400% 100%;
+  animation: spShimmer 1.4s ease infinite;
+  color: transparent !important;
+}
+@keyframes spShimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+/* empty / centered message */
+.swiss .sp-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 40px 24px; text-align: center;
+}
+.swiss .sp-empty .em-t {
+  font-family: var(--sp-font); font-size: 13px; font-weight: 600; color: var(--text);
+}
+.swiss .sp-empty .em-s { font-family: var(--sp-font); font-size: 11px; color: var(--muted); max-width: 22ch; }
+
+/* ============================================================
+   LOGBOOK
+   ============================================================ */
+.swiss .lb {
+  flex: 1; display: flex; flex-direction: column; background: var(--cell); color: var(--text);
+  overflow: hidden; transition: background 0.25s; min-height: 0;
+}
+.swiss .lb-ctrl {
+  display: flex; align-items: center; gap: 9px; padding: 11px 16px;
+  border-bottom: 2px solid var(--rule); flex-wrap: wrap;
+}
+.swiss .seg { display: flex; border: 1.5px solid var(--rule); }
+.swiss .seg button {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 6px 9px; background: var(--cell); color: var(--text);
+  border: none; border-right: 1.5px solid var(--rule); cursor: pointer;
+}
+.swiss .seg button:last-child { border-right: none; }
+.swiss .seg button.on { background: var(--text); color: var(--cell); }
+.swiss .seg button:disabled { opacity: 0.4; cursor: default; }
+.swiss .lb-count {
+  margin-left: auto; font-family: var(--sp-font); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+.swiss .lb-date { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.swiss .lb-date .dt {
+  font-family: var(--sp-font); font-size: 12px; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.swiss .lb-date button {
+  width: 28px; height: 28px; border: 1.5px solid var(--rule); background: var(--cell);
+  color: var(--text); cursor: pointer; display: grid; place-items: center; font-size: 13px;
+}
+.swiss .lb-date button:disabled { opacity: 0.4; cursor: default; }
+.swiss .lb-cols {
+  display: grid; grid-template-columns: 58px repeat(5, 1fr); gap: 4px; padding: 9px 16px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--sp-font); font-size: 8.5px; font-weight: 700; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--muted);
+}
+.swiss .lb-cols span:not(:first-child) { text-align: right; }
+.swiss .lb-cols span.tap {
+  cursor: pointer; color: var(--accent); user-select: none;
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.swiss .lb-day {
+  padding: 9px 16px; background: var(--ink-band); color: var(--chrome-text);
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.13em;
+  text-transform: uppercase; display: flex; justify-content: space-between;
+}
+.swiss .lb-day b { color: var(--accent); font-weight: 700; }
+.swiss .lb-rows { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; overscroll-behavior: contain; }
+.swiss .lb-rows::-webkit-scrollbar { width: 0; }
+.swiss .lb-row {
+  display: grid; grid-template-columns: 58px repeat(5, 1fr); gap: 4px; padding: 11px 16px;
+  border-bottom: 1px solid var(--hair); align-items: baseline;
+}
+.swiss .lb-row .tm {
+  font-family: var(--sp-font); font-weight: 500; font-size: 15px; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.swiss .lb-row .v {
+  font-family: var(--sp-font); font-weight: 400; font-size: 14px; text-align: right;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--text);
+}
+.swiss .lb-row .v.dim { color: var(--muted); font-size: 13px; }
+.swiss .lb-more {
+  display: block; width: 100%; padding: 13px; background: var(--cell); border: none;
+  border-top: 1px solid var(--hair); color: var(--accent); cursor: pointer;
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.swiss .lb-err {
+  margin: 12px 16px; padding: 10px 12px; border: 1.5px solid var(--alarm);
+  font-family: var(--sp-font); font-size: 12px; color: var(--alarm);
+}
+
+/* ============================================================
+   MAP - overlays / chrome (MapLibre canvas underneath)
+   ============================================================ */
+.swiss .mp { flex: 1; position: relative; overflow: hidden; background: var(--map-sea); transition: background 0.25s; min-height: 0; }
+.swiss .mp-canvas { position: absolute; inset: 0; }
+.swiss .mp-strip {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 600;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--ink-band); color: var(--chrome-text); padding: 10px 14px;
+}
+.swiss .mp-strip .co {
+  font-family: var(--sp-font); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.swiss .mp-strip .vec { font-family: var(--sp-font); font-size: 10px; color: var(--band-muted); font-variant-numeric: tabular-nums; }
+.swiss .mp-strip .vec b { color: var(--chrome-text); font-weight: 600; }
+.swiss .mp-strip .navp {
+  font-family: var(--sp-font); font-size: 9px; font-weight: 700; letter-spacing: 0.13em;
+  text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); padding: 5px 8px; white-space: nowrap;
+}
+.swiss .mp-ctrl {
+  position: absolute; right: 12px; bottom: 34px; z-index: 600; /* don't cover the attribution strip */
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+}
+.swiss .mp-btn {
+  background: var(--cell); border: 1.5px solid var(--rule); padding: 8px 11px;
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.swiss .mp-btn .n { font-variant-numeric: tabular-nums; }
+.swiss .mp-btn.on { background: var(--text); color: var(--cell); }
+
+/* Chart micro-diagnostic chip (a reasoned note instead of an empty box; yellow != error) */
+.swiss .mp-chartnote {
+  position: absolute; left: 12px; bottom: 44px; z-index: 600;
+  background: var(--cell); border: 1.5px solid var(--warn); color: var(--warn);
+  font-family: var(--sp-font); font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+  padding: 6px 9px; max-width: 260px;
+}
+
+.sp-pop .nm { font-weight: 600; font-size: 13px; color: var(--text); display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.sp-pop .tag { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #fff; background: var(--map-ais-hi); padding: 3px 5px; }
+.sp-pop .rows { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 7px; line-height: 1.7; display: grid; grid-template-columns: auto auto; gap: 1px 14px; }
+.sp-pop .rows b { color: var(--text); font-weight: 600; }
+
+/* ============================================================
+   BOTTOM SHEET  (.scrim + .sheet)
+   ============================================================ */
+/* Enter/exit + drag physics now live in Motion (Sheet.tsx) - the CSS animation
+   was removed so it doesn't conflict with the inline transform. */
+.swiss .scrim {
+  position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 30;
+  /* centered dialog: tapping outside the panel (on the scrim) closes it; padding is the edge margin */
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+.swiss .sheet {
+  position: relative; z-index: 31; width: 100%; max-width: 380px;
+  background: var(--cell); border: 2px solid var(--rule);
+  display: flex; flex-direction: column; max-height: 82vh;
+}
+@keyframes spFade { from { opacity: 0; } to { opacity: 1; } }
+.swiss .sheet-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 15px 16px;
+  border-bottom: 2px solid var(--rule);
+}
+.swiss .sheet-title { font-family: var(--sp-font); font-weight: 700; font-size: 16px; color: var(--text); letter-spacing: -0.01em; }
+.swiss .sheet-eyebrow { font-family: var(--sp-font); font-size: 8.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+.swiss .sheet-x {
+  width: 30px; height: 30px; border: 1.5px solid var(--rule); background: none; color: var(--text);
+  cursor: pointer; display: grid; place-items: center; font-size: 16px; flex: none;
+}
+.swiss .tabs2 { display: flex; border-bottom: 2px solid var(--rule); }
+.swiss .tabs2 button {
+  flex: 1; padding: 13px; font-family: var(--sp-font); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; background: none; border: none; color: var(--muted);
+  cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px;
+}
+.swiss .tabs2 button.on { color: var(--text); border-bottom-color: var(--accent); }
+.swiss .sheet-body { padding: 18px 16px; display: flex; flex-direction: column; gap: 17px; overflow-y: auto; min-height: 0; }
+.swiss .sheet-foot {
+  padding: 14px 16px 16px; border-top: 1px solid var(--hair);
+  display: flex; gap: 10px;
+}
+
+/* ============================================================
+   FORM · FIELD · CHIP · STEPPER · BUTTON · SEARCH · PICK
+   ============================================================ */
+.swiss .field { display: flex; flex-direction: column; gap: 7px; }
+.swiss .field > label {
+  font-family: var(--sp-font); font-size: 9px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.swiss .field input, .swiss .field textarea {
+  font-family: var(--sp-font); font-size: 17px; font-weight: 400; color: var(--text);
+  background: var(--cell); border: 1.5px solid var(--rule); padding: 12px 13px; outline: none;
+  border-radius: 0; width: 100%;
+}
+/* 16px is the LOWER BOUND - iOS auto-zooms when focusing an input <16px, the
+   layout viewport grows past the visual viewport, and the app pans left/right
+   (the source of the "doesn't fit the screen" complaint). 15px→16px. */
+.swiss .field textarea { resize: vertical; min-height: 64px; font-size: 16px; }
+.swiss .field input::placeholder, .swiss .field textarea::placeholder { color: var(--muted); }
+.swiss .field input:focus, .swiss .field textarea:focus { border-color: var(--accent); }
+.swiss .field input.err { border-color: var(--alarm); }
+.swiss .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.swiss .hint { font-family: var(--sp-font); font-size: 10.5px; color: var(--muted); line-height: 1.6; }
+.swiss .err { font-family: var(--sp-font); font-size: 11px; color: var(--alarm); font-weight: 600; }
+.swiss .ok { font-family: var(--sp-font); font-size: 12px; color: var(--accent); font-weight: 600; }
+.swiss .info-banner {
+  font-family: var(--sp-font); font-size: 11px; color: var(--text); border: 1.5px solid var(--accent);
+  padding: 9px 11px; line-height: 1.5;
+}
+
+.swiss .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.swiss .chip {
+  display: inline-flex; align-items: center; gap: 7px; border: 1.5px solid var(--rule);
+  padding: 8px 11px; font-family: var(--sp-font); font-size: 11px; font-weight: 600; cursor: pointer;
+  color: var(--text); background: var(--cell);
+}
+.swiss .chip .sw { width: 11px; height: 11px; flex: none; }
+.swiss .chip.on { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); }
+
+.swiss .stepper { display: flex; border: 1.5px solid var(--rule); width: max-content; }
+.swiss .stepper button {
+  width: 46px; height: 46px; background: var(--cell); border: none; font-size: 22px; color: var(--text);
+  cursor: pointer; font-family: var(--sp-font);
+}
+.swiss .stepper button:disabled { opacity: 0.4; cursor: default; }
+.swiss .stepper button:first-child { border-right: 1.5px solid var(--rule); }
+.swiss .stepper button:last-child { border-left: 1.5px solid var(--rule); }
+.swiss .stepper .val {
+  width: 64px; display: grid; place-items: center; font-family: var(--sp-font); font-weight: 500;
+  font-size: 20px; font-variant-numeric: tabular-nums; color: var(--text);
+}
+
+.swiss .btn {
+  font-family: var(--sp-font); font-size: 12.5px; font-weight: 700; letter-spacing: 0.09em;
+  text-transform: uppercase; padding: 15px; border: none; cursor: pointer; text-align: center;
+  border-radius: 0; flex: 1; transition: transform 0.12s var(--ease-snap);
+}
+.swiss .btn:active { transform: scale(0.98); }
+.swiss .btn:disabled { opacity: 0.55; cursor: default; }
+.swiss .btn.primary { background: var(--accent-block); color: var(--on-block); }
+.swiss .btn.ghost { background: var(--cell); color: var(--text); border: 1.5px solid var(--rule); }
+.swiss .btn.ghost.danger { color: var(--alarm); }
+
+.swiss .search {
+  display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--rule);
+  padding: 11px 13px; margin: 16px;
+}
+.swiss .search input {
+  flex: 1; border: none; background: none; outline: none; font-family: var(--sp-font);
+  /* 16px - iOS focus-zoom threshold (see the .field textarea note) */
+  font-size: 16px; color: var(--text);
+}
+.swiss .search input::placeholder { color: var(--muted); }
+.swiss .search svg { width: 16px; height: 16px; color: var(--muted); flex: none; }
+.swiss .picklist { flex: 1; overflow-y: auto; min-height: 0; }
+.swiss .pick-row {
+  display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--hair);
+  cursor: pointer; background: none; border-left: none; border-right: none; border-top: none; width: 100%; text-align: left;
+}
+.swiss .pick-row .sw { width: 12px; height: 12px; flex: none; }
+.swiss .pick-row .nm { flex: 1; font-family: var(--sp-font); font-size: 14px; font-weight: 600; color: var(--text); }
+.swiss .pick-row .nm small { display: block; font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+.swiss .pick-row .stock {
+  font-family: var(--sp-font); font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text); border: 1px solid var(--rule); padding: 4px 8px; flex: none;
+}
+.swiss .pick-row.dis { opacity: 0.4; cursor: default; }
+.swiss .pick-row.dis .stock { color: var(--muted); }
+
+/* range/type filter chip row (history) */
+.swiss .filterbar { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--hair); }
+.swiss .fchip {
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; padding: 7px 11px; border: 1.5px solid var(--rule); background: var(--cell);
+  color: var(--muted); cursor: pointer;
+}
+.swiss .fchip.on { background: var(--text); color: var(--cell); border-color: var(--text); }
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .swiss *, .swiss *::before, .swiss *::after { animation: none !important; transition: none !important; }
+  /* View Transitions ::view-transition pseudos aren't within .swiss scope -
+     silence them separately (MotionConfig doesn't cover them either). */
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+}
+
+/* ============================================================
+   BOAT LOADER - a boat silhouette (breathing) instead of "LOADING…" text.
+   App RouteFallback + LandingRouter (full) + Bridge tab transition (inline).
+   Also renders OUTSIDE .swiss (RouteFallback) -> tokens come from :root,
+   with a separate reduce-motion guard (the global .swiss* block doesn't cover it).
+   ============================================================ */
+.sp-bload {
+  flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; background: var(--ink-band, #08090a);
+}
+.sp-bload.full { position: fixed; inset: 0; z-index: 50; }
+.sp-bload .sp-lockup { font-size: 21px; }
+/* Mark and wordmark carry the same animation rather than one on a wrapper: the
+   wordmark's own opacity keyframes would compound with a wrapper's. They start
+   together, so they breathe together. */
+.sp-bload .sp-glyph { animation: spBreathe 1.8s ease-in-out infinite; }
+.sp-bload .sp-bload-mk {
+  font-family: var(--sp-font);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  animation: spBreathe 1.8s ease-in-out infinite;
+}
+.sp-bload .sp-bload-mk .lt { font-weight: 300; color: var(--accent); opacity: 0.9; }
+@keyframes spBreathe {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-bload .sp-bload-mk { animation: none; opacity: 0.85; }
+  .sp-bload .sp-glyph { animation: none; opacity: 0.85; }
+}
+
+/* ============================================================
+   VOYAGE  (auto-detected passages)
+   ============================================================ */
+.swiss .vy {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; background: var(--ink-band);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.swiss .vy::-webkit-scrollbar { width: 0; }
+
+/* --- active voyage banner --- */
+.swiss .vy-active { background: var(--cell); color: var(--text); border-left: 2px solid var(--accent); padding: 14px 16px 16px; }
+.swiss .vy-active-hd {
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; display: flex; align-items: center; gap: 8px;
+}
+.swiss .vy-pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none;
+  animation: spPulse 1.4s ease-in-out infinite;
+}
+.swiss .vy-active-grid {
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin-top: 12px; align-items: end;
+}
+.swiss .vy-a-hero .t, .swiss .vy-a-cell .t {
+  font-family: var(--sp-font); font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; opacity: 0.8; margin-bottom: 3px;
+}
+.swiss .vy-a-hero .n {
+  font-family: var(--sp-mono); font-size: 36px; font-weight: 700; line-height: 0.92; letter-spacing: -0.02em;
+}
+.swiss .vy-a-cell .v { font-family: var(--sp-mono); font-size: 16px; font-weight: 600; }
+.swiss .vy-active .sub { opacity: 0.7; }
+.swiss .vy-active .u { font-size: 0.6em; opacity: 0.72; margin-left: 1px; }
+
+/* --- stats window segment + grid --- */
+.swiss .vy-seg { border-left: none; border-right: none; border-top: none; }
+.swiss .vy-seg button { flex: 1; padding: 8px 5px; }
+.swiss .vy-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; background: var(--ink-band); }
+.swiss .vy-hero { grid-column: 1 / -1; background: var(--cell); border-left: 2px solid var(--accent); }
+.swiss .vy-hero .t { color: var(--accent); }
+.swiss .vy-hero .sub { color: var(--muted); }
+.swiss .vy-hero .n {
+  font-family: var(--sp-mono); font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; color: var(--text);
+}
+.swiss .vy-cards .c .v {
+  font-family: var(--sp-mono); font-size: 21px; font-weight: 600; color: var(--text); letter-spacing: -0.01em;
+}
+.swiss .vy-cards .c .u { font-size: 0.55em; color: var(--muted); margin-left: 2px; }
+
+/* --- list header --- */
+.swiss .vy-hd {
+  display: flex; align-items: center; justify-content: space-between; background: var(--ink-band);
+  padding: 13px 16px 9px; font-family: var(--sp-font); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--band-muted);
+}
+.swiss .vy-hd b { color: var(--accent); font-family: var(--sp-mono); font-size: 12px; }
+.swiss .vy-hd-l { display: inline-flex; align-items: baseline; gap: 6px; }
+.swiss .vy-hd-acts { display: inline-flex; align-items: center; gap: 6px; }
+/* The printed heading. Absent on screen; @media print reveals it. */
+.swiss .vy-print-hd { display: none; }
+
+/* --- fuel source: header affordance + picker sheet (voyage) --- */
+.swiss .vy-fuelsrc {
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--accent); background: none;
+  border: 1px solid var(--rule); padding: 4px 9px; cursor: pointer;
+}
+.swiss .fs-note { margin: 0; font-family: var(--sp-font); font-size: 12px; line-height: 1.5; color: var(--muted); }
+.swiss .fs-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.swiss .fs-row {
+  position: relative;
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left;
+  padding: 11px 34px 11px 13px; background: var(--cell); border: 1.5px solid var(--rule); cursor: pointer;
+}
+.swiss .fs-row.on { border-color: var(--accent); }
+/* Selection is not signalled by colour alone: a filled square marks a counted
+   source, so the state survives colour-blindness and low-contrast displays. */
+.swiss .fs-row.on::after {
+  content: ""; position: absolute; top: 15px; right: 13px; width: 9px; height: 9px; background: var(--accent);
+}
+.swiss .fs-name { font-family: var(--sp-font); font-size: 15px; font-weight: 600; color: var(--text); }
+.swiss .fs-row.on .fs-name { color: var(--accent-soft); }
+.swiss .fs-path { font-family: var(--sp-mono); font-size: 11px; color: var(--muted); }
+/* A selected path the boat has stopped sending. Dashed rather than dimmed: it is
+   still in force, and dimming would read as "already off". */
+.swiss .fs-row.off-air { border-style: dashed; }
+.swiss .fs-tag {
+  font-family: var(--sp-font); font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--accent-soft);
+}
+.swiss .fs-quiet {
+  margin-top: 10px; font-family: var(--sp-font); font-size: 12px; line-height: 1.5;
+  color: var(--accent-soft); border-left: 2px solid var(--accent); padding-left: 9px;
+}
+.swiss .fs-apply {
+  flex: 1; font-family: var(--sp-font); font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-band); background: var(--accent);
+  border: none; padding: 13px; cursor: pointer;
+}
+.swiss .fs-apply:disabled { opacity: 0.55; cursor: default; }
+.swiss .fs-err { margin-top: 10px; font-family: var(--sp-font); font-size: 12px; color: var(--accent-soft); }
+
+/* --- voyage list --- */
+.swiss .vy-list { background: var(--cell); display: flex; flex-direction: column; }
+.swiss .vy-rowwrap { border-bottom: 1px solid var(--hair); }
+.swiss .vy-rowwrap.open { background: rgba(255, 255, 255, 0.02); }
+.swiss .vy-row {
+  width: 100%; text-align: left; background: none; border: none; cursor: pointer; color: var(--text);
+  padding: 13px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.swiss .vy-row-top { display: flex; align-items: baseline; gap: 10px; }
+.swiss .vy-date { font-family: var(--sp-font); font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.swiss .vy-badge {
+  font-family: var(--sp-font); font-size: 7.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--accent); padding: 2px 5px;
+}
+.swiss .vy-dist { margin-left: auto; font-family: var(--sp-mono); font-size: 16px; font-weight: 600; }
+.swiss .vy-unit { font-size: 0.6em; color: var(--muted); margin-left: 2px; }
+.swiss .vy-route { font-family: var(--sp-font); font-size: 11.5px; font-weight: 600; color: var(--accent); letter-spacing: 0.01em; }
+.swiss .vy-row-sub { font-family: var(--sp-mono); font-size: 11px; color: var(--muted); }
+
+/* --- detail (expand): track + meta --- */
+.swiss .vy-detail { padding: 2px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.swiss .vy-map { width: 100%; height: 180px; border: 1px solid var(--hair); }
+
+/* Voyage mini-map - shrink MapLibre chrome, keep attribution legible
+   (ODbL: visible on every map surface). Colors now come from the vector style
+   (map/style.ts flavors); the old raster brightness filter is gone. */
+.swiss .vy-map { background: var(--map-sea); }
+.swiss .vy-map .maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--cell) 82%, transparent);
+  font-family: var(--sp-font); font-size: 8px; color: var(--muted);
+  padding: 1px 5px; border-radius: 0;
+}
+.swiss .vy-map .maplibregl-ctrl-attrib a { color: var(--muted); text-decoration: none; }
+
+/* ============================================================
+   GLASS TAP - Apple "liquid glass"-inspired tap effect.
+   Bottom nav + segment buttons: on press, a radial glass glow + slight
+   scale-down; on release it fades out softly. Adapted to Swiss (instant, neutral).
+   ============================================================ */
+.swiss .tab, .swiss .seg button { position: relative; transition: transform 0.13s ease; }
+.swiss .tab:active, .swiss .seg button:active { transform: scale(0.95); }
+.swiss .tab::after, .swiss .seg button::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 62%);
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.swiss .tab:active::after, .swiss .seg button:active::after { opacity: 1; transition: opacity 0s; }
+.swiss .vy-track-empty {
+  height: 120px; display: flex; align-items: center; justify-content: center;
+  background: var(--ink-band); border: 1px solid var(--hair);
+  font-family: var(--sp-mono); font-size: 11px; color: var(--muted);
+}
+.swiss .vy-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 16px; }
+.swiss .vy-m { display: flex; flex-direction: column; gap: 2px; }
+.swiss .vy-m .k {
+  font-family: var(--sp-font); font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--band-muted);
+}
+.swiss .vy-m .val { font-family: var(--sp-mono); font-size: 11.5px; color: var(--text); }
+.swiss .vy-m .coord { font-family: var(--sp-mono); font-size: 10px; color: var(--muted); }
+
+.swiss .vy-m-fuel { grid-column: 1 / -1; }
+/* Prose, not a reading: this is the sentence that stands in for a missing figure. */
+.swiss .vy-m .vy-fuel-quiet {
+  font-family: var(--sp-font); font-size: 11.5px; line-height: 1.45; color: var(--accent-soft);
+}
+.swiss .vy-m-edit { grid-column: 1 / -1; }
+.swiss .vy-m-editerr {
+  grid-column: 1 / -1; font-family: var(--sp-font); font-size: 11.5px; color: var(--accent);
+}
+/* The download sits under its own label, so it does not stretch across the row. */
+.swiss .vy-m .vy-fuelsrc { align-self: flex-start; margin-top: 2px; }
+.swiss .vy-fuel-sel {
+  margin-top: 4px; align-self: flex-start;
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 5px 22px 5px 8px; color: var(--text);
+  background: var(--cell); border: 1.5px solid var(--rule); border-radius: 0;
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text) 50%),
+    linear-gradient(135deg, var(--text) 50%, transparent 50%);
+  background-position: right 9px center, right 5px center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+.swiss .vy-fuel-sel:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+
+.swiss .vy-err { padding: 16px; font-family: var(--sp-mono); font-size: 12px; color: var(--alarm); }
+
+/* ============================================================
+   UTILITIES - ported components use this small closed set
+   ============================================================ */
+.flex { display: flex; }
+.grid { display: grid; }
+.flex-col { flex-direction: column; }
+.flex-1 { flex: 1 1 0%; }
+.h-full { height: 100%; }
+.min-h-0 { min-height: 0; }
+.max-w-xs { max-width: 20rem; }
+.overflow-hidden { overflow: hidden; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.text-center { text-align: center; }
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.875rem; }
+.break-words { overflow-wrap: break-word; }
+.rounded { border-radius: 0.25rem; }
+.border { border: 1px solid; }
+.border-current { border-color: currentColor; }
+.opacity-50 { opacity: 0.5; }
+.opacity-70 { opacity: 0.7; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.p-6 { padding: 1.5rem; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+
+/* ============================================================
+   AUTH GATE - SK security enabled, plugin REST returns 401.
+   Renders OUTSIDE .swiss -> tokens come from :root (works in both themes).
+   ============================================================ */
+.sp-auth {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 28px; padding: 24px;
+  background: var(--ink-band, #08090a); color: var(--text, #e8eaed);
+  font-family: var(--sp-font); text-align: center;
+}
+.sp-auth .sp-lockup { font-size: 21px; }
+.sp-auth-mk { font-weight: 700; letter-spacing: 0.04em; }
+.sp-auth-mk .lt { font-weight: 300; color: var(--accent); opacity: 0.9; }
+.sp-auth-card {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  max-width: 360px; padding: 22px 20px 20px;
+  background: var(--cell); border-top: 2px solid var(--accent);
+}
+.sp-auth-kick {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent-soft, var(--accent));
+}
+.sp-auth-body { font-size: 14px; line-height: 1.5; margin: 0; }
+.sp-auth-cta {
+  display: inline-block; padding: 10px 18px;
+  background: var(--text); color: var(--cell);
+  font-size: 13px; font-weight: 700; letter-spacing: 0.03em;
+  text-decoration: none;
+}
+.sp-auth-cta:active { transform: scale(0.97); }
+.sp-auth-foot { font-size: 12px; line-height: 1.45; color: var(--muted); margin: 0; }
+.sp-auth-wait {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+}
+/* In Day, --muted drops to 4.05:1 on the light background (11px needs AA 4.5). */
+:root[data-theme="day"] .sp-auth-wait { color: var(--text); }
+.sp-auth-pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  animation: spPulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-auth-pulse { animation: none; }
+}
+
+/* ============================================================
+   PAIRING BAND (.pair) - Bridge, under the grid
+   Sits below the telemetry grid rather than inside it: the grid is a
+   fixed 5-row composition and pairing is an action, not a reading.
+   ============================================================ */
+.swiss .pair {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: var(--cell);
+  border-top: 2px solid var(--ink-band);
+  padding: 12px 14px;
+}
+.swiss .pair .pl { min-width: 0; }
+.swiss .pair .t {
+  font-family: var(--sp-font);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.swiss .pair .s {
+  font-family: var(--sp-font);
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.swiss .pair .s b { color: var(--text); font-weight: 600; }
+.swiss .pair .who {
+  font-family: var(--sp-mono);
+  font-size: 14px;
+  color: var(--text);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The code is read off this screen and typed into a phone, often in a dim saloon.
+   Mono, wide-tracked, and big enough to read standing up. */
+.swiss .pair .code {
+  font-family: var(--sp-mono);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--text);
+  margin-top: 4px;
+}
+.swiss .pair .acts { display: flex; gap: 8px; flex: none; }
+
+/* The fingerprints of the screens she seals to, read off this display and compared with a
+   phone held next to it. Mono and tracked for the same reason the pairing code is: what is
+   being done here is character by character, by a person who has decided to be suspicious.
+   Wraps rather than scrolls, because a line pushed out of sight is a screen an owner does not
+   know can read her. */
+/* One per line, because the comparison is line against line: a phone is held up beside this
+   screen and one string is read off each. Side by side, two of them in the same mono face are
+   a place for an eye to slip from one to the other and find a match that is not there. */
+.swiss .pair .fps { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.swiss .pair .fp {
+  font-family: var(--sp-mono);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+
+/* Someone is asking for this vessel. The one state that must not be mistaken for
+   a notification - it fills the band with accent and stays there until answered. */
+.swiss .pair.asking { background: var(--accent-block); }
+.swiss .pair.asking .t { color: var(--on-block); }
+.swiss .pair.asking .s { color: var(--accent-soft); }
+.swiss .pair.asking .who { color: #fff; }
+.swiss .pair.err .t { color: var(--accent); }
+
+/* The server's door is open. Not an action and not an error - a standing condition
+   that outlives every pairing state, so it reads as a rule of the room rather than a
+   notification to dismiss: marked down the edge, and left there until it is fixed. */
+.swiss .pair.warn {
+  border-top: none;
+  border-left: 3px solid var(--accent);
+  padding-left: 11px;
+}
+.swiss .pair.warn .t { color: var(--accent); }
+
+.swiss .pbtn {
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 9px 13px;
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.swiss .pbtn:active { transform: scale(0.96); }
+.swiss .pbtn:disabled { opacity: 0.45; cursor: default; }
+.swiss .pbtn.accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.swiss .pbtn.ghost { color: var(--muted); }
+.swiss .pair.asking .pbtn { border-color: rgba(255, 255, 255, 0.4); color: #fff; }
+.swiss .pair.asking .pbtn.accent { background: #fff; border-color: #fff; color: var(--accent-block); }
+
+/* Same reason as .sp-auth-wait: --muted drops to ~4:1 on the day background, and
+   12px body text needs 4.5:1 to pass AA. */
+:root[data-theme="day"] .swiss .pair .s,
+:root[data-theme="day"] .swiss .pbtn.ghost { color: var(--text); }
+
+/* Narrow phone: the buttons stop fighting the text for the same row. */
+@media (max-width: 380px) {
+  .swiss .pair { flex-direction: column; align-items: stretch; gap: 10px; }
+  .swiss .pair .acts { justify-content: flex-end; }
+  .swiss .pair .code { font-size: 26px; }
+}
+
+/* ============================================================
+   SYSTEM PANELS - engine, generator, tanks. Drawn from the frame.
+   ============================================================ */
+
+/* Flex, not grid, and the reason is measured rather than stylistic. The number of cells is the
+   boat's business: two on a sailing boat, thirty on a motor yacht with three engines. Grid has
+   no per-item grow, so any count that is not a multiple of the column count leaves the last
+   row's unfilled tracks showing this container's background - on the shore's build that read as
+   a 1023px slab across the screen and was reverted. Flex items grow into their own row.
+
+   The 158px basis is chosen against the narrowest phone rather than as a round number: two
+   cells and a gap fit inside 390px and then grow to fill it, so a phone reads two columns and
+   not one very long list. min(..., 100%) rather than a bare basis so a narrower screen still
+   cannot be overflowed by it. */
+.swiss .sy-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--ink-band);
+}
+.swiss .sy-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  /* On the phone panel, fill it the way the bridge does: the rows stretch to take the height the
+   * pane gives them, rather than packing at the top and leaving a slab of dark below - the same
+   * "too much whitespace" the bridge answered, seen when a system has a handful of gauges in a
+   * tall single pane. A system with one gauge gets one tall cell, which is the honest shape of
+   * "she reports one thing", not a bug. In the wide board the section is flattened to its content
+   * height instead (see .sp-board .sy-wrap), so this stretch applies to the phone only. */
+  align-content: stretch;
+  min-height: 100%;
+}
+.swiss .sy-grid .c {
+  flex: 1 1 min(158px, 100%);
+  min-height: 88px;
+  justify-content: flex-start;
+}
+/* Centre the reading in the space under its label instead of pinning it to the floor: in a
+ * tall cell space-between parks the number at the bottom and leaves the middle empty, which is
+ * the same spreadsheet-pushed-down look the bridge cells were taken off. */
+.swiss .sy-n {
+  font-size: clamp(22px, 7vw, 34px);
+  line-height: 1;
+  margin-block: auto;
+}
+/* An instrument that has gone quiet keeps its reading and loses its confidence. Not hidden: a
+   cold engine at anchor is the normal case, and a blank cell asks a question that a faded one
+   answers. */
+.swiss .sy-grid .c.quiet .sy-n { color: var(--muted); }
+/* When it last spoke, on the label's line and out of the reading's way.
+   Out of the flow deliberately. As a third flex child it pushed the reading up, so one quiet
+   cell put a row's numbers on two lines: measured at 390px, 13px of drift in the flow and 0
+   out of it. Bottom right was measured too and is worse - it lands on the number itself.
+   Its own class rather than `.meta`, which looks shared and is not: every rule defining it is
+   scoped to a bridge cell this is not, so it rendered at the UA's 16px in full --text, louder
+   than the reading it qualifies. */
+.swiss .sy-grid .c .sy-age {
+  position: absolute;
+  right: 14px;
+  top: 13px;
+  font-family: var(--sp-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+/* Room for the marker to sit in, and it has to fit the widest one there is: "59 MIN AGO" runs
+   62px, and a reserve cut to the common "6 MIN AGO" put the label's last word under it by a
+   pixel. Measured against every string quietFor() can return, not the one in front of me. */
+.swiss .sy-grid .c.quiet .t { padding-right: 68px; }
+.swiss .sy-none {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--cell);
+}
+
+/* ============================================================
+   SYSTEM MATRIX  (.sm-matrix) - engines and generators
+   ============================================================
+   One parameter per row, one instance per column, so a three-engine boat's three tachometers
+   sit side by side and a hot cylinder shows against its neighbours. The grid-template-columns
+   count is set inline from the data (a boat reports the instances it has); everything else is
+   here. The header band takes the running-light colour of its side. */
+.swiss .sm-matrix {
+  display: grid;
+  /* Label rail then one track per instance; the count comes in as --sm-cols from the data. On the
+   * phone the tracks share the pane (1fr); the wide board narrows the matrix to its content below. */
+  grid-template-columns: minmax(90px, auto) repeat(var(--sm-cols, 1), minmax(74px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  align-content: start;
+}
+/* Top-left cell over the parameter labels: empty, and quiet about it. */
+.swiss .sm-corner { background: var(--cell); }
+.swiss .sm-head {
+  padding: 8px 10px;
+  text-align: center;
+  font-family: var(--sp-font);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--cell);
+  color: var(--text);
+}
+.swiss .sm-head.sm-port { background: var(--nav-port-bg); color: var(--nav-port-fg); }
+.swiss .sm-head.sm-stbd { background: var(--nav-stbd-bg); color: var(--nav-stbd-fg); }
+.swiss .sm-head.sm-center { background: var(--nav-center-bg); color: var(--nav-center-fg); }
+/* The parameter label down the left rail. */
+.swiss .sm-rl {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--cell);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.swiss .sm-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 8px;
+  min-height: 46px;
+  background: var(--cell);
+}
+.swiss .sm-cell .sm-v {
+  font-family: var(--sp-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(16px, 4.4vw, 22px);
+  line-height: 1;
+  color: var(--text);
+  /* One line: the fixed columns below leave room, and a reading broken as "1612 / rpm" reads as
+   * two numbers. */
+  white-space: nowrap;
+}
+/* A column that does not report this parameter has an empty cell, not an invented reading. It
+ * keeps the grid square and says nothing. */
+.swiss .sm-cell.sm-empty { background: var(--cell); }
+/* A gauge that has gone quiet keeps its last reading and loses its confidence, the same sentence
+ * the flat cell told: the value fades and the age sits under it. */
+.swiss .sm-cell.quiet .sm-v { color: var(--muted); }
+.swiss .sm-cell .sm-age {
+  margin-top: 3px;
+  font-family: var(--sp-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+/* On the phone the three columns will not fit at a readable width, so the matrix scrolls sideways
+ * and keeps every instance rather than dropping one or making the owner pick. The label rail stays
+ * put as it scrolls, so which parameter a value belongs to is never off-screen. Fixed columns keep
+ * each reading on one line. The board sizes to content instead (see .sp-board .sm-matrix). */
+.swiss .sp-pane .sy-wrap { overflow-x: auto; }
+.swiss .sp-pane .sm-matrix {
+  grid-template-columns: 104px repeat(var(--sm-cols, 1), minmax(102px, max-content));
+}
+.swiss .sp-pane .sm-corner,
+.swiss .sp-pane .sm-rl {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+/* The fixed phone rail is too narrow for the longest labels ("Fuel used (since reset)", "Gearbox
+ * oil temperature"), and clipping the honesty caveat off a figure reads as a bug. Let the rail
+ * wrap to a second line instead; the board rail is auto-width and needs none of this. */
+.swiss .sp-pane .sm-rl {
+  white-space: normal;
+  line-height: 1.15;
+  padding-block: 6px;
+}
+
+/* ============================================================
+   TANKS  (.tk-list) - a level is a proportion, so it reads as a bar
+   ============================================================ */
+.swiss .tk-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--cell);
+}
+.swiss .tk {
+  display: grid;
+  grid-template-columns: minmax(82px, auto) 1fr 46px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+.swiss .tk:last-child { border-bottom: none; }
+.swiss .tk-l {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.swiss .tk-bar {
+  height: 8px;
+  background: var(--hair);
+  overflow: hidden;
+}
+.swiss .tk-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--band-muted);
+}
+/* A low fuel tank takes the accent - the bar and its figure both - because range is the reading
+ * a motorboat owner acts on. Other families stay neutral. */
+.swiss .tk.low .tk-bar > i { background: var(--accent); }
+.swiss .tk.low .tk-pct { color: var(--accent-soft); }
+.swiss .tk-pct {
+  text-align: right;
+  font-family: var(--sp-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--text);
+}
+/* A quiet tank keeps its last level, faded. */
+.swiss .tk.quiet .tk-bar > i { background: var(--muted); opacity: 0.5; }
+.swiss .tk.quiet .tk-pct { color: var(--muted); }
+
+/* The bridge grid is hidden rather than unmounted while a system panel is up, so its sparklines
+   and the gust window keep their state and the screen does not flash on the way back. `hidden`
+   alone would not do it: the UA rule for [hidden] loses to `.swiss .grid`'s display. */
+.swiss .grid[hidden] { display: none; }
+
+/* The panel row. It is drawn only when the boat has something to put in it, so a sailing boat
+   with no engine and no generator never sees a tab strip at all - the screen she gets is the
+   screen she always had. */
+.swiss .sy-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--ink-band);
+  padding: 0 0 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 0 0 auto;
+}
+.swiss .sy-tabs::-webkit-scrollbar { display: none; }
+.swiss .sy-tab {
+  flex: 1 1 auto;
+  min-width: max-content;
+  appearance: none;
+  border: 0;
+  background: var(--cell);
+  color: var(--muted);
+  font-family: var(--sp-font);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  padding: 11px 14px;
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 0.2s, box-shadow 0.2s;
+}
+.swiss .sy-tab.on {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--text);
+}
+
+/* ============================================================
+   PRINT
+   A voyage record somebody takes off the screen: an owner asked for a PDF, and
+   every browser already makes one from a page. So the page is the document, and
+   this is what turns the screen into it - the chrome nobody can tap on paper
+   goes, the scrolling panes open up to their full height, and the dark theme
+   stops laying down a page of solid ink.
+
+   Written against tokens rather than rules, so a card printed white does not need
+   every rule that paints one to be listed here and kept in step.
+   ============================================================ */
+@media print {
+  .swiss {
+    --cell: #fff;
+    --ink-band: #fff;
+    --text: #000;
+    --muted: #444;
+    --band-muted: #444;
+    --chrome-text: #000;
+    --rule: #bbb;
+    --hair: #ddd;
+    --accent: #a3282c;
+    --accent-block: #a3282c;
+    --on-block: #fff;
+    background: #fff;
+  }
+
+  /* The panes scroll on screen because the app owns the viewport; on paper the
+     document is as tall as it is, and an overflow container prints one screenful
+     and silently drops the rest. */
+  .swiss.sp-screen,
+  .swiss.sp-screen main,
+  .swiss .vy,
+  .swiss .lb {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* Anything that only exists to be tapped, and the row whose whole content was a
+     download: a lone "Track" heading over nothing reads as a figure that failed to
+     print. */
+  .swiss .sp-rail,
+  .swiss .tabbar,
+  .swiss .head .back,
+  .swiss .umenu-btn,
+  .swiss .vy-fuelsrc,
+  .swiss .vy-fuel-sel,
+  .swiss .vy-m-track,
+  .swiss .vy-m-edit,
+  .swiss .pair {
+    display: none !important;
+  }
+
+  /* The map does not survive the trip to paper. It draws through WebGL, and a
+     canvas prints blank unless its drawing buffer is preserved on every frame,
+     which is a cost paid continuously on a boat's tablet for a page printed twice
+     a season. A blank one prints as a solid black rectangle, so it is left out:
+     the record here is dates, ports and figures, and the track itself leaves as
+     GPX, which is the format a chart plotter can actually do something with. */
+  .swiss .vy-map,
+  .swiss .vy-track-empty {
+    display: none !important;
+  }
+
+  .swiss .vy-print-hd {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 0 16px 10px; border-bottom: 1px solid var(--rule); margin-bottom: 10px;
+  }
+  .swiss .vy-print-hd .b {
+    font-family: var(--sp-font); font-size: 13px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+  }
+  .swiss .vy-print-hd .d { font-family: var(--sp-mono); font-size: 10px; color: var(--muted); }
+
+  /* The window the figures belong to still has to be stated, so the tab that is
+     selected stays and reads as a heading. */
+  .swiss .vy-seg button:not(.on) { display: none; }
+  .swiss .vy-seg button.on { flex: 0 0 auto; }
+
+  /* A voyage is one unit: its map, its ports and its figures do not want to be
+     split down the middle by a page break. */
+  .swiss .vy-rowwrap,
+  .swiss .vy-active,
+  .swiss .vy-cards { break-inside: avoid; }
+
+  @page { margin: 12mm; }
+}

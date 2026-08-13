@@ -1,0 +1,37 @@
+{
+  "label": "siparu/device-fingerprint/v1",
+  "bits": 80,
+  "alphabet": "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+  "group": 4,
+  "cases": [
+    {
+      "note": "an ordinary device key",
+      "public": "Sm-N9jXgn3miMV-zbKcCHaDN35CQGh6G686ErOMeM30",
+      "fingerprint": "H2HN-KG6E-CX6C-751Z"
+    },
+    {
+      "note": "a second screen on the same account, which must not read the same",
+      "public": "cWVf8Ym4Dbi7dgxwJJI-S9peoVrZy-7h_l7selr4VlE",
+      "fingerprint": "F2HQ-ZCX9-XZRA-W93K"
+    },
+    {
+      "note": "digest begins with zero bits: the string is still sixteen characters",
+      "public": "NhoNAUg8ardVfpxMA678LZlcJlL_ChXOe0hZJoHENaI",
+      "fingerprint": "00V3-KGZ0-9MW7-GWT1"
+    },
+    {
+      "note": "all zero bytes",
+      "public": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "fingerprint": "31QN-G8FE-G244-B67J"
+    },
+    {
+      "note": "all bits set",
+      "public": "__________________________________________8",
+      "fingerprint": "4S2T-KY0R-DYC9-8PC1"
+    }
+  ],
+  "alias": {
+    "public": "Sm-N9jXgn3miMV-zbKcCHaDN35CQGh6G686ErOMeM31",
+    "fingerprint": "H2HN-KG6E-CX6C-751Z"
+  }
+}

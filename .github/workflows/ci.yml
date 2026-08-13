@@ -1,0 +1,207 @@
+# CI has two layers:
+#  1. plugin-ci - Signal K's official reusable workflow: Linux x64/arm64, macOS,
+#     Windows (Node 20+22) plus an armv7/Venus OS run under QEMU. It verifies the
+#     package layout, entry point, schema, lifecycle, API usage, npm-pack integrity
+#     and the --ignore-scripts AppStore install.
+#  2. guards - the product's non-negotiables: the read-only proof, GET-only REST,
+#     the map-stack licence gate, and no value imports from devDependencies.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  plugin-ci:
+    # Pinned to a commit SHA (supply chain). To update:
+    # gh api repos/SignalK/signalk-server/commits/master --jq .sha
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@1806425cc9389e3de85c78609397043e67ea0f1d
+    with:
+      node-versions: '["20", "22"]'
+      build-command: 'npm run ci:build'
+      test-command: 'npm test'
+      # Off by default in the reusable workflow, which meant the one thing every other job
+      # only approximates was never done: install this plugin into a real server and start it.
+      # 2.18.0 is the compatibility floor - the build Venus OS ships - and `latest` is what a
+      # new install gets today, so a break at either end is visible before an owner meets it.
+      enable-signalk-integration: true
+      signalk-server-versions: '["2.18.0", "latest"]'
+
+  guards:
+    name: Product guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Read-only proof - the plugin never writes to the boat
+        run: |
+          # The vessel-write surface of @signalk/server-api, in full. This is the
+          # promise the README makes, and it is the one that has to hold.
+          ! grep -rnE "handleMessage|nmea2000out|nmea0183out|registerPutHandler|registerActionHandler|registerDeltaInputHandler|emitPropertyValue|putSelfPath" plugin/src
+
+      - name: Read-only proof - no write method leaves the plugin
+        run: |
+          # The step above watches the door the server-api opens. It is not the only
+          # door: the boat's Signal K answers HTTP on the same host this plugin runs
+          # on, so `fetch(url, { method: 'PUT' })` writes to the vessel without
+          # naming a single symbol that step greps for. The webapp has been held to
+          # this check since the beginning; the plugin never was.
+          #
+          # PUT is how Signal K takes a write, so the plugin has no use for it, nor
+          # for PATCH or DELETE. POST is left out on purpose and is not an oversight:
+          # pairing and telemetry are POSTs, and the step below is what holds them to
+          # the relay's address rather than the boat's.
+          #
+          # Case-insensitive because fetch() uppercases the method for us, so a
+          # lowercase 'put' is the same request with a lowercase spelling.
+          #
+          # What this and the step below can and cannot do, since a guard nobody can
+          # see the edge of gets trusted past it: between them they read the verb and
+          # the address, and a write needs both, so defeating them takes hiding both
+          # at once. That is not a line anybody writes by accident, and accident is
+          # the whole threat here - anyone who can edit plugin/src can edit this file
+          # too. These steps are how we catch ourselves, not how we stop an attacker.
+          offenders=$(grep -rniE "method: *['\"]?(PUT|PATCH|DELETE)" plugin/src) || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: Read-only proof - the plugin never addresses the vessel's own API
+        run: |
+          # A write has to be aimed at the boat, and the boat's REST lives under
+          # /signalk/v1|v2/api on the loopback this plugin shares with her. Naming
+          # that address is the one thing every write to the vessel has in common,
+          # whatever verb it eventually uses, so nothing here may name it. The relay
+          # is reached through config's relayUrl and lives on the public internet.
+          offenders=$(grep -rniE "/signalk/v[0-9]+/api|localhost:[0-9]+|127\.0\.0\.1|\[::1\]" plugin/src) || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: GET-only REST - every write route is named here, and there are seven
+        run: |
+          # rest.ts stays GET-only. The four pairing routes move the plugin's own
+          # state - a code, an approval, a token - and call the relay outbound; the
+          # fuel-paths route saves the plugin's own options (which engine feeds
+          # voyage fuel); the two voyage-edit routes rewrite the plugin's own record
+          # of the passages it observed, and are reachable from the boat's network
+          # only (the wire protocol the shore speaks carries five questions, all
+          # reads). The step above proves, independently, that none of it reaches
+          # the vessel. A further write route breaks this build on purpose: it
+          # needs a human.
+          offenders=$(grep -rnE "router\.(post|put|delete|patch)\(" plugin/src \
+            | grep -vE "router\.post\('(/pair/(start|approve|deny|reset)|/config/fuel-paths|/voyages/:id/(merge-previous|undo-merge))'") || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: Encrypted or nothing - no unsealed report leaves the boat
+        run: |
+          # The vessel reports sealed or she reports not at all. There used to be a third
+          # verdict, `clear`, for a boat nobody had authorised to read her, and the whole
+          # promise of the product held only for the boats that happened to be past that
+          # state. Restoring it is a one-line change in a file nobody reviews twice, and
+          # the result looks identical from the bridge and identical on the wire to anyone
+          # who is not decoding it. Hence a second net beside the tests.
+          #
+          # Two things are checked, because the report has two ways out. First, that the
+          # sealer has no verdict but sealed and blocked. Second, that the minute-by-minute
+          # POST cannot reach a frame at all: it has no key exchange behind it and so has
+          # no way to encrypt anything it might be handed.
+          offenders=$(grep -rnE "mode: *['\"]clear['\"]" plugin/src webapp/src) || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+          offenders=$(grep -nE "deps\.frame|frame\(\)" plugin/src/uplink.ts) || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: Read-only proof - the webapp writes only to routes named here
+        run: |
+          # ui/src is the shared design system the webapp bundles; it is held to
+          # the same rule as the webapp source it was extracted from. The webapp's
+          # only writes are pairing, the fuel-paths config route and the two voyage
+          # edits; all of them save the plugin's own state and none reaches the
+          # vessel (proved above). The voyage paths carry the id, so they are
+          # matched by their action rather than whole: narrow enough that a third
+          # verb on the same resource does not slip through with them.
+          offenders=$(grep -rnE "method: *['\"]?(PUT|POST|DELETE|PATCH)" webapp/src ui/src \
+            | grep -vE "'(/pair/(start|approve|deny|reset)|/config/fuel-paths)'|/voyages/[^ ]*/(merge-previous|undo-merge)") || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
+      - name: PWA shell - the static assets index.html names are in the clean checkout
+        run: |
+          # The favicon and manifest were once ignored by a bare `public/` line in
+          # .gitignore: they lived on the maintainer's disk and a fresh clone built
+          # without them. Publishing worked only by luck. This asserts that every
+          # static asset the entry HTML references (the ./-relative ones Vite copies
+          # from public/, not the /src module entry) is actually tracked, so a clone -
+          # and therefore the package - carries it.
+          missing=0
+          for asset in $(grep -oE '(href|src)="\./[^"]+"' webapp/index.html | sed -E 's/.*"\.\/([^"]+)"/\1/'); do
+            if [ ! -f "webapp/public/$asset" ]; then
+              echo "index.html references ./$asset but webapp/public/$asset is not in the checkout"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
+      - name: License gate - no Leaflet/CARTO/OpenSeaMap remnants
+        run: |
+          ! grep -rin "leaflet\|cartocdn\|openseamap" plugin/src webapp/src ui/src
+
+      - name: Address gate - no retired portal subdomain in shipped UI
+        run: |
+          # The boat's pairing band prints an address a person types by hand, and it
+          # printed the portal's old subdomain for a while. That name redirects to the
+          # site root, which is the marketing page: an owner holding a code that expires
+          # in ten minutes arrived one page short of the box for it, with nothing on
+          # screen saying so. Nothing shipped should send anybody there again.
+          ! grep -rn "app\.siparu\.app" webapp/src ui/src plugin/src
+
+      - name: Runtime purity - no value imports from devDependencies
+        run: |
+          ! grep -rn "from '@signalk/server-api'\|from 'express'" plugin/src | grep -v "import type"
+
+      - name: Clean-room - the checkout reads as one professional English product
+        run: |
+          # This repository is public, and all of it is meant to read as a product written
+          # by one team in one language. Two gates enforced that until now and both lived
+          # on a single maintainer's disk: a local pre-push hook and the prepublishOnly
+          # scan. A push from another machine, a clone where those hooks were never
+          # installed, or an edit made in GitHub's own web editor met no gate at all. This
+          # is the half of that discipline which can live in CI.
+          #
+          # SHAPE only, and that is a limit rather than an oversight. The other half of the
+          # local gate is a list of names - people, vessels, private repositories - and
+          # writing that list into a public workflow would publish the very terms it exists
+          # to keep out. That half stays local, and it is the known gap in this step.
+          #
+          # The published package is a different file set again (plugin/dist and public/
+          # are build output, absent from a checkout), which is why prepublishOnly scans
+          # what `npm pack` would upload rather than what git tracks. Neither gate replaces
+          # the other.
+          #
+          # Every pattern is built so this file does not contain what it forbids and cannot
+          # report itself: printf for the characters, and the grep [C]haracter-class trick
+          # for the words.
+          # Alternation rather than a bracket class: a multibyte character inside
+          # [...] is read byte by byte where the locale is not UTF-8, and the class
+          # then matches continuation bytes of unrelated characters.
+          TR=$(printf '\u0131|\u015f|\u011f|\u00e7|\u00f6|\u00fc|\u0130|\u015e|\u011e|\u00c7|\u00d6|\u00dc')
+          EM=$(printf '\u2014')
+          BOT=$(printf '\U0001F916')
+          AI="Co-Authored-By: *[C]laude|Generated with .?[C]laude Code|[C]laude-Session"
+          # Positive control, run before the scan is believed. A pattern that matches
+          # nothing exits zero on a clean tree and reads exactly like a clean tree, so
+          # silence here has to be earned: the alternation is shown a probe carrying each
+          # thing it forbids, and an empty listing is refused rather than reported as a
+          # scan of nothing.
+          probe=$(printf 'a note \u0131 with a dash \u2014 and a face \U0001F916')
+          printf '%s\n' "$probe" | grep -qE "$TR|$EM|$BOT" || {
+            echo "the character patterns no longer match their own probe"; exit 1; }
+          printf 'Co-Authored-By: %slaude\n' C | grep -qE "$AI" || {
+            echo "the machine-signature pattern no longer matches its own probe"; exit 1; }
+          scanned=$(git ls-files | wc -l)
+          [ "$scanned" -gt 50 ] || {
+            echo "the checkout listed $scanned files; that is not a scan"; exit 1; }
+
+          offenders=$(git ls-files -z | xargs -0 grep -lIE "$TR|$EM|$BOT|$AI") || true
+          [ -z "$offenders" ] || {
+            echo "Carrying a non-English character, an em dash, or a machine signature:"
+            echo "$offenders"
+            exit 1
+          }

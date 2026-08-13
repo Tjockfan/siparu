@@ -1,0 +1,28 @@
+{
+  "name": "siparu-ui",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared Siparu design system: Swiss theme tokens and UI primitives.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./swiss.css": "./src/styles/swiss.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "motion": "^12.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "motion": "^12.42.0",
+    "typescript": "^5.9.0"
+  }
+}
