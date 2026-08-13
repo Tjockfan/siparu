@@ -40,7 +40,10 @@ const LAST_ONLY_FIELDS: readonly MetricField[] = [
   'wind_angle_apparent',
   'wind_direction_true',
   'nav_state',
-  'ais_class'
+  'ais_class',
+  // The plane the depth was read from rides its own reading into history:
+  // an exported depth without its datum is a number a surveyor can dismiss.
+  'depth_datum'
 ]
 
 /**

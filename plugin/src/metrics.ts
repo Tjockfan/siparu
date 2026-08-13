@@ -14,7 +14,7 @@
  *    when the active source goes stale the next one takes over. No user
  *    setting for this either.
  */
-import { MetricField, Snapshot } from './contract'
+import { DepthDatum, MetricField, Snapshot } from './contract'
 import { INTERNAL, KN_TO_MS, Options } from './config'
 
 /** Paths mapped 1:1 onto a snapshot field. */
@@ -46,6 +46,9 @@ const DEPTH_PATHS = [
   'environment.depth.belowKeel',
   'environment.depth.belowSurface'
 ] as const
+
+/** The winning path's last segment IS the plane's name; the set above is closed. */
+const datumOf = (path: string): DepthDatum => path.split('.').pop() as DepthDatum
 
 export const SUBSCRIBED_PATHS: string[] = [
   POSITION_PATH,
@@ -286,6 +289,16 @@ export class MetricsState {
         ? pos.entry.value
         : null
 
+    // Resolved once so the value and its datum cannot disagree about which
+    // candidate won. The plane is named only when a reading stands: a datum
+    // without its number dates nothing, and a number without its datum is the
+    // lie this field exists to end.
+    const depthR = this.resolveConcept(DEPTH_PATHS, now)
+    const depthVal =
+      depthR && this.measuredAt(depthR.entry, now, freshnessMs) && typeof depthR.entry.value === 'number'
+        ? depthR.entry.value
+        : null
+
     return {
       ts: now,
       lat: posVal?.lat ?? null,
@@ -305,7 +318,8 @@ export class MetricsState {
       wind_direction_true: this.numeric('environment.wind.directionTrue', now, freshnessMs),
       air_temp_k: this.numeric('environment.outside.temperature', now, freshnessMs),
       air_pressure_pa: this.numeric('environment.outside.pressure', now, freshnessMs),
-      depth: this.conceptNumeric(DEPTH_PATHS, now, freshnessMs),
+      depth: depthVal,
+      depth_datum: depthVal !== null && depthR ? datumOf(depthR.path) : null,
       water_temp_k: this.numeric('environment.water.temperature', now, freshnessMs),
       gps_satellites: this.numeric('navigation.gnss.satellites', now, freshnessMs),
       ais_class: this.str('sensors.ais.class', now, freshnessMs)

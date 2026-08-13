@@ -169,6 +169,28 @@ describe('position and misc fields', () => {
     expect(s.snapshot(T0 + 60_000, false).depth).toBe(9.8)
   })
 
+  it('names the plane each depth was read from, and follows the switch', () => {
+    // The four numbers above walk three planes under one gauge. Each one now
+    // carries the plane it came from, so the switch the reader could never
+    // see is written down beside the reading.
+    const s = fresh()
+    s.ingest('environment.depth.belowSurface', 14.0, T0)
+    expect(s.snapshot(T0, false).depth_datum).toBe('belowSurface')
+    s.ingest('environment.depth.belowTransducer', 12.0, T0 + 2000)
+    expect(s.snapshot(T0 + 2000, false).depth_datum).toBe('belowTransducer')
+    // transducer stale, keel fresh: the datum moves with the value
+    s.ingest('environment.depth.belowKeel', 9.8, T0 + 60_000)
+    const snap = s.snapshot(T0 + 60_000, false)
+    expect(snap.depth).toBe(9.8)
+    expect(snap.depth_datum).toBe('belowKeel')
+  })
+
+  it('a null depth names no plane', () => {
+    const s = fresh()
+    expect(s.snapshot(T0, false).depth).toBeNull()
+    expect(s.snapshot(T0, false).depth_datum).toBeNull()
+  })
+
   it('accepts string fields and rejects non-finite numbers', () => {
     const s = fresh()
     expect(s.ingest('navigation.state', 'motoring', T0)).toBe(true)

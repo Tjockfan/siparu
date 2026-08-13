@@ -9,6 +9,9 @@
  * Field names are snake_case on the wire; the webapp consumes them as-is.
  */
 
+/** The three depth planes Signal K names, in the order the plugin prefers them. */
+export type DepthDatum = 'belowTransducer' | 'belowKeel' | 'belowSurface'
+
 /** All units are SI as delivered by Signal K (m/s, radians, Kelvin, Pascal). */
 export interface Snapshot {
   ts: number // epoch ms, UTC
@@ -31,6 +34,14 @@ export interface Snapshot {
   air_temp_k: number | null
   air_pressure_pa: number | null
   depth: number | null
+  /**
+   * Which plane `depth` was read from: the last segment of the winning
+   * candidate path. Null whenever depth is null. Absent entirely from
+   * records written before the field existed; a reader treats absent as
+   * unknown and says so, because naming a plane the data does not name is
+   * how a metre and a half of draft gets read as clearance.
+   */
+  depth_datum?: DepthDatum | null
   water_temp_k: number | null
   gps_satellites: number | null
   ais_class: string | null
