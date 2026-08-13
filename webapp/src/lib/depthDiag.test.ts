@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { depthDiagnosis, depthDiagLabel } from './depthDiag'
+import { depthDiagnosis, depthDiagLabel, depthDatumLabel } from './depthDiag'
 
 const H = 3600_000
 const NOW = 1_700_000_000_000
@@ -61,5 +61,21 @@ describe('depthDiagLabel', () => {
   it('quiet over 24h → day count, not a misleading clock time', () => {
     expect(depthDiagLabel({ kind: 'quiet', lastTs: NOW - 26 * H }, NOW)).toBe('QUIET · 1d')
     expect(depthDiagLabel({ kind: 'quiet', lastTs: NOW - 80 * H }, NOW)).toBe('QUIET · 3d')
+  })
+})
+
+describe('depthDatumLabel', () => {
+  it('names each plane in words a person says', () => {
+    expect(depthDatumLabel('belowTransducer')).toBe('BELOW TRANSDUCER')
+    expect(depthDatumLabel('belowKeel')).toBe('BELOW KEEL')
+    expect(depthDatumLabel('belowSurface')).toBe('BELOW SURFACE')
+  })
+
+  it('says the datum is unknown rather than guessing a plane', () => {
+    // A snapshot from before the field existed, or a value nobody recognises:
+    // the honest label is the gap itself, never a default plane.
+    expect(depthDatumLabel(null)).toBe('DATUM UNKNOWN')
+    expect(depthDatumLabel(undefined)).toBe('DATUM UNKNOWN')
+    expect(depthDatumLabel('belowMoon')).toBe('DATUM UNKNOWN')
   })
 })

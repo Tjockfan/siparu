@@ -34,6 +34,23 @@ export function depthDiagnosis(
 
 const DAY_MS = 86_400_000
 
+/** The plane the number was read from, in a person's words, sized for the cell's
+ *  meta line. A snapshot from before the field existed names no plane, and the
+ *  gap is said rather than guessed: naming a plane the data does not name is
+ *  how a metre and a half of draft gets read as clearance. */
+export function depthDatumLabel(datum: string | null | undefined): string {
+  switch (datum) {
+    case 'belowTransducer':
+      return 'BELOW TRANSDUCER'
+    case 'belowKeel':
+      return 'BELOW KEEL'
+    case 'belowSurface':
+      return 'BELOW SURFACE'
+    default:
+      return 'DATUM UNKNOWN'
+  }
+}
+
 /** Labels are sized for a narrow phone cell (~16 chars); "\n" is a deliberate
  *  line break (CSS white-space: pre-line). Time format matches the GUST label. */
 export function depthDiagLabel(diag: DepthDiag, now: number): string | null {
