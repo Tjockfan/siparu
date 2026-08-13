@@ -23,18 +23,22 @@
  * and the fuel-path picker.
  *
  * Authorisation mirrors config-routes: on a secured server, a principal the server
- * would let configure it; on an unsecured one, open, the same decision pairing
- * makes, because a stranger on that network can already read the boat's token.
+ * would let configure it; on an unsecured one, refused until the owner has accepted
+ * the open network in the plugin settings (writeLocked in pairing.ts). The record
+ * these routes rewrite is the record the product sells as impartial; on an open
+ * network, "anyone aboard the wifi can merge voyages" is not a posture to default to.
  */
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter, Request, Response } from 'express'
-import { securityOff } from './pairing'
+import { securityOff, writeLocked, WRITE_LOCKED_MESSAGE } from './pairing'
 import { allowConfigure } from './config-routes'
 import { sameOrigin } from './origin-guard'
 import type { EditResult } from './voyagelog'
 
 interface VoyageEditDeps {
   app: ServerAPI
+  /** The owner's standing answer to an unsecured server (see pairing.ts writeLocked). */
+  acceptOpenNetwork: () => boolean
   /** Which voyages were made by hand and can be put back. */
   edits: () => { merged: number[] }
   mergeWithPrevious: (id: number, now: number) => Promise<EditResult>
@@ -50,7 +54,7 @@ const STATUS: Record<string, number> = {
 }
 
 export function registerVoyageEditRoutes(router: IRouter, deps: VoyageEditDeps): void {
-  const { app, edits, mergeWithPrevious, undoMerge } = deps
+  const { app, acceptOpenNetwork, edits, mergeWithPrevious, undoMerge } = deps
 
   // Read side, open like the rest of the dashboard: the screen has to know which
   // voyages carry an undo before it can offer one.
@@ -63,7 +67,12 @@ export function registerVoyageEditRoutes(router: IRouter, deps: VoyageEditDeps):
     run: (id: number, now: number) => Promise<EditResult>
   ): ((req: Request, res: Response) => void) => {
     return (req, res) => {
-      if (!securityOff(app, req) && !allowConfigure(app, req)) {
+      if (securityOff(app, req)) {
+        if (writeLocked(app, req, acceptOpenNetwork())) {
+          res.status(403).json({ error: 'security_off', message: WRITE_LOCKED_MESSAGE })
+          return
+        }
+      } else if (!allowConfigure(app, req)) {
         res.status(403).json({ error: 'admin_required' })
         return
       }

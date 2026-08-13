@@ -27,11 +27,14 @@ export type LiveSnapshot = LiveResult
 export class ApiError extends Error {
   status: number
   detail: string
-  constructor(status: number, detail: string) {
+  /** The plugin's machine-readable reason ("security_off"), when the body carried one. */
+  code?: string
+  constructor(status: number, detail: string, code?: string) {
     super(`${status}: ${detail}`)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.code = code
   }
 }
 
@@ -47,13 +50,22 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   if (!r.ok) {
     if (r.status === 401) window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT))
     let detail = r.statusText
+    let code: string | undefined
     try {
-      const body = (await r.json()) as { error?: { message?: string } }
-      if (body?.error?.message) detail = body.error.message
+      // Two body shapes reach here: Signal K's own errors nest the message
+      // ({error:{message}}), the plugin's routes answer flat ({error, message}) -
+      // with error as the machine-readable reason a screen can act on.
+      const body = (await r.json()) as {
+        error?: string | { message?: string }
+        message?: string
+      }
+      if (typeof body?.message === 'string' && body.message) detail = body.message
+      else if (typeof body?.error === 'object' && body.error?.message) detail = body.error.message
+      if (typeof body?.error === 'string') code = body.error
     } catch {
       /* not JSON */
     }
-    throw new ApiError(r.status, detail)
+    throw new ApiError(r.status, detail, code)
   }
   return r.json() as Promise<T>
 }
@@ -369,12 +381,19 @@ type PairState =
 /**
  * The screen's state, plus the state of the door it stands behind. `security_off` is
  * true when Signal K is running without security, which is its default: the pairing
- * endpoints then answer anyone on the boat's network. It rides every state because it
- * describes the server, not the flow. `revoke_pending` is true when an unlink was cut
- * on the boat but the relay has not yet been reached to kill its copy of the key; the
- * plugin keeps retrying on its own.
+ * endpoints would then answer anyone on the boat's network. It rides every state
+ * because it describes the server, not the flow. `pairing_locked` rides along when
+ * that also means the plugin is refusing pairing, unpairing and settings writes -
+ * until the owner turns security on, or accepts the open network in the plugin
+ * settings. `revoke_pending` is true when an unlink was cut on the boat but the relay
+ * has not yet been reached to kill its copy of the key; the plugin keeps retrying on
+ * its own.
  */
-export type PairScreen = PairState & { security_off?: boolean; revoke_pending?: boolean }
+export type PairScreen = PairState & {
+  security_off?: boolean
+  pairing_locked?: boolean
+  revoke_pending?: boolean
+}
 
 export const api = {
   live: () => http<LiveSnapshot>('/live'),

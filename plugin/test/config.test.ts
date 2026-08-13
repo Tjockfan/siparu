@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULTS, isCalendarMonthDay, resolveOptions, safeRelayUrl } from '../src/config'
+import { DEFAULTS, isCalendarMonthDay, RELAY_URL, resolveOptions, safeRelayUrl } from '../src/config'
 
 describe('seasonStart is a calendar date, not just two numbers', () => {
   it('accepts real month-day pairs', () => {
@@ -55,27 +55,33 @@ describe('ports must sit on the globe', () => {
   })
 })
 
-describe('the relay URL never carries the boat token in clear text', () => {
-  it('accepts https and trims a trailing slash', () => {
-    expect(resolveOptions({ relayUrl: 'https://relay.example' }).relayUrl).toBe('https://relay.example')
-    expect(resolveOptions({ relayUrl: 'https://relay.siparu.app/' }).relayUrl).toBe('https://relay.siparu.app')
+describe('the relay URL is not configuration', () => {
+  it('ignores a relayUrl planted in stored options', () => {
+    // The relay URL decides who receives the boat's frames and whose device list
+    // she seals to. Plugin options can be written by anyone who can reach the
+    // server's own POST /plugins/<id>/config on an unsecured install, so a URL
+    // arriving that way is a takeover, not a setting. resolveOptions must not
+    // even carry the field: if this ever grows a relayUrl property again, the
+    // redirect door is back open.
+    expect(resolveOptions({ relayUrl: 'https://evil.example' })).not.toHaveProperty('relayUrl')
+    expect(DEFAULTS).not.toHaveProperty('relayUrl')
   })
 
-  it('falls back to the default for any plain-http URL, loopback included', () => {
-    // The relay is on the public internet; there is no loopback exception, so the
-    // token never rides plain http even in a hand-edited config.
-    expect(resolveOptions({ relayUrl: 'http://evil.example' }).relayUrl).toBe(DEFAULTS.relayUrl)
-    expect(resolveOptions({ relayUrl: 'http://localhost:8787' }).relayUrl).toBe(DEFAULTS.relayUrl)
-    expect(resolveOptions({ relayUrl: 'http://192.168.1.10:8787' }).relayUrl).toBe(DEFAULTS.relayUrl)
-    expect(resolveOptions({ relayUrl: 'ftp://nope' }).relayUrl).toBe(DEFAULTS.relayUrl)
-    expect(resolveOptions({ relayUrl: 'not a url' }).relayUrl).toBe(DEFAULTS.relayUrl)
+  it('answers the production relay when the environment does not override it', () => {
+    // SIPARU_RELAY_URL is a development seam; the test runner does not set it,
+    // so this is what every AppStore install resolves.
+    expect(RELAY_URL).toBe('https://relay.siparu.app')
   })
 
   it('safeRelayUrl is the single gate live.ts derives ws/wss from', () => {
-    // live.ts turns https->wss off this value; a plain-http URL passing here would
-    // put the token on an unencrypted websocket too.
+    // The env override goes through the same gate: live.ts turns https->wss off
+    // this value, and a plain-http URL passing here would put the boat token on
+    // an unencrypted websocket.
     expect(safeRelayUrl('http://relay.example')).toBeUndefined()
+    expect(safeRelayUrl('http://localhost:8787')).toBeUndefined()
+    expect(safeRelayUrl('not a url')).toBeUndefined()
     expect(safeRelayUrl('https://relay.example')).toBe('https://relay.example')
+    expect(safeRelayUrl('https://relay.example/')).toBe('https://relay.example')
   })
 })
 

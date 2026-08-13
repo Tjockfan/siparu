@@ -101,6 +101,10 @@ function boat(): { handlers: Map<string, Handler>; did: Recorded } {
   registerPairRoutes(router, {
     app: openServer,
     relayUrl: 'https://relay.example',
+    // The owner has accepted the open network: this file is about origin
+    // semantics, and the write lock (pinned in pair-security-warning.test.ts)
+    // would otherwise refuse every call before sameOrigin is even consulted.
+    acceptOpenNetwork: () => true,
     boatName: () => 'Test Vessel',
     vesselUrn: () => 'urn:mrn:imo:mmsi:123456789',
     uplinkStatus: () => null,
@@ -115,6 +119,7 @@ function boat(): { handlers: Map<string, Handler>; did: Recorded } {
 
   registerConfigRoutes(router, {
     app: openServer,
+    acceptOpenNetwork: () => true,
     getConfig: () => ({}),
     fuelPathsView: () => ({ available: ['propulsion.port.fuel.rate'], selected: [] }),
     restart: () => {

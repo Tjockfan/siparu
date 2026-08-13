@@ -47,16 +47,24 @@ generator tab. The same gauges are also served over the API (`GET /live`,
 
 Signal K ships with security switched off, and nothing in the setup makes you turn
 it on. With it off, every plugin's HTTP surface is open to anyone who can reach
-your boat's network, this one included: the pairing endpoints below answer whoever
-asks, so anyone on the network could pair their own screen to her. (The relay
-credential itself is out of reach: it lives in a mode-600 file under the plugin's
-data directory, not in the config.)
+your boat's network, this one included. (The relay credential itself is out of
+reach: it lives in a mode-600 file under the plugin's data directory, not in the
+config. The relay address is not a plugin option at all - it comes from the
+server process's environment, so nothing that writes plugin options can redirect
+the boat.)
 
-Little of that is peculiar to Siparu. On an unsecured server `GET /skServer/plugins`
-already discloses every plugin's configuration and the App Store will install code.
-What is peculiar to Siparu is the consequence: someone on the same marina wifi can
-link your boat to **their** account, and your own screen will go on saying "paired"
-while they watch her.
+Because of that, the plugin locks its own writes while security is off: pairing,
+unpairing and log edits refuse until you either add an admin user in Signal K or
+tick "Allow pairing and log edits while Signal K security is off" in the plugin
+settings. The tick exists for installs that cannot easily turn security on; it is
+an acceptance of the risk, not a removal of it.
+
+The lock cannot make an unsecured server safe. On such a server
+`GET /skServer/plugins` already discloses every plugin's configuration, the
+server's own config route can change any plugin's settings - including that very
+tick - and the App Store will install code. The consequence peculiar to Siparu is
+what a stranger on the marina wifi could do with an open door: link your boat to
+**their** account while your own screen goes on saying "paired".
 
 So before you pair, add an admin user in Signal K (Security > Users). It takes a
 minute and it is the difference between a boat you share and a boat you leak.

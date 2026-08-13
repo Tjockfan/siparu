@@ -34,6 +34,7 @@ function routes() {
   registerPairRoutes(router, {
     app,
     relayUrl: 'https://relay.example',
+    acceptOpenNetwork: () => false,
     boatName: () => 'Test Vessel',
     vesselUrn: () => '',
     uplinkStatus: () => null,

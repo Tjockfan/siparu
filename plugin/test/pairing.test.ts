@@ -53,6 +53,7 @@ function routes(opts: Opts = {}) {
   registerPairRoutes(router, {
     app,
     relayUrl: 'https://relay.example',
+    acceptOpenNetwork: () => false,
     boatName: () => opts.boatName ?? 'Test Vessel',
     vesselUrn: () => opts.vesselUrn ?? 'urn:mrn:imo:mmsi:123456789',
     uplinkStatus: () => opts.uplink ?? null,

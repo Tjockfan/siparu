@@ -2,8 +2,9 @@
  * The fuel-paths config route: the one webapp write that is not pairing.
  *
  * It saves the plugin's own options (never the vessel bus - proved by the CI
- * read-only guards) and it is authorised like the rest of the server: open on
- * an unsecured server, admin-only on a secured one. These pin that posture, the
+ * read-only guards) and it is authorised like the rest of the server: admin-only
+ * on a secured one, and on an unsecured server refused until the owner has
+ * accepted the open network in the plugin settings. These pin that posture, the
  * validation, and the merge that must not drop the boat's other settings.
  */
 import { describe, expect, it } from 'vitest'
@@ -57,7 +58,7 @@ function fakeRes() {
 const NO_VIEW = () => ({ available: [] as string[], selected: [] as string[] })
 
 /** Register, capture the handlers, and expose a way to drive each verb. */
-function mount(app: ReturnType<typeof fakeApp>, config: object, view = NO_VIEW) {
+function mount(app: ReturnType<typeof fakeApp>, config: object, view = NO_VIEW, accept = false) {
   const handlers: Record<string, (req: unknown, res: unknown) => void> = {}
   const router = {
     get: (_p: string, h: (req: unknown, res: unknown) => void) => {
@@ -69,6 +70,7 @@ function mount(app: ReturnType<typeof fakeApp>, config: object, view = NO_VIEW) 
   } as unknown as IRouter
   registerConfigRoutes(router, {
     app: app as unknown as ServerAPI,
+    acceptOpenNetwork: () => accept,
     getConfig: () => config,
     fuelPathsView: view,
     restart: (configuration: object) => app.restarted.push(configuration)
@@ -77,10 +79,10 @@ function mount(app: ReturnType<typeof fakeApp>, config: object, view = NO_VIEW) 
 }
 
 /** POST the body, then flush the async handler + savePluginOptions callback. */
-async function post(app: ReturnType<typeof fakeApp>, config: object, body: unknown) {
+async function post(app: ReturnType<typeof fakeApp>, config: object, body: unknown, accept = false) {
   const res = fakeRes()
   // `body` present as an object short-circuits the stream read in readJsonBody.
-  mount(app, config).post({ body } as unknown, res as unknown)
+  mount(app, config, NO_VIEW, accept).post({ body } as unknown, res as unknown)
   await new Promise((r) => setImmediate(r))
   return res
 }
@@ -98,9 +100,19 @@ describe('the fuel-paths route is authorised like the server itself', () => {
     expect(app.restarted).toHaveLength(1)
   })
 
-  it('an unsecured server is open, the same call pairing makes', async () => {
+  it('an unsecured server is refused until the owner has accepted the open network', async () => {
+    // The same lock pairing holds (writeLocked in pairing.ts): with security off,
+    // anyone on the boat's network could reach this write.
     const app = fakeApp(UNSECURED)
     const res = await post(app, {}, { paths: ['propulsion.port.fuel.rate'] })
+    expect(res._status).toBe(403)
+    expect((res._json as { error?: string }).error).toBe('security_off')
+    expect(app.restarted).toHaveLength(0)
+  })
+
+  it('an unsecured server the owner has answered for is open', async () => {
+    const app = fakeApp(UNSECURED)
+    const res = await post(app, {}, { paths: ['propulsion.port.fuel.rate'] }, true)
     expect(res._status).toBe(200)
     expect(app.restarted).toHaveLength(1)
   })
@@ -117,7 +129,7 @@ describe('the fuel-paths route is authorised like the server itself', () => {
     // but leaves the running plugin on the old paths, so a save looks accepted
     // yet counts the old fuel until the boat restarts. The route must go through
     // restart(), which persists and then stops+starts to apply.
-    const app = fakeApp(UNSECURED)
+    const app = fakeApp(SECURED_ADMIN)
     const res = await post(app, {}, { paths: ['propulsion.port.fuel.rate'] })
     expect(res._status).toBe(200)
     expect(app.restarted).toEqual([{ fuelRatePaths: ['propulsion.port.fuel.rate'] }])

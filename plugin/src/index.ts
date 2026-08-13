@@ -20,7 +20,7 @@ import type { Plugin, ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
 import { buildAisFeed, clampAisQuery } from './ais'
 import { chartsDir, resolveMapConfig } from './charts'
-import { CONFIG_SCHEMA, DEFAULTS, INTERNAL, Options, resolveOptions } from './config'
+import { CONFIG_SCHEMA, INTERNAL, Options, RELAY_URL, resolveOptions } from './config'
 import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQuery } from './contract'
 import { fingerprintOfEncoded } from './fingerprint'
 import { DYNAMIC_PREFIXES, MetricsState, SUBSCRIBED_PATHS } from './metrics'
@@ -410,7 +410,7 @@ export = (app: ServerAPI): Plugin => {
           const latch = new SealingLatch(app.getDataDirPath())
           sealingLatch = latch
           const ks = new KeySync({
-            relayUrl: opts.relayUrl,
+            relayUrl: RELAY_URL,
             getRemote: () => rl.getRemote(),
             keys: boatKeys,
             latch,
@@ -446,7 +446,7 @@ export = (app: ServerAPI): Plugin => {
           // and carries her the moment it is not. It is not a fallback that gets switched on
           // when something notices a failure - it is already running when the failure happens.
           const ws = new LiveUplink({
-            relayUrl: opts.relayUrl,
+            relayUrl: RELAY_URL,
             getRemote: () => rl.getRemote(),
             frame: () => live(),
             // The one thing the shore may ask of her: her own recorded history for a gauge,
@@ -486,7 +486,7 @@ export = (app: ServerAPI): Plugin => {
 
 
           const up = new Uplink({
-            relayUrl: opts.relayUrl,
+            relayUrl: RELAY_URL,
             getRemote: () => rl.getRemote(),
             debug: (msg) => app.debug(msg),
             // Reporting, not merely connected. A boat with no authorised screen holds a
@@ -504,7 +504,7 @@ export = (app: ServerAPI): Plugin => {
           // exactly the boat that comes online again later.
           const tryUnlink = (): void => {
             void retryPendingUnlinks(
-              opts.relayUrl,
+              RELAY_URL,
               () => rl.getPendingUnlinks(),
               (token) => rl.removePendingUnlink(token),
               (msg) => app.debug(msg)
@@ -574,7 +574,11 @@ export = (app: ServerAPI): Plugin => {
       // own options.
       registerPairRoutes(router, {
         app,
-        relayUrl: opts?.relayUrl ?? DEFAULTS.relayUrl,
+        relayUrl: RELAY_URL,
+        // Read live rather than captured: registerWithRouter can run before
+        // start() has resolved the options, and the answer must follow a
+        // settings change without waiting for routes to re-register.
+        acceptOpenNetwork: () => opts?.acceptOpenNetwork ?? false,
         boatName: () => opts?.boatName || String(app.getSelfPath('name') ?? ''),
         uplinkStatus: () => reportedStatus(liveUplink?.status(), uplink?.status() ?? null),
         // The vessel's MMSI or UUID urn. Typed as a plain string, but the server only
@@ -607,6 +611,7 @@ export = (app: ServerAPI): Plugin => {
       // read-only guard.
       registerConfigRoutes(router, {
         app,
+        acceptOpenNetwork: () => opts?.acceptOpenNetwork ?? false,
         getConfig: () => currentConfig,
         fuelPathsView: () => ({
           available: state
@@ -627,6 +632,7 @@ export = (app: ServerAPI): Plugin => {
       // all reads, and this router is not proxied. See voyage-routes.ts.
       registerVoyageEditRoutes(router, {
         app,
+        acceptOpenNetwork: () => opts?.acceptOpenNetwork ?? false,
         edits: () => voyages?.edits() ?? { merged: [] },
         mergeWithPrevious: async (id, now) =>
           voyages ? voyages.mergeWithPrevious(id, now) : { ok: false, error: 'not_found' },

@@ -8,7 +8,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Sheet } from "siparu-ui";
-import { api, type FuelPathsView } from "../../lib/api";
+import { api, ApiError, type FuelPathsView } from "../../lib/api";
 import { fuelPathLabel, fuelSourceNotice, fuelSourceRows } from "../../lib/fuelSource";
 
 export default function FuelSourceSheet({
@@ -57,7 +57,16 @@ export default function FuelSourceSheet({
       onApplied();
       closeRef.current?.();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not apply the change");
+      // ApiError.message leads with the HTTP status; a helm screen does not
+      // speak in status codes, so only the detail is shown - and the lock gets
+      // this surface's own words rather than the pair-and-log ones.
+      if (e instanceof ApiError)
+        setErr(
+          e.code === "security_off"
+            ? "Signal K security is off, so the fuel source is locked. Add an admin user in Signal K."
+            : e.detail || "Could not apply the change"
+        );
+      else setErr(e instanceof Error ? e.message : "Could not apply the change");
       setApplying(false);
     }
   };

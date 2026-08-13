@@ -164,16 +164,25 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
   );
 
   // The warning stands above whatever the band shows, in every state: it is about the
-  // server's door, not about where in the pairing flow she happens to be. It does not
-  // block anything - refusing to pair would stop the owner and not the intruder, who
-  // has shorter ways into an unsecured server.
+  // server's door, not about where in the pairing flow she happens to be. When the
+  // door is open AND unanswered-for, the plugin refuses the writes (pairing_locked),
+  // and the buttons below disappear rather than fail: a locked button the screen
+  // cannot explain is worse than no button.
+  const locked = data.pairing_locked === true;
   const warning = data.security_off ? (
     <div className="pair warn">
       <div className="pl">
-        <div className="t">Signal K security is off</div>
+        <div className="t">
+          {locked ? "Signal K security is off · pairing is locked" : "Signal K security is off"}
+        </div>
         <div className="s">
-          Anyone who can reach this network can link this boat to their account, and this
-          screen would still say she is yours. Add an admin user in Signal K, then pair.
+          {locked
+            ? "Anyone on this network could link this boat to another account or cut her " +
+              "loose, so pairing, unpairing and log edits stay locked. Add an admin user " +
+              "in Signal K - or, on a network you trust, accept the risk in the plugin settings."
+            : "Anyone who can reach this network can link this boat to their account, and " +
+              "the only sign here would be a linked account you do not recognise. Add an " +
+              "admin user in Signal K."}
         </div>
       </div>
     </div>
@@ -207,7 +216,7 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
                   : "Off - this boat is not linked to an account."}
               </div>
             </div>
-            {btn(data.state === "expired" ? "New code" : "Turn on", () => act(api.pair.start))}
+            {!locked && btn(data.state === "expired" ? "New code" : "Turn on", () => act(api.pair.start))}
           </div>
         );
 
@@ -235,7 +244,7 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
             </div>
             <div className="acts">
               {btn("Deny", () => act(api.pair.deny), "ghost")}
-              {btn("Approve", () => act(api.pair.approve), "accent")}
+              {!locked && btn("Approve", () => act(api.pair.approve), "accent")}
             </div>
           </div>
         );
@@ -253,7 +262,7 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
                   The band above is the truer of the two, so it speaks alone. */}
               {!confirmOff && !silent && <div className="s">{uplinkLine(data.uplink)}</div>}
             </div>
-            {confirmOff ? (
+            {locked ? null : confirmOff ? (
               <div className="acts">
                 {btn("Keep", () => setConfirmOff(false), "ghost")}
                 {btn("Unlink", () => act(api.pair.reset), "accent")}
@@ -280,10 +289,12 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
               <div className="t">Remote viewing · error</div>
               <div className="s">{data.message}</div>
             </div>
-            <div className="acts">
-              {btn("Dismiss", () => act(api.pair.reset), "ghost")}
-              {btn("Retry", () => act(api.pair.start))}
-            </div>
+            {!locked && (
+              <div className="acts">
+                {btn("Dismiss", () => act(api.pair.reset), "ghost")}
+                {btn("Retry", () => act(api.pair.start))}
+              </div>
+            )}
           </div>
         );
     }

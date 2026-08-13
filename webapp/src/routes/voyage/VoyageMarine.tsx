@@ -4,7 +4,7 @@
  * plus port/coordinate detail, including fuel burned when the engines report it.
  * Data comes from voyage/useVoyageData.ts; header + tab bar from Layout. */
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+import { api, ApiError } from "../../lib/api";
 import type { Voyage, VoyageRollup, TrackPoint, FuelPathsView } from "../../lib/api";
 import { fmtCoordDM, fmtNum } from "../../lib/format";
 import { FUEL_MODES, fuelReadout, type FuelMode } from "../../lib/fuel";
@@ -38,6 +38,7 @@ const EDIT_ERRORS: Record<string, string> = {
   voyage_open: "This passage is still being recorded. It can be edited once it ends.",
   nothing_to_undo: "This passage was not joined by hand.",
   admin_required: "Sign in to Signal K as an administrator to edit the log.",
+  security_off: "Signal K security is off, so the log is locked. Add an admin user in Signal K.",
 };
 
 /** Format a duration given in hours as "3h 12m" / "47m". */
@@ -173,8 +174,11 @@ export default function VoyageMarine() {
       setOpenId(null);
       setTracks({});
       setReloadKey((k) => k + 1);
-    } catch {
-      setEditErr("The boat did not answer.");
+    } catch (e) {
+      // A refusal is an answer: the plugin says why in a code (and a message),
+      // and "did not answer" would blame the network for a door that is locked.
+      if (e instanceof ApiError) setEditErr(EDIT_ERRORS[e.code ?? ""] ?? (e.detail || "That edit could not be made."));
+      else setEditErr("The boat did not answer.");
     }
   };
 

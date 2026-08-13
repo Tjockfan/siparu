@@ -3,8 +3,9 @@
  *
  * These are the only writes on the plugin's REST surface besides pairing and the
  * fuel-path picker, and unlike those they change what the boat says happened. The
- * posture is the server's own - open on an unsecured server, admin on a secured
- * one - and these pin it, because the route that quietly stops checking is the one
+ * posture is the server's own - admin on a secured server, and on an unsecured one
+ * refused until the owner has accepted the open network in the plugin settings -
+ * and these pin it, because the route that quietly stops checking is the one
  * nobody notices.
  */
 import { describe, expect, it } from 'vitest'
@@ -51,7 +52,7 @@ function fakeRes() {
 type Handler = (req: unknown, res: unknown) => void
 
 /** Register, and keep the handlers by the path they were mounted on. */
-function mount(app: ReturnType<typeof fakeApp>, answer: (id: number) => Promise<EditResult>) {
+function mount(app: ReturnType<typeof fakeApp>, answer: (id: number) => Promise<EditResult>, accept = false) {
   const posts: Record<string, Handler> = {}
   const gets: Record<string, Handler> = {}
   const calls: number[] = []
@@ -65,6 +66,7 @@ function mount(app: ReturnType<typeof fakeApp>, answer: (id: number) => Promise<
   } as unknown as IRouter
   registerVoyageEditRoutes(router, {
     app: app as unknown as ServerAPI,
+    acceptOpenNetwork: () => accept,
     edits: () => ({ merged: [4] }),
     mergeWithPrevious: (id) => {
       calls.push(id)
@@ -84,9 +86,10 @@ async function call(
   app: ReturnType<typeof fakeApp>,
   id: string,
   answer: (n: number) => Promise<EditResult> = ok,
-  path = '/voyages/:id/merge-previous'
+  path = '/voyages/:id/merge-previous',
+  accept = false
 ) {
-  const m = mount(app, answer)
+  const m = mount(app, answer, accept)
   const res = fakeRes()
   m.posts[path]!({ params: { id } } as unknown, res as unknown)
   await new Promise((r) => setImmediate(r))
@@ -105,8 +108,17 @@ describe('the voyage-edit routes are authorised like the server itself', () => {
     expect(calls).toEqual([7])
   })
 
-  it('an unsecured server is open, the same call pairing and the fuel picker make', async () => {
-    const { res } = await call(fakeApp(UNSECURED), '7')
+  it('an unsecured server is refused until the owner has accepted the open network', async () => {
+    // The record these routes rewrite is the record the product sells as
+    // impartial; "anyone aboard the wifi can merge voyages" is not a default.
+    const { res, calls } = await call(fakeApp(UNSECURED), '7')
+    expect(res._status).toBe(403)
+    expect((res._json as { error?: string }).error).toBe('security_off')
+    expect(calls).toEqual([])
+  })
+
+  it('an unsecured server the owner has answered for is open', async () => {
+    const { res } = await call(fakeApp(UNSECURED), '7', ok, '/voyages/:id/merge-previous', true)
     expect(res._status).toBe(200)
   })
 
@@ -126,7 +138,7 @@ describe('the voyage-edit routes are authorised like the server itself', () => {
 
 describe('the voyage-edit routes read an id and report what happened', () => {
   it.each([['abc'], ['0'], ['-3'], ['1.5'], ['']])('rejects %j before reaching the log', async (id) => {
-    const { res, calls } = await call(fakeApp(UNSECURED), id)
+    const { res, calls } = await call(fakeApp(SECURED_ADMIN), id)
     expect(res._status).toBe(400)
     expect(calls).toEqual([])
   })
@@ -137,18 +149,18 @@ describe('the voyage-edit routes read an id and report what happened', () => {
     ['voyage_open', 409],
     ['nothing_to_undo', 409]
   ])('answers %s with %i, so the screen can say which', async (error, status) => {
-    const { res } = await call(fakeApp(UNSECURED), '7', async () => ({ ok: false, error }))
+    const { res } = await call(fakeApp(SECURED_ADMIN), '7', async () => ({ ok: false, error }))
     expect(res._status).toBe(status)
     expect(res._json).toEqual({ ok: false, error })
   })
 
   it('turns a refusal it has no status for into a 400 rather than a success', async () => {
-    const { res } = await call(fakeApp(UNSECURED), '7', async () => ({ ok: false, error: 'something_new' }))
+    const { res } = await call(fakeApp(SECURED_ADMIN), '7', async () => ({ ok: false, error: 'something_new' }))
     expect(res._status).toBe(400)
   })
 
   it('reports a thrown error as a 500 and logs it, rather than leaving the caller hanging', async () => {
-    const app = fakeApp(UNSECURED)
+    const app = fakeApp(SECURED_ADMIN)
     const { res } = await call(app, '7', async () => {
       throw new Error('disk gone')
     })

@@ -16,18 +16,19 @@
  *
  * Authorisation mirrors the server's own posture. On a secured server only a
  * principal the server would let configure it may change this. On an unsecured
- * server - the default, which the plugin warns about at every turn - it is open,
- * the same decision pairing makes: refusing would stop the owner and not a
- * stranger who, on that same server, can already read the token and re-pair the
- * boat. Changing which engine counts is far less than either.
+ * server - the default, which the plugin warns about at every turn - it refuses
+ * until the owner has accepted the open network in the plugin settings, the same
+ * decision pairing makes (writeLocked in pairing.ts, where the reasoning lives).
  */
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter, Request, Response } from 'express'
-import { securityOff } from './pairing'
+import { securityOff, writeLocked, WRITE_LOCKED_MESSAGE } from './pairing'
 import { sameOrigin } from './origin-guard'
 
 interface ConfigDeps {
   app: ServerAPI
+  /** The owner's standing answer to an unsecured server (see pairing.ts writeLocked). */
+  acceptOpenNetwork: () => boolean
   /** The plugin's current raw options, so a save preserves every other setting. */
   getConfig: () => object
   /**
@@ -97,7 +98,7 @@ function readJsonBody(req: Request): Promise<unknown> {
 }
 
 export function registerConfigRoutes(router: IRouter, deps: ConfigDeps): void {
-  const { app, getConfig, fuelPathsView, restart } = deps
+  const { app, acceptOpenNetwork, getConfig, fuelPathsView, restart } = deps
 
   // Read side: open like the rest of the dashboard. The picker asks what engines
   // report a fuel rate and which are counted; a write to change it is gated below.
@@ -106,7 +107,12 @@ export function registerConfigRoutes(router: IRouter, deps: ConfigDeps): void {
   })
 
   router.post('/config/fuel-paths', sameOrigin((req: Request, res: Response) => {
-    if (!securityOff(app, req) && !allowConfigure(app, req)) {
+    if (securityOff(app, req)) {
+      if (writeLocked(app, req, acceptOpenNetwork())) {
+        res.status(403).json({ error: 'security_off', message: WRITE_LOCKED_MESSAGE })
+        return
+      }
+    } else if (!allowConfigure(app, req)) {
       res.status(403).json({ error: 'admin_required' })
       return
     }

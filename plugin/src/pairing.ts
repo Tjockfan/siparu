@@ -46,23 +46,24 @@ export type PairScreen =
 /**
  * What /pair/status answers: the screen's state, plus the state of the door it is
  * standing behind. `security_off` rides every state because it describes the server,
- * not where in the flow the skipper happens to be. `revoke_pending` rides along when
+ * not where in the flow the skipper happens to be. `pairing_locked` rides along when
+ * that unsecured door also means the writes below will refuse - so the screen can
+ * explain the locked button rather than let it fail. `revoke_pending` rides along when
  * an unlink was cut locally but the relay has not yet been reached to kill its copy
  * of the token - "off on this boat, still revoking ashore" is a different truth from
  * plain "off", and the screen should not flatten it.
  */
-export type PairStatus = PairScreen & { security_off?: boolean; revoke_pending?: boolean }
+export type PairStatus = PairScreen & {
+  security_off?: boolean
+  pairing_locked?: boolean
+  revoke_pending?: boolean
+}
 
 /**
  * True when Signal K is running with security off - which is its default, and which
  * nothing in the setup makes you change. These routes then answer anyone who can
- * reach the boat's network, so a stranger on the marina wifi can link this vessel to
+ * reach the boat's network, so a stranger on the marina wifi could link this vessel to
  * their own account while the owner's screen goes on saying "paired".
- *
- * Pairing is deliberately still allowed. Refusing it would stop the owner and not the
- * intruder: on an unsecured server `GET /plugins/siparu/config` already hands over the
- * token in one request, and the App Store will install code. The lock is not ours to
- * fit; the warning is.
  *
  * Read through getLoginStatus because it is where the two strategies observably differ:
  * tokensecurity hardcodes authenticationRequired: true, the dummy answers false.
@@ -84,9 +85,34 @@ export function securityOff(app: ServerAPI, req: unknown): boolean {
   }
 }
 
+/**
+ * The lock on those writes. An earlier version let them through with only a warning,
+ * reasoning that refusal stops the owner and not the intruder - a reading that leaned
+ * on the boat token being readable from plugin options, which stopped being true when
+ * the token moved to the data dir. What is left on an unsecured server is exactly the
+ * takeover: reset kills the live token so the relay's not_your_boat guard cannot fire,
+ * start hands the next code to whoever asked. So with security off, the writes refuse
+ * until the owner has answered for it in the plugin settings (acceptOpenNetwork).
+ *
+ * Honest limit: this cannot make an unsecured server safe. The server's own
+ * POST /plugins/<id>/config stays open and can tick that very setting, and the app
+ * store will install code. The lock exists so the DEFAULT posture is refusal - a
+ * drive-by script no longer takes the boat in three requests - and so the risk is
+ * accepted at the helm rather than assumed by the product's install flow.
+ */
+export function writeLocked(app: ServerAPI, req: unknown, acceptOpenNetwork: boolean): boolean {
+  return securityOff(app, req) && !acceptOpenNetwork
+}
+
+/** What a refused write answers, worded for the screen the skipper is looking at. */
+export const WRITE_LOCKED_MESSAGE =
+  'Signal K security is off, so Siparu will not pair, unpair or edit the log. Add an admin user in Signal K, or accept the open-network risk in the plugin settings.'
+
 interface Deps {
   app: ServerAPI
   relayUrl: string
+  /** The owner's standing answer to an unsecured server; read live because start() resolves it after routes register. */
+  acceptOpenNetwork: () => boolean
   boatName: () => string
   /** Null before the plugin has finished starting; the screen simply omits it. */
   uplinkStatus: () => UplinkStatus | null
@@ -218,8 +244,19 @@ export function maskEmail(email: string | null): string | null {
 }
 
 export function registerPairRoutes(router: IRouter, deps: Deps): void {
-  const { app, relayUrl, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus, getPendingUnlinks, addPendingUnlink } =
+  const { app, relayUrl, acceptOpenNetwork, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus, getPendingUnlinks, addPendingUnlink } =
     deps
+
+  /**
+   * Answers instead of the handler when the write is locked (see writeLocked).
+   * Checked before anything else happens - before the relay is dialled, before
+   * any state moves - so a refusal has no side effects to roll back.
+   */
+  const refuseLocked = (req: unknown, res: { status: (n: number) => { json: (b: unknown) => unknown } }): boolean => {
+    if (!writeLocked(app, req, acceptOpenNetwork())) return false
+    res.status(403).json({ state: 'error', message: WRITE_LOCKED_MESSAGE } satisfies PairScreen)
+    return true
+  }
 
   const paired = (remote: RemoteState): PairScreen => ({
     state: 'paired',
@@ -235,7 +272,12 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
     // told once, wherever the skipper is in the flow.
     const json = (screen: PairScreen): void => {
       const status: PairStatus = { ...screen }
-      if (securityOff(app, req)) status.security_off = true
+      if (securityOff(app, req)) {
+        status.security_off = true
+        // Same condition the POST routes refuse on, told up front: the screen
+        // should explain a locked button, not let it be pressed and fail.
+        if (!acceptOpenNetwork()) status.pairing_locked = true
+      }
       if (getPendingUnlinks().length > 0) status.revoke_pending = true
       res.json(status)
     }
@@ -311,7 +353,8 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
    * exists. Making her unlink first would throw that proof away, and every reinstall
    * would leave the owner another dead duplicate in her fleet.
    */
-  router.post('/pair/start', sameOrigin((_req, res) => {
+  router.post('/pair/start', sameOrigin((req, res) => {
+    if (refuseLocked(req, res)) return
     void (async () => {
       lastError = null
       try {
@@ -356,7 +399,8 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
    * The step that matters: someone standing at the boat's screen says yes. This is
    * what stops the stranger who photographed the code in a marina.
    */
-  router.post('/pair/approve', sameOrigin((_req, res) => {
+  router.post('/pair/approve', sameOrigin((req, res) => {
+    if (refuseLocked(req, res)) return
     void (async () => {
       if (!deviceCode) {
         res.status(409).json({ error: 'no_pairing_in_progress' })
@@ -459,7 +503,11 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
    * screen - no portal, no account, just Signal K admin access - is the half of
    * that which the new owner actually controls.
    */
-  router.post('/pair/reset', sameOrigin((_req, res) => {
+  // /pair/deny stays open when locked: it only cancels a pairing in progress, and
+  // the dangerous cancellation is reset below. A stranger denying a code is an
+  // annoyance; a stranger resetting the link is the takeover's first move.
+  router.post('/pair/reset', sameOrigin((req, res) => {
+    if (refuseLocked(req, res)) return
     void (async () => {
       const remote = getRemote()
 

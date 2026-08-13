@@ -39,7 +39,6 @@ export interface Options {
   maxStorageMB: number
   chartsRemoteUrl: string
   chartsBasemapUrl: string
-  relayUrl: string
   ports: PortEntry[]
   voyage: VoyageOptions
   /**
@@ -49,11 +48,21 @@ export interface Options {
    * source reports the same engine and summing them double-counts.
    */
   fuelRatePaths: string[]
+  /**
+   * The owner's explicit answer to an unsecured server. With Signal K security
+   * off (its default), the plugin refuses the writes an intruder on the boat's
+   * network could otherwise use - pairing, unpairing, settings - until the
+   * owner either turns security on or ticks this to accept the risk. It cannot
+   * make an unsecured server safe (the server's own config route stays open);
+   * it makes the boat's posture honest instead of silently permissive.
+   */
+  acceptOpenNetwork: boolean
   // The relay credential deliberately does NOT live here. Plugin options are
   // served wholesale by GET /plugins/<id>/config, which with security off (the
   // default install) answers anyone on the boat's network. The token lives in
   // the plugin's data dir instead - see remotelink.ts, and the migration in
   // index.ts that moves a legacy copy out of here.
+  // The relay URL does not live here either - see RELAY_URL below.
 }
 
 export const DEFAULTS: Options = {
@@ -64,7 +73,6 @@ export const DEFAULTS: Options = {
   maxStorageMB: 500,
   chartsRemoteUrl: 'https://tiles.siparu.app',
   chartsBasemapUrl: 'https://tiles.openfreemap.org/planet',
-  relayUrl: 'https://relay.siparu.app',
   ports: [],
   voyage: {
     openKnots: 1.5,
@@ -75,7 +83,8 @@ export const DEFAULTS: Options = {
     mergeShortNm: 1.0,
     phaseMinMinutes: 10
   },
-  fuelRatePaths: []
+  fuelRatePaths: [],
+  acceptOpenNetwork: false
 }
 
 /** Values considered live-tunable internals, not user configuration. */
@@ -136,6 +145,22 @@ export function safeRelayUrl(raw: unknown): string | undefined {
   return raw.replace(/\/+$/, '')
 }
 
+/**
+ * Where the boat reports, and deliberately NOT a plugin option. The relay URL
+ * decides who receives the boat's frames and, worse, whose device list she seals
+ * to - and plugin options can be written by anyone who can reach the server's
+ * own POST /plugins/<id>/config, which on an unsecured install is anyone on the
+ * boat's network. A redirect that arrives over the network it is meant to
+ * protect is not configuration, it is a takeover.
+ *
+ * The environment is a different boundary: whoever sets the server process's
+ * environment already owns the process. SIPARU_RELAY_URL exists for development
+ * and tests, and it still has to be https - the boat token rides this URL as a
+ * Bearer header, and live.ts derives wss from it.
+ */
+export const RELAY_URL: string =
+  safeRelayUrl(process.env.SIPARU_RELAY_URL) ?? 'https://relay.siparu.app'
+
 export function resolveOptions(raw: unknown): Options {
   const c = (raw ?? {}) as Partial<Options>
   const v = (c.voyage ?? {}) as Partial<VoyageOptions>
@@ -153,7 +178,6 @@ export function resolveOptions(raw: unknown): Options {
     chartsBasemapUrl: /^https?:\/\/\S+$/.test(c.chartsBasemapUrl ?? '')
       ? (c.chartsBasemapUrl as string).replace(/\/+$/, '')
       : DEFAULTS.chartsBasemapUrl,
-    relayUrl: safeRelayUrl(c.relayUrl) ?? DEFAULTS.relayUrl,
     ports: Array.isArray(c.ports)
       ? c.ports
           .filter(
@@ -180,7 +204,8 @@ export function resolveOptions(raw: unknown): Options {
     },
     fuelRatePaths: Array.isArray(c.fuelRatePaths)
       ? c.fuelRatePaths.filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((p) => p.trim())
-      : DEFAULTS.fuelRatePaths
+      : DEFAULTS.fuelRatePaths,
+    acceptOpenNetwork: c.acceptOpenNetwork === true
   }
 }
 
@@ -303,6 +328,13 @@ export const CONFIG_SCHEMA = {
           default: DEFAULTS.voyage.phaseMinMinutes
         }
       }
+    },
+    acceptOpenNetwork: {
+      type: 'boolean',
+      title: 'Allow pairing and log edits while Signal K security is off',
+      description:
+        'With Signal K security off, anyone on the boat\'s network can pair this boat to their own account, unpair her or edit her log, so Siparu refuses all three until you answer for it here. It cannot protect this page: the server writes these settings itself, and on an unsecured server anyone can change them, this tick included. The real fix is an admin user in Signal K (Security > Users). Tick this only on a network you trust.',
+      default: DEFAULTS.acceptOpenNetwork
     },
     fuelRatePaths: {
       type: 'array',
