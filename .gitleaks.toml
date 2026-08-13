@@ -1,0 +1,162 @@
+title = "Public repository secret policy"
+
+# This file is committed to a public repository, so it must not contain a single real
+# identifier. Every rule matches by SHAPE, never by value. Personal and infrastructure
+# terms live in a machine-local denylist the pre-push hook reads from outside the tree.
+#
+# Deliberately narrower than the client repository's policy. Three rules that exist there
+# are absent here, each for a measured reason:
+#
+#   private-hostname      A `[a-z0-9-]+\.local` pattern also matches TypeScript property
+#                         access. `cfg.local` appears in the plugin's own tests, so the
+#                         rule reports source code as infrastructure.
+#   hardcoded-coordinate  A single coordinate is a test vector and stays allowed. What is
+#                         NOT allowed is a coordinate-dense file - a recorded track is
+#                         personal data even when each point looks innocent - and that
+#                         gate lives in .githooks/pre-push, which can weigh a whole file
+#                         where a per-line rule cannot.
+#   apple-*               No Xcode project and no App Store Connect credentials here.
+#
+# A gate that cries wolf gets switched off, and a switched-off gate protects nothing.
+
+[extend]
+useDefault = true
+
+# --- Backend credentials that must never reach a public repository ------------
+
+[[rules]]
+id = "supabase-secret-key"
+description = "Supabase secret key (backend only, never in a published package)"
+regex = '''\bsb_secret_[A-Za-z0-9_-]{20,}'''
+keywords = ["sb_secret_"]
+tags = ["supabase", "backend-only"]
+
+[[rules]]
+id = "supabase-legacy-service-role-jwt"
+description = "Legacy Supabase backend JWT"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'''
+entropy = 3.5
+tags = ["supabase", "backend-only"]
+
+[[rules]]
+id = "cloudflare-api-token"
+description = "Cloudflare API token or global key"
+regex = '''(?i)\b(?:cloudflare|cf)[_-]?(?:api[_-]?)?(?:token|key)\b\s*[:=]\s*['"]?([A-Za-z0-9_-]{37,45})['"]?'''
+secretGroup = 1
+tags = ["cloudflare", "backend-only"]
+
+# --- Infrastructure identifiers ----------------------------------------------
+
+[[rules]]
+id = "cloudflare-account-id"
+description = "Cloudflare account or zone identifier"
+regex = '''(?i)\b(?:account|zone)[_-]?id\b\s*[:=]\s*['"]?([a-f0-9]{32})['"]?'''
+secretGroup = 1
+tags = ["cloudflare", "infra"]
+
+# Matched by shape: the project reference is whatever sits in front of .supabase.co, so
+# the rule needs no knowledge of which project this is.
+[[rules]]
+id = "supabase-project-ref"
+description = "Supabase project reference"
+regex = '''\b([a-z]{20})\.supabase\.(?:co|in)\b'''
+secretGroup = 1
+keywords = ["supabase"]
+tags = ["supabase", "infra"]
+
+[[rules]]
+id = "cloudflare-workers-subdomain"
+description = "Cloudflare Workers account subdomain"
+regex = '''\b[a-z0-9-]+\.([a-z0-9-]+)\.workers\.dev\b'''
+secretGroup = 1
+keywords = ["workers.dev"]
+tags = ["cloudflare", "infra"]
+
+# --- Personal data -------------------------------------------------------------
+# Nobody's, not only ours. These match by shape: an email address, a phone number
+# written for a human to dial, a vessel identity beside its own keyword. The values
+# a public repository may legitimately carry are excused below by shape too.
+
+[[rules]]
+id = "email-address"
+description = "Email address (personal data in a public repository)"
+regex = '''[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'''
+tags = ["personal-data"]
+
+[[rules]]
+id = "phone-number"
+description = "Phone number in international dialing form"
+# Requires a separator after the country code: an unbroken digit run also matches
+# semver build metadata and epoch timestamps, and neither is a phone.
+regex = '''\+[0-9]{1,3}[ ()-][0-9][0-9 ()-]{5,12}[0-9]'''
+tags = ["personal-data"]
+
+[[rules]]
+id = "mmsi-number"
+description = "MMSI beside its keyword - a vessel identity is its owner's personal data"
+regex = '''(?i)mmsi[^0-9a-z]{0,5}[0-9]{9}'''
+tags = ["personal-data", "vessel"]
+
+[[rules]]
+id = "imo-number"
+description = "IMO number beside its keyword"
+regex = '''(?i)\bimo[^0-9a-z]{0,3}[0-9]{7}'''
+tags = ["personal-data", "vessel"]
+
+# --- Allowlists ---------------------------------------------------------------
+
+# Scoped by rule, and that scoping is the point. Unscoped, this would exempt the vector
+# directory from every rule in the file and from the default ruleset with it, which is
+# backwards: a real backend credential would land in exactly such a directory. What these
+# paths legitimately carry is shape - policy text this file has to spell out, and the
+# published test vectors two implementations agree on. A backend credential inside a
+# fixture is still a backend credential.
+[[allowlists]]
+description = "Policy files and published test vectors carry pattern text by design"
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''(^|/)\.githooks/''',
+  '''(^|/)dev/e2e-vectors/''',
+]
+targetRules = [
+  "supabase-project-ref",
+  "cloudflare-account-id",
+  "cloudflare-workers-subdomain",
+]
+
+# Scoped on purpose. An unscoped allowlist disables every rule on any line it matches, and
+# an angle-bracket placeholder matches <key> and <string>. The two Supabase key rules are
+# deliberately absent: a real key on a line that also says EXAMPLE is still a real key.
+[[allowlists]]
+description = "Documentation placeholders are not secrets"
+regexes = ['''(?i)(YOUR|EXAMPLE|PLACEHOLDER|REPLACE[_-]?ME|XXXX+|<[A-Za-z][A-Za-z0-9_-]*>)''']
+regexTarget = "line"
+targetRules = [
+  "cloudflare-api-token",
+  "cloudflare-account-id",
+  "cloudflare-workers-subdomain",
+  "supabase-project-ref",
+]
+
+# The addresses a public repository legitimately speaks: its own product domain, the
+# noreply identities git writes into history, and the reserved documentation domains.
+[[allowlists]]
+description = "Non-personal email addresses"
+regexes = [
+  '''@users\.noreply\.github\.com''',
+  '''@siparu\.app''',
+  '''(?i)@example\.(com|org|net)''',
+]
+regexTarget = "match"
+targetRules = ["email-address"]
+
+# Identities that cannot be anybody: a repeated digit or a keyboard run. Signal K test
+# rigs use these on purpose, and blocking them would teach the reader to ignore the rule.
+[[allowlists]]
+description = "Obviously synthetic vessel identities"
+regexes = [
+  '''(?i)mmsi[^0-9a-z]{0,5}(000000000|111111111|222222222|333333333|444444444|555555555|666666666|777777777|888888888|999999999|123456789)''',
+  '''(?i)\bimo[^0-9a-z]{0,3}(0000000|1111111|1234567|9999999)''',
+]
+regexTarget = "match"
+targetRules = ["mmsi-number", "imo-number"]

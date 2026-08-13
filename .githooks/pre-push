@@ -1,0 +1,176 @@
+#!/bin/bash
+# Blocks a push that would publish credentials, personal identity, or infrastructure detail.
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+#
+# Setting core.hooksPath makes git ignore .git/hooks entirely, and the clean-room check
+# used to live there as a symlink. So this hook does not replace that check, it CALLS it.
+# The pattern list is not copied here on purpose: those patterns are the very terms being
+# kept out of a public repository, and a copy inside this repo would publish them.
+#
+# A gate that cannot run blocks. A scanner that silently skips is worse than no scanner,
+# because the checklist then claims a check that never happened.
+set -uo pipefail
+
+note() { printf '\033[31m%s\033[0m\n' "$1" >&2; }
+warn() { printf '\033[33m%s\033[0m\n' "$1" >&2; }
+fail=0
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -n "$root" ] || exit 0
+
+# Only for a repository that has declared itself clean-room. Without the marker there
+# is nothing to enforce and no policy to read.
+if [ ! -f "$root/.clean-room" ]; then
+  exit 0
+fi
+
+# What is actually being pushed. A remote sha of all zeroes means the remote has none of
+# it, so the range is the whole history of that ref rather than a comparison.
+ranges=()
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ -z "${local_sha:-}" ] && continue
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac   # deletion: nothing to scan
+  case "${remote_sha:-}" in
+    ''|*[!0-9a-f]*) ranges+=("$local_sha") ;;
+    *[!0]*)         ranges+=("$remote_sha..$local_sha") ;;
+    *)              ranges+=("$local_sha") ;;
+  esac
+done
+# Nothing on stdin means this was run by hand rather than by git. Scan what is committed
+# against the upstream, so a manual run still says something true.
+if [ ${#ranges[@]} -eq 0 ]; then
+  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+  if [ -n "$upstream" ]; then ranges+=("$upstream..HEAD"); else ranges+=("HEAD"); fi
+fi
+
+# 1. Credential shapes over the commits being pushed --------------------------
+if command -v gitleaks >/dev/null 2>&1; then
+  cfg="$root/.gitleaks.toml"
+  cfgarg=()
+  [ -f "$cfg" ] && cfgarg=(--config "$cfg")
+  for range in "${ranges[@]}"; do
+    # `gitleaks git --log-opts` scans only the range. `gitleaks dir` would walk
+    # node_modules and take minutes, and a gate that is slow gets stepped around.
+    if ! gitleaks git "${cfgarg[@]}" --log-opts="$range" --no-banner --redact=90 \
+         --exit-code 1 >/dev/null 2>&1; then
+      note "BLOCKED: gitleaks found a credential shape in the commits being pushed ($range)."
+      gitleaks git "${cfgarg[@]}" --log-opts="$range" --no-banner --redact=90 -v 2>&1 |
+        grep -E '^(RuleID|File|Line|Commit):' >&2
+      fail=1
+    fi
+  done
+elif [ -n "${LEAKGUARD_ALLOW_MISSING:-}" ]; then
+  warn "gitleaks is not installed - credential scan skipped by LEAKGUARD_ALLOW_MISSING."
+else
+  note "BLOCKED: gitleaks is not installed, so nothing scanned this push for credentials."
+  note "  brew install gitleaks"
+  note "  (LEAKGUARD_ALLOW_MISSING=1 skips this, and skipping it is the whole risk.)"
+  fail=1
+fi
+
+# 1.5 Track-shaped data must stay inside the synthetic sandbox -----------------
+# The one leak this repository has actually had was not a credential. It was a real
+# vessel's recorded track, committed as a test fixture: thousands of positions, each one
+# innocent alone, personal data in sequence. No per-line rule can see that, so this gate
+# weighs whole files. Any file in the push carrying many coordinate pairs is treated as a
+# track, and a track is only allowed inside the box the fixture generator draws in - open
+# ocean, far from any coast. Gzipped files are opened first, because that is exactly the
+# form the original leak travelled in.
+#
+# Widening the box, or raising the threshold, is a deliberate edit of this hook. A fixture
+# does not get to do it.
+TRACK_MIN_POINTS=100
+LAT_MIN=25;  LAT_MAX=45
+LON_MIN=-55; LON_MAX=-25
+tmpblob=$(mktemp)
+for range in "${ranges[@]}"; do
+  tip="${range##*..}"
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    git cat-file -e "$tip:$f" 2>/dev/null || continue
+    case "$f" in
+      *.gz|*.gzip) git show "$tip:$f" 2>/dev/null | gunzip -c 2>/dev/null > "$tmpblob" || : ;;
+      *)           git show "$tip:$f" 2>/dev/null > "$tmpblob" || : ;;
+    esac
+    verdict=$(awk -v min_pts="$TRACK_MIN_POINTS" \
+                  -v lat_min="$LAT_MIN" -v lat_max="$LAT_MAX" \
+                  -v lon_min="$LON_MIN" -v lon_max="$LON_MAX" '
+      # Two shapes: JSON ("lat": 43.5) and XML/GPX (lat="43.5"). A leading non-letter
+      # keeps "flat:" from reading as a coordinate. Integer-valued coordinates are not
+      # matched; every recorder this gate exists for writes decimals.
+      {
+        line = " " $0
+        while (match(line, /[^A-Za-z_]"?lat"?[[:space:]]*[:=][[:space:]]*"?-?[0-9]+\.[0-9]+/)) {
+          v = substr(line, RSTART, RLENGTH); sub(/^.*[:=][[:space:]]*"?/, "", v)
+          nlat++; if (nlat == 1 || v+0 < latlo) latlo = v+0
+          if (nlat == 1 || v+0 > lathi) lathi = v+0
+          line = substr(line, RSTART + RLENGTH)
+        }
+        line = " " $0
+        while (match(line, /[^A-Za-z_]"?lon(gitude)?"?[[:space:]]*[:=][[:space:]]*"?-?[0-9]+\.[0-9]+/)) {
+          v = substr(line, RSTART, RLENGTH); sub(/^.*[:=][[:space:]]*"?/, "", v)
+          nlon++; if (nlon == 1 || v+0 < lonlo) lonlo = v+0
+          if (nlon == 1 || v+0 > lonhi) lonhi = v+0
+          line = substr(line, RSTART + RLENGTH)
+        }
+      }
+      END {
+        if (nlat < min_pts) exit 0
+        if (latlo < lat_min || lathi > lat_max || nlon == 0 || lonlo < lon_min || lonhi > lon_max)
+          printf "%d points, lat [%.3f, %.3f], lon [%.3f, %.3f]", nlat, latlo, lathi, lonlo, lonhi
+      }' "$tmpblob")
+    if [ -n "$verdict" ]; then
+      note "BLOCKED: $f is track-shaped ($verdict) and leaves the synthetic sandbox"
+      note "  lat [$LAT_MIN, $LAT_MAX], lon [$LON_MIN, $LON_MAX]. A recorded track is personal"
+      note "  data even when every point looks innocent. Regenerate the fixture synthetically"
+      note "  (plugin/test/fixtures/generate.mjs), or widen the box HERE, knowingly."
+      fail=1
+    fi
+  done < <(git log --name-only --format='' "$range" 2>/dev/null | sort -u)
+done
+rm -f "$tmpblob"
+
+# 2. Clean-room content check, delegated --------------------------------------
+# Language, personal names, vessel names, private repository names and AI signatures.
+# Delegated rather than duplicated: see the header.
+CLEANROOM="${CLEANROOM_HOOK:-$HOME/.claude/hooks/git-clean-room-pre-push.sh}"
+if [ -x "$CLEANROOM" ]; then
+  if ! "$CLEANROOM" </dev/null; then
+    fail=1
+  fi
+elif [ -n "${LEAKGUARD_ALLOW_MISSING:-}" ]; then
+  warn "Clean-room checker not found at $CLEANROOM - content scan skipped."
+else
+  note "BLOCKED: the clean-room checker is missing at $CLEANROOM, so nothing scanned"
+  note "  this push for language, personal or vessel traces."
+  note "  Set CLEANROOM_HOOK, or restore the file."
+  fail=1
+fi
+
+# 3. Paths that must never be tracked in a public repository -------------------
+# These are kept out through .git/info/exclude, which is local and unversioned. One
+# `git add -f`, or a fresh clone that never got the exclude file, defeats that. This
+# gate is the durable half.
+# .clean-room is deliberately absent from this list. It carries no secret, and tracking it
+# is the safer choice: a `git worktree` does not receive an untracked marker, and without
+# the marker both this gate and the clean-room checker exit silently as a no-op.
+forbidden_paths='^(CLAUDE\.md|HANDOVER\.md|HANDOVER\.archive\.md|SETUP-AUTH\.md|RELEASE-CHECKLIST\.md|docs-private/|scripts/)'
+for range in "${ranges[@]}"; do
+  hits=$(git log --name-only --format='' "$range" 2>/dev/null | sort -u |
+         grep -E "$forbidden_paths" || true)
+  if [ -n "$hits" ]; then
+    note "BLOCKED: a commit being pushed tracks a file that must stay out of this repository:"
+    printf '%s\n' "$hits" | sed 's/^/  /' >&2
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  note ""
+  note "Nothing was pushed. Fix the findings above, or run the checks by hand:"
+  note "  .githooks/test-hooks.sh"
+  exit 1
+fi
+exit 0
