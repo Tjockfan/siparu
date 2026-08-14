@@ -106,6 +106,13 @@ export = (app: ServerAPI): Plugin => {
     return remoteLink
   }
 
+  // Lazy for the same reason: an approval can land before start() has run, and the
+  // root it writes must go to the store the chain will read from afterwards.
+  function ensureAnchorStore(): AnchorStore {
+    anchorStore ??= new AnchorStore(app.getDataDirPath())
+    return anchorStore
+  }
+
   /**
    * Until 0.1.18 the relay credential lived in the plugin's options, which
    * Signal K serves in full over GET /plugins/<id>/config - readable by anyone
@@ -456,8 +463,10 @@ export = (app: ServerAPI): Plugin => {
           // again only when the pairing changes: the sealer asks per frame, every two
           // seconds under way, and a file read per frame would put the SD card in the
           // loop of every report she sends.
-          const anchors = new AnchorStore(app.getDataDirPath())
-          anchorStore = anchors
+          // The same instance the pairing approval writes through, so a root written a
+          // moment before start() and one written after queue behind each other rather
+          // than racing over the same file.
+          const anchors = ensureAnchorStore()
           const anchorOf = (r: RemoteLink | undefined) => anchors.load(r?.boatId, r?.pairedAt)
           let anchor = anchorOf(rl.getRemote())
           reloadAnchor = async () => {
@@ -678,7 +687,15 @@ export = (app: ServerAPI): Plugin => {
           await reloadAnchor?.()
         },
         getPendingUnlinks: () => ensureRemoteLink().getPendingUnlinks(),
-        addPendingUnlink: (p) => ensureRemoteLink().addPendingUnlink(p)
+        addPendingUnlink: (p) => ensureRemoteLink().addPendingUnlink(p),
+        saveAnchor: async (boatId, pairedAt, anchor) => {
+          // Written through the same store the chain reads from, and reloaded at once:
+          // saveRemote has already refreshed the cached anchor for the new pairing, which
+          // at that moment is nothing at all. Without this second read she would seal to
+          // nobody until the next restart, having just been handed her root.
+          await ensureAnchorStore().set(boatId, pairedAt, anchor)
+          await reloadAnchor?.()
+        }
       })
 
       // The one webapp write that is not pairing: change which engine fuel-rate

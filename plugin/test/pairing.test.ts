@@ -13,8 +13,11 @@
  */
 import type { IRouter, Request, Response } from 'express'
 import type { ServerAPI } from '@signalk/server-api'
+import { generateKeyPairSync } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { deviceFingerprint } from '../src/fingerprint'
 import { __resetPairingState, maskEmail, registerPairRoutes, RemoteState } from '../src/pairing'
+import { rawPublic } from '../src/sealing'
 import type { UplinkStatus } from '../src/uplink'
 
 type Handler = (req: Request, res: Response) => void
@@ -38,6 +41,9 @@ interface Opts {
   uplink?: UplinkStatus
   saved?: (r: RemoteState | undefined) => void
   pendingSaved?: (p: { boatToken: string; since: string } | undefined) => void
+  anchorSaved?: (a: { boatId: string; pairedAt: string; kid: string; pub: string }) => void
+  /** A data dir that refuses the write, which must not cost her the pairing. */
+  anchorFails?: boolean
 }
 
 /** Registers the routes against a fake router and hands back the handlers. */
@@ -66,6 +72,10 @@ function routes(opts: Opts = {}) {
     addPendingUnlink: async (p) => {
       pending = [...pending, p]
       opts.pendingSaved?.(p)
+    },
+    saveAnchor: async (boatId, pairedAt, anchor) => {
+      if (opts.anchorFails) throw new Error('read-only file system')
+      opts.anchorSaved?.({ boatId, pairedAt, ...anchor })
     }
   })
   return handlers
@@ -88,8 +98,13 @@ interface RelayCall {
   auth: string | null
 }
 
-/** Captures what the plugin sends to the relay, answering as the relay would. */
-function relaySpy(): RelayCall[] {
+/**
+ * Captures what the plugin sends to the relay, answering as the relay would.
+ *
+ * The two answers a test may need to shape are the poll and the approval, because both
+ * now carry the claiming screen. Everything else keeps the default.
+ */
+function relaySpy(over: { poll?: Record<string, unknown>; approve?: Record<string, unknown> } = {}): RelayCall[] {
   const sent: RelayCall[] = []
   vi.stubGlobal(
     'fetch',
@@ -102,8 +117,14 @@ function relaySpy(): RelayCall[] {
       })
       const answer: Record<string, unknown> =
         path === '/pair/approve'
-          ? { boat_id: 'boat-1', boat_token: 'a-fresh-token', claimed_by_email: 'skipper@example.com' }
-          : { device_code: 'dc', user_code: 'WDJB-MJHT', expires_in: 3600 }
+          ? (over.approve ?? {
+              boat_id: 'boat-1',
+              boat_token: 'a-fresh-token',
+              claimed_by_email: 'skipper@example.com'
+            })
+          : path === '/pair/poll'
+            ? (over.poll ?? { status: 'authorization_pending' })
+            : { device_code: 'dc', user_code: 'WDJB-MJHT', expires_in: 3600 }
       return new Response(JSON.stringify(answer), { status: 200 })
     })
   )
@@ -337,6 +358,88 @@ describe('pair/approve', () => {
     )
 
     const handlers = routes()
+    await call(handlers, '/pair/start')
+
+    expect(await call(handlers, '/pair/approve')).toMatchObject({ state: 'paired' })
+  })
+})
+
+describe('the first screen, witnessed at the boat', () => {
+  // A real X25519 public half, so the fingerprint is the product's own and not a fixture:
+  // the whole point of showing it is that it matches what the owner's phone shows him.
+  const PUB = rawPublic(generateKeyPairSync('x25519').publicKey).toString('base64url')
+  const DEVICE = { kid: 'kid-first-phone', pub: PUB }
+
+  it('shows the claiming screen fingerprint while she waits for a tap', async () => {
+    // The comparison the owner makes has to be possible BEFORE he approves: after it,
+    // whatever key was substituted is already the root of her chain.
+    relaySpy({ poll: { status: 'awaiting_boat_approval', claimed_by_email: 'a@b.c', device: DEVICE } })
+    const handlers = routes()
+    await call(handlers, '/pair/start')
+
+    expect(await call(handlers, 'GET /pair/status')).toMatchObject({
+      state: 'awaiting_approval',
+      device: { kid: DEVICE.kid, fingerprint: deviceFingerprint(Buffer.from(PUB, 'base64url')) }
+    })
+  })
+
+  it('says nothing about a screen whose key is not one', async () => {
+    // A fingerprint computed from a mangled key would be a string the owner's phone can
+    // never match, and he would read the mismatch as an attack rather than a bad row.
+    relaySpy({
+      poll: {
+        status: 'awaiting_boat_approval',
+        claimed_by_email: 'a@b.c',
+        device: { kid: 'kid-first-phone', pub: 'not-a-key' }
+      }
+    })
+    const handlers = routes()
+    await call(handlers, '/pair/start')
+
+    const status = (await call(handlers, 'GET /pair/status')) as Record<string, unknown>
+    expect(status.state).toBe('awaiting_approval')
+    expect(status.device).toBeUndefined()
+  })
+
+  it('writes the approved screen down as the root, against THIS pairing', async () => {
+    // The anchor is bound to the pairing, not merely to the boat: a re-pair keeps the id
+    // on purpose, so the timestamp is the only thing separating two lives. Written with
+    // the same instant that lands in remote.json, or the record would refuse itself on
+    // the next load and every screen would go dark.
+    const anchors: Array<{ boatId: string; pairedAt: string; kid: string; pub: string }> = []
+    const saves: Array<RemoteState | undefined> = []
+    relaySpy({ approve: { boat_id: 'boat-1', boat_token: 't', claimed_by_email: null, device: DEVICE } })
+    const handlers = routes({ anchorSaved: (a) => anchors.push(a), saved: (r) => saves.push(r) })
+
+    await call(handlers, '/pair/start')
+    await call(handlers, '/pair/approve')
+
+    expect(anchors).toEqual([
+      { boatId: 'boat-1', pairedAt: expect.any(String), kid: DEVICE.kid, pub: PUB }
+    ])
+    expect(anchors[0].pairedAt).toBe(saves.at(-1)?.pairedAt)
+  })
+
+  it('pairs unrooted when the claiming client offered nothing', async () => {
+    // Every device built before this one. She pairs and stays unpinned, which her status
+    // page names; inventing a root here would pin her to a key nobody holds.
+    const anchors: unknown[] = []
+    relaySpy()
+    const handlers = routes({ anchorSaved: (a) => anchors.push(a) })
+
+    await call(handlers, '/pair/start')
+    const done = await call(handlers, '/pair/approve')
+
+    expect(done).toMatchObject({ state: 'paired' })
+    expect(anchors).toEqual([])
+  })
+
+  it('still pairs when the root cannot be written down', async () => {
+    // A full disk (Cerbo issue #46) must not cost her the pairing itself. She comes up
+    // unpinned instead, which is a state with a name and a cure on her own screen.
+    relaySpy({ approve: { boat_id: 'boat-1', boat_token: 't', claimed_by_email: null, device: DEVICE } })
+    const handlers = routes({ anchorFails: true })
+
     await call(handlers, '/pair/start')
 
     expect(await call(handlers, '/pair/approve')).toMatchObject({ state: 'paired' })

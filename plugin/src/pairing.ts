@@ -17,6 +17,8 @@
  */
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
+import type { DeviceAnchor } from './approval'
+import { fingerprintOfEncoded } from './fingerprint'
 import type { PendingUnlink, RemoteLink } from './remotelink'
 import type { UplinkStatus } from './uplink'
 import { sameOrigin } from './origin-guard'
@@ -27,7 +29,23 @@ export type RemoteState = RemoteLink
 export type PairScreen =
   | { state: 'idle' }
   | { state: 'showing_code'; userCode: string; expiresAt: string }
-  | { state: 'awaiting_approval'; userCode: string; email: string | null; expiresAt: string }
+  | {
+      state: 'awaiting_approval'
+      userCode: string
+      email: string | null
+      expiresAt: string
+      /**
+       * The screen that typed the code, when it offered itself.
+       *
+       * Shown next to the button, and the only comparison in the product the shore cannot
+       * take part in: the owner holds his phone beside the boat's screen and reads the same
+       * four groups off both. The carrier is standing between them at this exact moment -
+       * that is admitted in the design - and this is what makes the swap visible to a person
+       * rather than to nobody. Absent when the claiming client offered nothing, or offered
+       * something that is not a key.
+       */
+      device?: { kid: string; fingerprint: string }
+    }
   | {
       state: 'paired'
       boatId: string
@@ -132,6 +150,14 @@ interface Deps {
   /** Disowned tokens the relay has not yet revoked; kept until it answers. */
   getPendingUnlinks: () => PendingUnlink[]
   addPendingUnlink: (p: PendingUnlink) => Promise<void>
+  /**
+   * Write down the screen she was approved by, as the root of her approval chain.
+   *
+   * Bound to the pairing rather than to the boat: a re-pair keeps the boat id on purpose,
+   * so the instant is what separates one life from the next, and it must be the same
+   * instant that lands in remote.json.
+   */
+  saveAnchor: (boatId: string, pairedAt: string, anchor: DeviceAnchor) => Promise<void>
 }
 
 /**
@@ -236,6 +262,26 @@ const BOAT_LIMIT =
   'That account already holds as many boats as its plan allows. Make room for her there, then pair again.'
 
 /** o***@gmail.com - enough for the owner to recognise themselves, not enough to harvest. */
+/**
+ * The claiming screen off a relay answer: its id, its key and the fingerprint of it.
+ *
+ * Held to the shapes the device list is held to, for the same reason and one more. A key
+ * that is not one cannot be shown as a fingerprint - the string would match nothing the
+ * owner's phone displays, and he would read the mismatch as an attack rather than as a
+ * mangled row - and it must never become the root of a chain, because a root that can
+ * verify nobody takes every screen off her list with it.
+ */
+function claimingScreen(
+  raw: { kid?: unknown; pub?: unknown } | undefined
+): { kid: string; pub: string; fingerprint: string } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const { kid, pub } = raw
+  if (typeof kid !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(kid)) return null
+  if (typeof pub !== 'string') return null
+  const fingerprint = fingerprintOfEncoded(pub)
+  return fingerprint ? { kid, pub, fingerprint } : null
+}
+
 export function maskEmail(email: string | null): string | null {
   if (!email) return null
   const at = email.indexOf('@')
@@ -244,7 +290,7 @@ export function maskEmail(email: string | null): string | null {
 }
 
 export function registerPairRoutes(router: IRouter, deps: Deps): void {
-  const { app, relayUrl, acceptOpenNetwork, boatName, vesselUrn, getRemote, saveRemote, uplinkStatus, getPendingUnlinks, addPendingUnlink } =
+  const { app, relayUrl, acceptOpenNetwork, boatName, vesselUrn, getRemote, saveRemote, saveAnchor, uplinkStatus, getPendingUnlinks, addPendingUnlink } =
     deps
 
   /**
@@ -309,18 +355,20 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
       }
 
       try {
-        const poll = await relay<{ status: string; claimed_by_email?: string | null }>(
-          relayUrl,
-          '/pair/poll',
-          { device_code: deviceCode }
-        )
+        const poll = await relay<{
+          status: string
+          claimed_by_email?: string | null
+          device?: { kid?: unknown; pub?: unknown }
+        }>(relayUrl, '/pair/poll', { device_code: deviceCode })
 
         if (poll.status === 'awaiting_boat_approval') {
+          const device = claimingScreen(poll.device)
           json({
             state: 'awaiting_approval',
             userCode,
             email: poll.claimed_by_email ?? null,
-            expiresAt
+            expiresAt,
+            ...(device ? { device: { kid: device.kid, fingerprint: device.fingerprint } } : {})
           })
           return
         }
@@ -412,6 +460,7 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
           boat_id: string
           boat_token: string
           claimed_by_email: string | null
+          device?: { kid?: unknown; pub?: unknown }
         }>(relayUrl, '/pair/approve', { device_code: deviceCode })
 
         // She is already linked, and this approval points somewhere else. That means the
@@ -440,12 +489,32 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
         // real and filed) this throws, and the owner is told pairing failed - rather
         // than being told they are paired while the token quietly evaporates on the
         // next restart.
+        const pairedAt = new Date().toISOString()
         await saveRemote({
           boatId: done.boat_id,
           boatToken: done.boat_token,
           pairedEmail: maskEmail(done.claimed_by_email),
-          pairedAt: new Date().toISOString()
+          pairedAt
         })
+
+        // The one device she was told about while a human stood at her screen becomes the
+        // root of everything she will trust afterwards. Written with the SAME instant that
+        // went into the link above: the record binds itself to a pairing, and one written
+        // against a different instant would refuse itself on the next load and take every
+        // screen down with it.
+        //
+        // After the link and never before, and a failure here is not a failed pairing. A
+        // full disk (Cerbo issue #46) leaves her paired and unpinned, which is the legacy
+        // fleet's own state - named on her status page, with the cure beside it - where
+        // failing the approval would leave her with no remote viewing at all.
+        const screen = claimingScreen(done.device)
+        if (screen) {
+          await saveAnchor(done.boat_id, pairedAt, { kid: screen.kid, pub: screen.pub }).catch(
+            (e: unknown) => {
+              app.error(`pair approve could not write down the first screen: ${String(e)}`)
+            }
+          )
+        }
 
         // The new token is on disk, so the one it replaces may now be retired. This is
         // the only reason the relay left the old token alive at all: had it killed the

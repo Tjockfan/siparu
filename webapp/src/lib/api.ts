@@ -367,7 +367,21 @@ export interface UplinkStatus {
 type PairState =
   | { state: 'idle' }
   | { state: 'showing_code'; userCode: string; expiresAt: string }
-  | { state: 'awaiting_approval'; userCode: string; email: string | null; expiresAt: string }
+  | {
+      state: 'awaiting_approval'
+      userCode: string
+      email: string | null
+      expiresAt: string
+      /**
+       * The screen that typed the code, when it offered itself.
+       *
+       * The one comparison in this product the server cannot take part in: the same four
+       * groups appear on the owner's phone, and reading them off both screens is what makes
+       * a substituted key visible to a person. Offered, never demanded - approving without
+       * looking leaves the boat exactly as safe as she was before any of this existed.
+       */
+      device?: { kid: string; fingerprint: string }
+    }
   | {
       state: 'paired'
       boatId: string

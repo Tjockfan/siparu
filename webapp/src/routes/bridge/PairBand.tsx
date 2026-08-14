@@ -240,7 +240,25 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
             <div className="pl">
               <div className="t">Someone wants to pair</div>
               <div className="who">{data.email ?? "an account we cannot name"}</div>
-              <div className="s">Approve only if this is you. They will see where this boat is.</div>
+              {/*
+               * The screen doing the asking, named the same way every other screen on this
+               * page is. This one earns its place more than the rest: approving roots
+               * everything she will trust afterwards in this key, and the relay is standing
+               * between the two devices at this exact moment. Comparing the line with the
+               * one on the phone is the only check that catches a swap, and it is offered
+               * here rather than demanded - an owner in a hurry taps Approve and is no worse
+               * off than he was before any of this existed.
+               */}
+              {data.device ? (
+                <div className="fps">
+                  <span className="fp">{data.device.fingerprint}</span>
+                </div>
+              ) : null}
+              <div className="s">
+                {data.device
+                  ? "Approve only if this is you, and only if that line matches the one on your phone. They will see where this boat is."
+                  : "Approve only if this is you. They will see where this boat is."}
+              </div>
             </div>
             <div className="acts">
               {btn("Deny", () => act(api.pair.deny), "ghost")}
