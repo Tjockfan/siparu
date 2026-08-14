@@ -351,6 +351,15 @@ export interface HealthResult {
      * else's key being pressed into her list.
      */
     screens_skipped: { kid: string; reason: string }[]
+    /**
+     * Screens her LAST SEALED frame could not be wrapped to, with the reason. Distinct
+     * from `screens_skipped`, which the approval chain refuses before sealing begins:
+     * these passed the chain and failed at the moment of wrapping - a duplicate key id,
+     * a key the agreement would not take. A screen on this list receives nothing and
+     * looks, from ashore, exactly like a boat gone quiet; this is where that silence is
+     * named. Empty while she is not sealing.
+     */
+    screens_rejected: { kid: string; reason: string }[]
   }
 }
 

@@ -24,6 +24,7 @@ import { rawPrivate, rawPublic } from '../src/sealing'
  */
 
 let captured: SealerDeps | null = null
+let capturedSealer: InstanceType<typeof import('../src/sealer').Sealer> | null = null
 /** The dependencies the plugin hands the REST layer, so /health can be asked for real. */
 let rest: RestDeps | null = null
 
@@ -44,6 +45,7 @@ vi.mock('../src/sealer', async (importOriginal) => {
     constructor(deps: SealerDeps) {
       super(deps)
       captured = deps
+      capturedSealer = this
     }
   }
   return { ...actual, Sealer: Watched }
@@ -197,8 +199,32 @@ describe('what the plugin actually hands the sealer', () => {
       reason: health?.sealing.mode === 'blocked' ? expect.any(String) : null,
       screens: [],
       screens_pinned: false,
-      screens_skipped: []
+      screens_skipped: [],
+      screens_rejected: []
     })
+  })
+
+  it('names on health the screen her last frame could not be wrapped to', async () => {
+    // Two rows pass every shape check and the chain (unpinned boat), and one of them
+    // fails at the moment of wrapping. That refusal used to live in a debug log that is
+    // off by default; this is the wire from the sealer's memory of it to /health.
+    devices = [
+      { kid: 'kid-good', pub: vectors.cases[0].public },
+      { kid: 'kid-bad', pub: 'A'.repeat(43) }
+    ]
+    const deps = await runOnce()
+    await until(() => deps.devices().length === 2)
+
+    // A live report leaves her, through the plugin's own sealer.
+    const verdict = capturedSealer!.seal({ ts: Date.now(), lat: 43.55, lon: 7.01 })
+    expect(verdict.mode).toBe('sealed')
+
+    const health = await rest?.health()
+    expect(health?.sealing.screens_rejected).toEqual([
+      { kid: 'kid-bad', reason: expect.any(String) }
+    ])
+    // And the chain's own list stays separate: nothing was refused BEFORE sealing.
+    expect(health?.sealing.screens_skipped).toEqual([])
   })
 
   it('holds the shore to the anchor on disk, and names what it refuses', async () => {

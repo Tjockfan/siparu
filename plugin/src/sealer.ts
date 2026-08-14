@@ -21,6 +21,7 @@ import {
   publicFromPrivate,
   rawPrivate,
   sealFrame,
+  type RejectedDevice,
   type SealedFrame
 } from './sealing'
 
@@ -68,8 +69,23 @@ export class Sealer {
   private lastComplaint = ''
   private lastMode: SealState['mode'] = 'none'
   private lastReason: string | null = null
+  /** Who her last sealed frame could not be wrapped to. Empty while nothing is going out. */
+  private lastRejected: RejectedDevice[] = []
 
   constructor(private readonly deps: SealerDeps) {}
+
+  /**
+   * The screens her last sealed frame left out, for the health surface.
+   *
+   * The debug line in sealPayload was the only place these went before, and it is off by
+   * default: a screen that stops receiving looked exactly like a boat gone quiet, from
+   * every surface a person actually reads. Cleared when she is blocked - no frame went
+   * out at all, and a list describing one that did would be a stale answer to a
+   * different question.
+   */
+  rejections(): RejectedDevice[] {
+    return this.lastRejected
+  }
 
   /**
    * What she did with the last frame.
@@ -180,6 +196,7 @@ export class Sealer {
         this.deps.debug(`sealing: skipped ${rejected.length} device(s) - ${complaint}`)
       }
       this.lastComplaint = complaint
+      this.lastRejected = rejected
 
       this.lastMode = 'sealed'
       this.lastReason = null
@@ -198,6 +215,7 @@ export class Sealer {
     }
     this.lastMode = 'blocked'
     this.lastReason = reason
+    this.lastRejected = []
     return { mode: 'blocked', reason }
   }
 }

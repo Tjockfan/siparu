@@ -275,7 +275,13 @@ export = (app: ServerAPI): Plugin => {
           screens_pinned: view?.pinned ?? false,
           // Projected field by field rather than passed through, so a field added to
           // SkippedDevice later does not walk onto this surface without being chosen.
-          screens_skipped: (view?.skipped ?? []).map((s) => ({ kid: s.kid, reason: s.reason }))
+          screens_skipped: (view?.skipped ?? []).map((s) => ({ kid: s.kid, reason: s.reason })),
+          // The sealer's own frame-time refusals, the second and last filter a screen can
+          // fall at. Same projection discipline as above.
+          screens_rejected: (sealer?.rejections() ?? []).map((r) => ({
+            kid: r.kid,
+            reason: r.reason
+          }))
         }
       })()
     }

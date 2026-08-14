@@ -180,6 +180,52 @@ describe('deciding how a frame goes out', () => {
     expect(said).toHaveLength(1)
   })
 
+  it('reports the screen a sealed frame left out, and heals when the list does', () => {
+    // The debug complaint was the only place these went, and it is off by default. The
+    // health surface reads this instead, so the answer survives the log being off.
+    const good = device('kid-good')
+    const bad: DevicePublicKey = { kid: 'kid-bad', pub: 'A'.repeat(43) }
+    const list = [good.wire, bad]
+    const { s } = sealer(list)
+
+    expect(s.rejections()).toEqual([])
+    s.seal(FRAME)
+    expect(s.rejections()).toEqual([{ kid: 'kid-bad', reason: expect.any(String) }])
+
+    // The shore withdraws the broken row; the next frame wraps to everyone it names.
+    list.pop()
+    s.seal(FRAME)
+    expect(s.rejections()).toEqual([])
+  })
+
+  it('reports a duplicate key id as the duplicate it is', () => {
+    // The database refuses duplicates ashore, so one arriving here is the carrier's own
+    // work - exactly the row worth a name on the health surface.
+    const phone = device('kid-phone')
+    const twin: DevicePublicKey = { kid: 'kid-phone', pub: device('kid-x').wire.pub }
+    const { s } = sealer([phone.wire, twin])
+    s.seal(FRAME)
+    expect(s.rejections()).toEqual([
+      { kid: 'kid-phone', reason: expect.stringContaining('duplicate') }
+    ])
+  })
+
+  it('clears the rejections when she stops sealing: they describe a frame that went out', () => {
+    const good = device('kid-good')
+    const bad: DevicePublicKey = { kid: 'kid-bad', pub: 'A'.repeat(43) }
+    const list = [good.wire, bad]
+    const { s } = sealer(list, { latched: true })
+
+    s.seal(FRAME)
+    expect(s.rejections()).toHaveLength(1)
+
+    // Everyone withdrawn: she is blocked, no frame goes out, and a list describing the
+    // last one that did would be a stale answer to a different question.
+    list.length = 0
+    expect(s.seal(FRAME).mode).toBe('blocked')
+    expect(s.rejections()).toEqual([])
+  })
+
   it('never hands the caller anything but a sealed frame or a refusal', () => {
     // The guard against a cleartext branch growing back. Every shape of trouble this class
     // knows about, and not one of them may answer with the frame it was given: an authorised
