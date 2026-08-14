@@ -550,21 +550,35 @@ export interface BoatPublicKeys {
   inbox: string
 }
 
+/** One device vouching for another, carried to the boat and verifiable only by her. */
+export interface DeviceApproval {
+  /** The kid of the already-authorised device that vouched. */
+  by: string
+  /**
+   * HMAC-SHA256 over the approval input (approval.ts), base64url, 43 characters.
+   * Opaque to the shore, which stores and carries it but holds neither of the private
+   * halves that could verify it. Only the boat can, and only the boat needs to.
+   */
+  mac: string
+}
+
 /** One authorised device, as the boat is told about it. */
 export interface DevicePublicKey {
   kid: string
   /** Raw 32-byte X25519 public key, base64url. */
   pub: string
   /**
-   * The kid of the already-authorised device that vouched for this one, when one has.
-   * Absent on rows written before approvals existed, and on the first device of a
-   * pairing, whose trust comes from the anchor the boat recorded herself.
+   * Every voucher the shore holds for this device, in no order the boat relies on.
+   *
+   * All of them and not the carrier's favourite: which vouchers can be verified at
+   * all depends on the anchor recorded aboard, and the shore does not know who that
+   * is by design. Handed one voucher, a carrier picking the wrong one - a device on
+   * the list that turns out to be unreachable in the chain, over a retired anchor
+   * that verifies against a key on the boat's own disk - would black out a screen
+   * its owner did approve, without any dishonesty being required.
+   *
+   * Absent on the first device of a pairing, whose trust comes from the anchor the
+   * boat recorded herself, and on a device nobody has vouched for yet.
    */
-  approved_by?: string
-  /**
-   * HMAC-SHA256 over the approval input (approval.ts), base64url, 43 characters.
-   * Opaque to the shore, which stores and carries it but holds neither of the private
-   * halves that could verify it. Only the boat can, and only the boat needs to.
-   */
-  approval?: string
+  approvals?: DeviceApproval[]
 }

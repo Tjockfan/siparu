@@ -4,7 +4,7 @@ import * as path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SealingLatch } from '../src/latch'
 import { BoatKeyStore } from '../src/keystore'
-import { KeySync } from '../src/keysync'
+import { KeySync, MAX_APPROVALS } from '../src/keysync'
 import type { RemoteLink } from '../src/remotelink'
 
 /**
@@ -223,41 +223,38 @@ describe('a boat publishing her own public halves', () => {
     expect(sync.devices()).toEqual([good])
   })
 
-  it('carries an approval through untouched, and strips one that is not even shaped like one', async () => {
+  it('carries every voucher through untouched, and strips the shapes that could never verify', async () => {
     // The fields are opaque here: whether an approval VERIFIES is the sealer's
     // question, asked with keys this module never holds. What this module owes the
-    // chain is not to lose the fields on the way, and not to hand shapes that could
-    // never verify to code that would then have to say why.
+    // chain is not to lose the fields on the way - all of them, since only the boat
+    // knows which one she can use - and not to hand shapes that could never verify
+    // to code that would then have to say why.
     const vouched = {
       kid: 'kid-phone',
       pub: 'A'.repeat(43),
-      approved_by: 'kid-anchor',
-      approval: 'B'.repeat(43)
+      approvals: [
+        { by: 'kid-anchor', mac: 'B'.repeat(43) },
+        { by: 'kid-tablet', mac: 'C'.repeat(43) }
+      ]
     }
-    // Three ways an approval fails the shape check, each dropped from the ENTRY and
+    // Four ways a voucher fails the shape check, each dropped from the ENTRY and
     // never the entry from the list: a wrong-typed approver, a well-typed approver
-    // beside a MAC that could never verify (wrong length, wrong alphabet), and an
-    // approver name past the bound the database enforces on the way in.
-    const wrongType = {
+    // beside a MAC that could never verify (wrong length, wrong alphabet), an
+    // approver name past the bound the database enforces on the way in, and a whole
+    // field that is not a list at all.
+    const mixed = {
       kid: 'kid-tablet',
       pub: 'C'.repeat(43),
-      approved_by: 42,
-      approval: 'B'.repeat(43)
+      approvals: [
+        { by: 42, mac: 'B'.repeat(43) },
+        { by: 'kid-anchor', mac: 'not base64url at all!' },
+        { by: 'x'.repeat(65), mac: 'B'.repeat(43) },
+        { by: 'kid-good', mac: 'D'.repeat(43) }
+      ]
     }
-    const macNotAMac = {
-      kid: 'kid-plotter',
-      pub: 'D'.repeat(43),
-      approved_by: 'kid-anchor',
-      approval: 'not base64url at all!'
-    }
-    const nameTooLong = {
-      kid: 'kid-spare',
-      pub: 'E'.repeat(43),
-      approved_by: 'x'.repeat(65),
-      approval: 'B'.repeat(43)
-    }
+    const notAList = { kid: 'kid-plotter', pub: 'D'.repeat(43), approvals: 'kid-anchor' }
     const calls = relayAnswers(
-      answered({ devices: [vouched, wrongType, macNotAMac, nameTooLong], keys: 'ok' })
+      answered({ devices: [vouched, mixed, notAList], keys: 'ok' })
     )
     const { sync } = keysync()
 
@@ -267,9 +264,40 @@ describe('a boat publishing her own public halves', () => {
 
     expect(sync.devices()).toEqual([
       vouched,
-      { kid: 'kid-tablet', pub: 'C'.repeat(43) },
-      { kid: 'kid-plotter', pub: 'D'.repeat(43) },
-      { kid: 'kid-spare', pub: 'E'.repeat(43) }
+      { kid: 'kid-tablet', pub: 'C'.repeat(43), approvals: [{ by: 'kid-good', mac: 'D'.repeat(43) }] },
+      { kid: 'kid-plotter', pub: 'D'.repeat(43) }
+    ])
+  })
+
+  it('keeps one voucher per approver and stops at the ceiling, whatever the shore sends', async () => {
+    // A voucher list is unique per (approver, screen) in the database, so a repeat is
+    // either a confused build or somebody padding the answer; either way the chain
+    // gains nothing from trying the same approver twice. The ceiling is what keeps a
+    // stuffed list from turning one poll into thousands of key agreements on a boat
+    // whose processor also has a vessel to run.
+    const stuffed = {
+      kid: 'kid-phone',
+      pub: 'A'.repeat(43),
+      approvals: [
+        { by: 'kid-anchor', mac: 'B'.repeat(43) },
+        { by: 'kid-anchor', mac: 'C'.repeat(43) },
+        ...Array.from({ length: 30 }, (_, i) => ({
+          by: `kid-filler-${i}`,
+          mac: 'D'.repeat(43)
+        }))
+      ]
+    }
+    const calls = relayAnswers(answered({ devices: [stuffed], keys: 'ok' }))
+    const { sync } = keysync()
+
+    sync.start()
+    await until(() => calls.length > 0)
+    await until(() => sync.devices().length > 0)
+
+    const carried = sync.devices()[0].approvals ?? []
+    expect(carried).toHaveLength(MAX_APPROVALS)
+    expect(carried.filter((v) => v.by === 'kid-anchor')).toEqual([
+      { by: 'kid-anchor', mac: 'B'.repeat(43) }
     ])
   })
 

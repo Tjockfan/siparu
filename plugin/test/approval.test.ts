@@ -39,21 +39,27 @@ const inbox = generateKeyPairSync('x25519')
 const inboxPub = rawPublic(inbox.publicKey)
 
 /** An approval of `subject` made by `approver`, as it would arrive off the wire. */
-function approved(approver: TestDevice, subject: TestDevice): DevicePublicKey {
-  const mac = computeApproval({
-    approverPriv: approver.priv,
-    inboxPub,
-    boat: BOAT,
-    approverKid: approver.kid,
-    subjectKid: subject.kid,
-    subjectPub: subject.pub
-  })
-  return {
+function approved(...approvers: TestDevice[]): (subject: TestDevice) => DevicePublicKey {
+  return (subject) => ({
     kid: subject.kid,
     pub: subject.pub.toString('base64url'),
-    approved_by: approver.kid,
-    approval: mac.toString('base64url')
-  }
+    approvals: approvers.map((approver) => ({
+      by: approver.kid,
+      mac: computeApproval({
+        approverPriv: approver.priv,
+        inboxPub,
+        boat: BOAT,
+        approverKid: approver.kid,
+        subjectKid: subject.kid,
+        subjectPub: subject.pub
+      }).toString('base64url')
+    }))
+  })
+}
+
+/** The common case: one voucher, from one approver. */
+function approvedBy(approver: TestDevice, subject: TestDevice): DevicePublicKey {
+  return approved(approver)(subject)
 }
 
 function bare(d: TestDevice): DevicePublicKey {
@@ -196,17 +202,17 @@ describe('what a pinned boat accepts', () => {
   })
 
   it('accepts a device the anchor approved, and one that device approved in turn', () => {
-    const out = accept([bare(a), approved(a, b), approved(b, c)])
+    const out = accept([bare(a), approvedBy(a, b), approvedBy(b, c)])
     expect(out.accepted.map((d) => d.kid)).toEqual([a.kid, b.kid, c.kid])
   })
 
   it('reaches a chained device regardless of the order the list arrives in', () => {
-    const out = accept([approved(b, c), approved(a, b), bare(a)])
+    const out = accept([approvedBy(b, c), approvedBy(a, b), bare(a)])
     expect(out.accepted.map((d) => d.kid).sort()).toEqual([a.kid, b.kid, c.kid].sort())
   })
 
   it('still honours the anchor approvals after the anchor row was removed ashore', () => {
-    const out = accept([approved(a, b)])
+    const out = accept([approvedBy(a, b)])
     expect(out.accepted.map((d) => d.kid)).toEqual([b.kid])
   })
 
@@ -221,16 +227,64 @@ describe('what a pinned boat accepts', () => {
   it('skips an entry approved by a device that is neither anchor nor accepted', () => {
     // b never appears on the list, so its vouching for c is unverifiable:
     // the only place b's public key could come from is the carrier.
-    const out = accept([bare(a), approved(b, c)])
+    const out = accept([bare(a), approvedBy(b, c)])
     expect(out.accepted.map((d) => d.kid)).toEqual([a.kid])
     expect(out.skipped[0].kid).toBe(c.kid)
   })
 
   it('skips an entry whose MAC does not verify', () => {
-    const forged = { ...approved(a, b), approval: Buffer.alloc(32, 9).toString('base64url') }
+    const forged = {
+      ...approvedBy(a, b),
+      approvals: [{ by: a.kid, mac: Buffer.alloc(32, 9).toString('base64url') }]
+    }
     const out = accept([bare(a), forged])
     expect(out.accepted.map((d) => d.kid)).toEqual([a.kid])
     expect(out.skipped[0].kid).toBe(b.kid)
+  })
+
+  it.each([
+    ['first', (retired: DevicePublicKey, listed: DevicePublicKey) => [retired, listed]],
+    ['last', (retired: DevicePublicKey, listed: DevicePublicKey) => [listed, retired]]
+  ] as const)(
+    'reaches a screen over a retired anchor voucher carried %s, past a listed one that cannot chain',
+    (_where, order) => {
+      // The shore cannot tell which of these two verifies: it does not know who the
+      // anchor is, by design. c sits on the list and looks like the better bet from
+      // ashore, but nobody vouched for c, so its voucher for b chains to nothing. The
+      // anchor a was retired from the account after the owner upgraded his phone -
+      // exactly the flow the design promises not to black out - and its voucher
+      // verifies against the pub on her own disk. Handed one voucher rather than both,
+      // a boat would go dark on her owner's only screen with nobody at fault.
+      const both = approved(a, c)(b)
+      const [x, y] = order(
+        { by: both.approvals![0].by, mac: both.approvals![0].mac },
+        { by: both.approvals![1].by, mac: both.approvals![1].mac }
+      )
+      const out = accept([bare(c), { ...both, approvals: [x, y] }])
+      expect(out.accepted.map((d) => d.kid)).toEqual([b.kid])
+      expect(out.skipped.map((s) => s.kid)).toEqual([c.kid])
+    }
+  )
+
+  it('carries a voucher through a device accepted later in the same answer', () => {
+    // b's only good voucher is from c, and c is only accepted once the anchor's
+    // voucher for it verifies. Neither entry is acceptable on the first look, so
+    // this is the fixpoint doing its job over a list that carries several vouchers
+    // per row rather than one.
+    const stranger = device('stranger-d4')
+    const out = accept([approved(stranger, c)(b), bare(a), approvedBy(a, c)])
+    expect(out.accepted.map((d) => d.kid).sort()).toEqual([a.kid, b.kid, c.kid].sort())
+    expect(out.skipped).toEqual([])
+  })
+
+  it('names how many vouchers it refused when a screen carries several', () => {
+    const stranger = device('stranger-d4')
+    const out = accept([bare(a), approved(stranger, c)(b)])
+    expect(out.accepted.map((d) => d.kid)).toEqual([a.kid])
+    expect(out.skipped[0].kid).toBe(b.kid)
+    // The count is the diagnosis: one refused voucher is an owner mid-approval, and
+    // several is a list somebody is stuffing. Both read the same without it.
+    expect(out.skipped[0].reason).toContain('2')
   })
 
   it('refuses a stranger wearing the anchor kid over a different key', () => {
@@ -269,7 +323,7 @@ describe('what a pinned boat accepts', () => {
   })
 
   it('accepts nobody over a broken anchor, because loosening on a torn sector is the attack', () => {
-    const out = accept([bare(a), approved(a, b)], 'broken')
+    const out = accept([bare(a), approvedBy(a, b)], 'broken')
     expect(out.pinned).toBe(true)
     expect(out.accepted).toEqual([])
     expect(out.skipped).toHaveLength(2)
@@ -285,7 +339,7 @@ describe('what a pinned boat accepts', () => {
   it('accepts only the anchor while the boat has no inbox key to verify with', () => {
     const out = acceptDevices({
       anchor: anchorOf(a),
-      entries: [bare(a), approved(a, b)],
+      entries: [bare(a), approvedBy(a, b)],
       inboxPriv: undefined,
       boat: BOAT
     })

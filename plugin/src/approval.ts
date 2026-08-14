@@ -252,38 +252,76 @@ export function acceptDevices(opts: {
   return { accepted, skipped, pinned: true }
 }
 
-/** True to accept, or the reason not to, in words. */
+/**
+ * True to accept, or the reason not to, in words.
+ *
+ * Every voucher the entry carries is tried, and one that verifies is enough. The shore
+ * hands over all of them precisely because it cannot tell which one this boat can use:
+ * the anchor is on her disk and nowhere else, so a voucher from a device retired ashore
+ * may be the only verifiable one on the row while a voucher from a device still listed
+ * chains to nothing.
+ */
 function admissible(
   entry: DevicePublicKey,
   trusted: Map<string, Buffer>,
   inboxPriv: KeyObject | undefined,
   boat: string
 ): true | string {
-  if (!entry.approved_by || !entry.approval) {
+  const approvals = entry.approvals ?? []
+  if (approvals.length === 0) {
     return 'carries no approval from a device this boat trusts'
-  }
-  const approverPub = trusted.get(entry.approved_by)
-  if (!approverPub) {
-    return `approved by "${entry.approved_by}", which this boat does not trust`
   }
   if (!inboxPriv) {
     return 'the boat holds no inbox key yet to verify the approval with'
   }
   const subjectPub = decodePub(entry.pub)
-  const mac = decodeMac(entry.approval)
-  if (!subjectPub || !mac) {
-    return 'the approval is malformed'
+  const refusals: Refusal[] = []
+  for (const { by, mac } of approvals) {
+    const approverPub = trusted.get(by)
+    if (!approverPub) {
+      refusals.push({ rank: 2, text: `approved by "${by}", which this boat does not trust` })
+      continue
+    }
+    const raw = decodeMac(mac)
+    if (!subjectPub || !raw) {
+      refusals.push({ rank: 1, text: 'the approval is malformed' })
+      continue
+    }
+    const ok = verifyApproval({
+      inboxPriv,
+      approverPub,
+      boat,
+      approverKid: by,
+      subjectKid: entry.kid,
+      subjectPub,
+      mac: raw
+    })
+    if (ok) return true
+    refusals.push({ rank: 0, text: 'the approval does not verify' })
   }
-  const ok = verifyApproval({
-    inboxPriv,
-    approverPub,
-    boat,
-    approverKid: entry.approved_by,
-    subjectKid: entry.kid,
-    subjectPub,
-    mac
-  })
-  return ok ? true : 'the approval does not verify'
+  return worst(refusals)
+}
+
+/** One rejected voucher. Lower rank is the more alarming thing to say out loud. */
+interface Refusal {
+  rank: number
+  text: string
+}
+
+/**
+ * The one sentence a row's refusals are worth on a status page.
+ *
+ * The most alarming first: a voucher from a device she DOES trust that fails to verify
+ * is either corruption or somebody forging, where an unverifiable approver is the
+ * ordinary shape of a chain that has not reached this row yet. The count rides along
+ * once there is more than one, because an owner mid-approval and a list somebody is
+ * stuffing read identically without it.
+ */
+function worst(refusals: Refusal[]): string {
+  const first = refusals.reduce((best, r) => (r.rank < best.rank ? r : best))
+  return refusals.length === 1
+    ? first.text
+    : `${first.text} (${refusals.length} approvals, none accepted)`
 }
 
 function decodePub(pub: string): Buffer | null {

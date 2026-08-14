@@ -25,7 +25,7 @@
  * Read-only, like everything else here: this talks outbound to the relay and never to
  * Signal K. Nothing in this file emits a delta or a PUT.
  */
-import type { DevicePublicKey } from './contract'
+import type { DeviceApproval, DevicePublicKey } from './contract'
 import type { BoatKeyStore } from './keystore'
 import type { SealingLatchStore } from './latch'
 import type { RemoteLink } from './remotelink'
@@ -100,6 +100,22 @@ const MAX_BACKOFF_MS = 30 * 60_000
  * and leaves the good case, one owner opening his phone, indistinguishable from instant.
  */
 export const PROMPTED_FLOOR_MS = 30_000
+
+/**
+ * How many vouchers she carries per screen.
+ *
+ * A voucher is only ever usable if its approver is one she trusts, and there are at
+ * most MAX_DEVICES of those on the list plus the anchor on her disk - so six is the
+ * number that can possibly matter, and the rest is headroom for a fleet that has
+ * turned over a couple of devices. What the ceiling really guards is the cost: every
+ * candidate is a key agreement, and the answer that names them arrives from ashore.
+ */
+export const MAX_APPROVALS = 8
+
+/** The alphabet and bound the database enforces on a device id on the way in. */
+const KID = /^[A-Za-z0-9_-]{1,64}$/
+/** What 32 raw bytes - a key, or a MAC - spell in base64url. */
+const B64_32 = /^[A-Za-z0-9_-]{43}$/
 
 export class KeySync {
   private timer: NodeJS.Timeout | null = null
@@ -478,33 +494,49 @@ function readDevices(raw: unknown): DevicePublicKey[] {
   for (const entry of raw) {
     if (out.length >= MAX_DEVICES) break
     if (!entry || typeof entry !== 'object') continue
-    const { kid, pub, approved_by, approval } = entry as {
+    const { kid, pub, approvals } = entry as {
       kid?: unknown
       pub?: unknown
-      approved_by?: unknown
-      approval?: unknown
+      approvals?: unknown
     }
     // The kid's charset matters beyond tidiness now: it is interpolated into refusal
     // reasons served by /health, so it is held to the same alphabet the database
     // enforces on the way in, not merely to a length.
-    if (typeof kid !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(kid)) continue
-    if (typeof pub !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(pub)) continue
-    // The approval rides along opaquely - whether it VERIFIES is the sealer's question,
-    // asked with keys this module never holds. Carried only as a matched pair in the
-    // shapes that could possibly verify (a kid, and the 43 characters a 32-byte MAC
-    // spells); anything else is dropped from the entry rather than the entry from the
-    // list, because a device with a mangled approval is still a screen her owner added.
-    if (
-      typeof approved_by === 'string' &&
-      /^[A-Za-z0-9_-]{1,64}$/.test(approved_by) &&
-      typeof approval === 'string' &&
-      /^[A-Za-z0-9_-]{43}$/.test(approval)
-    ) {
-      out.push({ kid, pub, approved_by, approval })
-    } else {
-      out.push({ kid, pub })
-    }
+    if (typeof kid !== 'string' || !KID.test(kid)) continue
+    if (typeof pub !== 'string' || !B64_32.test(pub)) continue
+    const vouchers = readApprovals(approvals)
+    out.push(vouchers ? { kid, pub, approvals: vouchers } : { kid, pub })
   }
   return out
+}
+
+/**
+ * The vouchers carried for one device, held to the shapes that could possibly verify.
+ *
+ * Opaque here - whether one VERIFIES is the sealer's question, asked with keys this
+ * module never holds. What it owes the chain is to keep ALL of them, because which one
+ * is usable depends on an anchor only the boat knows about, and to hand on nothing that
+ * would merely cost a key agreement to refuse. A malformed voucher is dropped from the
+ * entry rather than the entry from the list, because a device with a mangled approval is
+ * still a screen her owner added.
+ */
+function readApprovals(raw: unknown): DeviceApproval[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: DeviceApproval[] = []
+  const approvers = new Set<string>()
+  for (const item of raw) {
+    if (out.length >= MAX_APPROVALS) break
+    if (!item || typeof item !== 'object') continue
+    const { by, mac } = item as { by?: unknown; mac?: unknown }
+    if (typeof by !== 'string' || !KID.test(by)) continue
+    if (typeof mac !== 'string' || !B64_32.test(mac)) continue
+    // One approver vouches for one screen once - the database holds that as a
+    // uniqueness rule - so a repeat is a confused build or a padded answer, and
+    // trying the same approver twice can only ever cost the same agreement twice.
+    if (approvers.has(by)) continue
+    approvers.add(by)
+    out.push({ by, mac })
+  }
+  return out.length ? out : undefined
 }
 

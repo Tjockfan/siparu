@@ -317,8 +317,7 @@ describe('what the plugin actually hands the sealer', () => {
       {
         kid: 'kid-later',
         pub: laterPub.toString('base64url'),
-        approved_by: anchorDev.kid,
-        approval: approval.toString('base64url')
+        approvals: [{ by: anchorDev.kid, mac: approval.toString('base64url') }]
       }
     ]
 
