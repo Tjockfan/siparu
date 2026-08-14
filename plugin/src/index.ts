@@ -261,9 +261,10 @@ export = (app: ServerAPI): Plugin => {
       // a debug log that is off by default.
       sealing: (() => {
         const view = screensNow?.()
+        const held = sealingState()
         return {
           devices: keySync?.status().devices ?? 0,
-          ...sealingState(),
+          ...held,
           // Computed here rather than carried: the fingerprint is of the key she is actually
           // sealing to, and reading it off the same list the sealer reads is what makes it
           // worth comparing. A row whose key will not decode is left out rather than shown as
@@ -277,11 +278,14 @@ export = (app: ServerAPI): Plugin => {
           // SkippedDevice later does not walk onto this surface without being chosen.
           screens_skipped: (view?.skipped ?? []).map((s) => ({ kid: s.kid, reason: s.reason })),
           // The sealer's own frame-time refusals, the second and last filter a screen can
-          // fall at. Same projection discipline as above.
-          screens_rejected: (sealer?.rejections() ?? []).map((r) => ({
-            kid: r.kid,
-            reason: r.reason
-          }))
+          // fall at. Same projection discipline as above. Served only while she is actually
+          // sealing: the sealer's memory describes the last frame of the LAST pairing until
+          // a new frame overwrites it, and an unpaired boat must not go on naming screens
+          // that belong to an account she has left.
+          screens_rejected:
+            held.mode === 'sealed'
+              ? (sealer?.rejections() ?? []).map((r) => ({ kid: r.kid, reason: r.reason }))
+              : []
         }
       })()
     }
