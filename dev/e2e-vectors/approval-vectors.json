@@ -1,0 +1,59 @@
+{
+  "label": "siparu/device-approval/v1",
+  "version": 1,
+  "inbox": {
+    "private": "UDJSFxQtkid3zQrhELa5AW0ZqiWKeIGOmX2cX1cpk18",
+    "public": "Y9lqq4iT_rqHaMflUfCqHjLodigvhbdmStuaJP11aDk"
+  },
+  "cases": [
+    {
+      "note": "the anchor vouching for a later phone",
+      "boat": "b7e0a9d2-31c4-4f66-8a02-5d9c41e7f310",
+      "approver": {
+        "kid": "anchor-phone-0001",
+        "private": "sKM7cFIkIRWcvCYSTaG66hLlWct3GPwXlblZAaST33A",
+        "public": "7zutm7BN-sVGwVoqcjNnAUenQiq7qiQ-YNeqyWLVE1U"
+      },
+      "subject": {
+        "kid": "later-phone-0002",
+        "public": "HXhQe7mlPOaWvcmAu6pDncCRpLpUWCW_sOfaV2v3cQQ"
+      },
+      "input_hex": "7369706172752f6465766963652d617070726f76616c2f763100010000002462376530613964322d333163342d346636362d386130322d35643963343165376633313000000011616e63686f722d70686f6e652d30303031000000106c617465722d70686f6e652d30303032000000201d78507bb9a53ce696bdc980bbaa439dc091a4ba545825bfb0e7da576bf77104",
+      "mac": "tzx9SW8Egt8Kljd4f2sTS162eZ5x02j00K5_rQ-Q-5E"
+    },
+    {
+      "note": "that phone vouching for a tablet in turn",
+      "boat": "b7e0a9d2-31c4-4f66-8a02-5d9c41e7f310",
+      "approver": {
+        "kid": "later-phone-0002",
+        "private": "oDcINgWuLVZjX_I8hGLkvb6JxGdrTfoJxdjwL1HupFw",
+        "public": "HXhQe7mlPOaWvcmAu6pDncCRpLpUWCW_sOfaV2v3cQQ"
+      },
+      "subject": {
+        "kid": "family-tablet-03",
+        "public": "VP6a6BnhUDqsUiq8eUNVzMIa9eRysT2RYlCWH8p-RxU"
+      },
+      "input_hex": "7369706172752f6465766963652d617070726f76616c2f763100010000002462376530613964322d333163342d346636362d386130322d356439633431653766333130000000106c617465722d70686f6e652d303030320000001066616d696c792d7461626c65742d30330000002054fe9ae819e1503aac522abc794355ccc21af5e472b13d916250961fca7e4715",
+      "mac": "C0c1UY489EUrXpB_KdvQuZ-GfcORBCxSaALsVTB4c78"
+    },
+    {
+      "note": "same keys, another vessel: the boat id splits the derivation",
+      "boat": "0d3f2b18-9c55-47ab-b1e4-77a6c2d90e44",
+      "approver": {
+        "kid": "anchor-phone-0001",
+        "private": "sKM7cFIkIRWcvCYSTaG66hLlWct3GPwXlblZAaST33A",
+        "public": "7zutm7BN-sVGwVoqcjNnAUenQiq7qiQ-YNeqyWLVE1U"
+      },
+      "subject": {
+        "kid": "later-phone-0002",
+        "public": "HXhQe7mlPOaWvcmAu6pDncCRpLpUWCW_sOfaV2v3cQQ"
+      },
+      "input_hex": "7369706172752f6465766963652d617070726f76616c2f763100010000002430643366326231382d396335352d343761622d623165342d37376136633264393065343400000011616e63686f722d70686f6e652d30303031000000106c617465722d70686f6e652d30303032000000201d78507bb9a53ce696bdc980bbaa439dc091a4ba545825bfb0e7da576bf77104",
+      "mac": "ntoKc39PjDNCsbkUYJ5WPRO4PmiBbuPnqJD0cU99TDY"
+    }
+  ],
+  "alias": {
+    "subject_public": "HXhQe7mlPOaWvcmAu6pDncCRpLpUWCW_sOfaV2v3cQR",
+    "same_mac_as_case": 0
+  }
+}

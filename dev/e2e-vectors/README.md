@@ -61,6 +61,22 @@ person holding a phone up beside a screen in a dim saloon, which is why the
 alphabet drops the letters that can be read as each other and why the vectors
 include a key whose digest begins with zero bits.
 
+The device approval is a fifth file: the MAC one screen mints to vouch for
+another, which is what lets a boat hold a shore-assembled device list to a
+chain rooted in the screen she witnessed at pairing.
+
+```sh
+node dev/e2e-vectors/generate-approval.mjs > dev/e2e-vectors/approval-vectors.json
+npx vitest run plugin/test/approval.test.ts      # the shipping module against the file
+npx vitest run plugin/test/e2e-vectors.test.ts   # the reference against the same file
+```
+
+Both derivations are in the file's cases: the approver's door in (its private
+half and the boat's inbox public) and the boat's (her inbox private and the
+approver's public), which must agree byte for byte or the generator refuses to
+write the file at all. The alias case pins that the MAC is over the decoded
+key, never its spelling. The CryptoKit side is run by hand, like the others.
+
 They are kept apart deliberately. Regenerating a vector file costs a pass over
 every verifier including the CryptoKit one, run by hand, and a change to the
 message a device writes is no reason to redo the frame format that did not

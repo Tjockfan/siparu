@@ -338,6 +338,19 @@ export interface HealthResult {
      * the server cannot take part in. Shorter than `devices` when a row was unreadable.
      */
     screens: string[]
+    /**
+     * Whether the list above was held to the approval chain rooted aboard. False on a
+     * boat paired before approvals shipped, whose cure is a re-pairing and is worth
+     * naming on the screen that shows this.
+     */
+    screens_pinned: boolean
+    /**
+     * Pinned mode only: rows of the shore's answer she refuses to seal to, each with
+     * the reason in words. A named refusal here is the alarm the whole chain exists
+     * to raise - a screen appearing in it that the owner never added is somebody
+     * else's key being pressed into her list.
+     */
+    screens_skipped: { kid: string; reason: string }[]
   }
 }
 
@@ -533,4 +546,16 @@ export interface DevicePublicKey {
   kid: string
   /** Raw 32-byte X25519 public key, base64url. */
   pub: string
+  /**
+   * The kid of the already-authorised device that vouched for this one, when one has.
+   * Absent on rows written before approvals existed, and on the first device of a
+   * pairing, whose trust comes from the anchor the boat recorded herself.
+   */
+  approved_by?: string
+  /**
+   * HMAC-SHA256 over the approval input (approval.ts), base64url, 43 characters.
+   * Opaque to the shore, which stores and carries it but holds neither of the private
+   * halves that could verify it. Only the boat can, and only the boat needs to.
+   */
+  approval?: string
 }

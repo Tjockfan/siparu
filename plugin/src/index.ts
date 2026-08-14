@@ -37,6 +37,8 @@ import { LiveUplink } from './live'
 import { decimateTrack } from './track'
 import { reportedStatus, Uplink } from './uplink'
 import { SealingLatch } from './latch'
+import { AnchorStore } from './anchor'
+import { acceptDevices, type AcceptResult } from './approval'
 import { BoatKeyStore } from './keystore'
 import { KeySync } from './keysync'
 import { Sealer, type SealState } from './sealer'
@@ -71,6 +73,16 @@ export = (app: ServerAPI): Plugin => {
   let boatKeyStore: BoatKeyStore | null = null
   /** Held for the same reason: the poll writes the sealing latch without awaiting it. */
   let sealingLatch: SealingLatch | null = null
+  /** Held so stop() can wait for its writes, like the latch and the keys. */
+  let anchorStore: AnchorStore | null = null
+  /**
+   * The device list as the approval chain leaves it, built in start() where the
+   * anchor and the keys live. Health reads it so the screen shows the list the
+   * sealer actually uses, refusals and all - never the shore's raw answer.
+   */
+  let screensNow: (() => AcceptResult) | null = null
+  /** Re-reads the anchor when the pairing changes; the sealer must not read a disk per frame. */
+  let reloadAnchor: (() => Promise<void>) | null = null
   let timer: NodeJS.Timeout | null = null
   let unlinkRetryTimer: NodeJS.Timeout | null = null
   let unsubscribes: Array<() => void> = []
@@ -201,7 +213,20 @@ export = (app: ServerAPI): Plugin => {
    */
   function sealingState(): SealState {
     if (!sealer || !ensureRemoteLink().getRemote()) return { mode: 'none', reason: null }
-    return sealer.state()
+    const s = sealer.state()
+    // The sealer sees only the list the chain left it, so when a pinned boat refuses
+    // every screen it says "the shore has named no screen" and prescribes authorising
+    // one - which would only add another refused row. The layer that knows WHY the
+    // list is empty is this one, and the one sentence a person reads has to name the
+    // cure that works.
+    const view = screensNow?.()
+    if (s.mode === 'blocked' && view?.pinned && view.accepted.length === 0 && view.skipped.length > 0) {
+      return {
+        mode: 'blocked',
+        reason: `the shore named ${view.skipped.length} screen(s), but none is approved by a device this boat trusts. Approve them from a screen she already seals to, or pair her again aboard`
+      }
+    }
+    return s
   }
 
   async function health(): Promise<HealthResult> {
@@ -234,17 +259,25 @@ export = (app: ServerAPI): Plugin => {
       // pairing screen reports the socket as healthy either way, because the socket IS
       // healthy. Without this, the honest answer to "why has she gone quiet" existed only in
       // a debug log that is off by default.
-      sealing: {
-        devices: keySync?.status().devices ?? 0,
-        ...sealingState(),
-        // Computed here rather than carried: the fingerprint is of the key she is actually
-        // sealing to, and reading it off the same list the sealer reads is what makes it worth
-        // comparing. A row whose key will not decode is left out rather than shown as a dash,
-        // because a screen she cannot seal to is not a screen an owner can find on his phone.
-        screens: (keySync?.devices() ?? [])
-          .map((d) => fingerprintOfEncoded(d.pub))
-          .filter((fp): fp is string => fp !== null)
-      }
+      sealing: (() => {
+        const view = screensNow?.()
+        return {
+          devices: keySync?.status().devices ?? 0,
+          ...sealingState(),
+          // Computed here rather than carried: the fingerprint is of the key she is actually
+          // sealing to, and reading it off the same list the sealer reads is what makes it
+          // worth comparing. A row whose key will not decode is left out rather than shown as
+          // a dash, because a screen she cannot seal to is not a screen an owner can find on
+          // his phone.
+          screens: (view?.accepted ?? [])
+            .map((d) => fingerprintOfEncoded(d.pub))
+            .filter((fp): fp is string => fp !== null),
+          screens_pinned: view?.pinned ?? false,
+          // Projected field by field rather than passed through, so a field added to
+          // SkippedDevice later does not walk onto this surface without being chosen.
+          screens_skipped: (view?.skipped ?? []).map((s) => ({ kid: s.kid, reason: s.reason }))
+        }
+      })()
     }
   }
 
@@ -409,6 +442,22 @@ export = (app: ServerAPI): Plugin => {
           // waiting for her first screen, or one whose screens have gone.
           const latch = new SealingLatch(app.getDataDirPath())
           sealingLatch = latch
+          // The root of the approval chain, when this pairing has one. Read here and
+          // again only when the pairing changes: the sealer asks per frame, every two
+          // seconds under way, and a file read per frame would put the SD card in the
+          // loop of every report she sends.
+          const anchors = new AnchorStore(app.getDataDirPath())
+          anchorStore = anchors
+          const anchorOf = (r: RemoteLink | undefined) => anchors.load(r?.boatId, r?.pairedAt)
+          let anchor = anchorOf(rl.getRemote())
+          reloadAnchor = async () => {
+            // Any pairing transition retires the root with the pairing it belonged to:
+            // the file binds itself to boat AND pairedAt, so a re-pair reads as null
+            // even before the clear lands. A new pairing starts unpinned until its own
+            // approval writes a new anchor.
+            if (!rl.getRemote()) await anchors.clear()
+            anchor = anchorOf(rl.getRemote())
+          }
           const ks = new KeySync({
             relayUrl: RELAY_URL,
             getRemote: () => rl.getRemote(),
@@ -426,9 +475,22 @@ export = (app: ServerAPI): Plugin => {
           // That applies here and on every archive answer alike, which is the half that would
           // have been easy to forget: one snapshots page carries a day of positions where a
           // frame carries one.
+          // Between the shore's answer and the sealer stands the approval chain: on a
+          // pinned boat, an entry nobody she trusts has vouched for never reaches the
+          // code that would seal to it. Unpinned (every vessel paired before approvals
+          // shipped) this passes the list through untouched and says so in health.
+          const screens = (): AcceptResult =>
+            acceptDevices({
+              anchor,
+              entries: ks.devices(),
+              inboxPriv: boatKeys.get()?.inbox,
+              boat: rl.getRemote()?.boatId
+            })
+          screensNow = screens
+
           const seal = new Sealer({
             keys: boatKeys,
-            devices: () => ks.devices(),
+            devices: () => screens().accepted,
             latched: () => ks.sealing(),
             boatId: () => rl.getRemote()?.boatId,
             debug: (msg) => app.debug(msg)
@@ -550,6 +612,7 @@ export = (app: ServerAPI): Plugin => {
       // lands leaves a rename running against a directory the caller may remove.
       if (boatKeyStore) await boatKeyStore.flush()
       if (sealingLatch) await sealingLatch.flush()
+      if (anchorStore) await anchorStore.flush()
       state = null
       store = null
       rollups = null
@@ -562,6 +625,9 @@ export = (app: ServerAPI): Plugin => {
       sealer = null
       boatKeyStore = null
       sealingLatch = null
+      anchorStore = null
+      screensNow = null
+      reloadAnchor = null
       app.setPluginStatus('Stopped')
     },
 
@@ -599,6 +665,7 @@ export = (app: ServerAPI): Plugin => {
           uplink?.reset()
           liveUplink?.reset()
           keySync?.reset()
+          await reloadAnchor?.()
         },
         getPendingUnlinks: () => ensureRemoteLink().getPendingUnlinks(),
         addPendingUnlink: (p) => ensureRemoteLink().addPendingUnlink(p)

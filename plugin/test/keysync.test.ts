@@ -223,6 +223,56 @@ describe('a boat publishing her own public halves', () => {
     expect(sync.devices()).toEqual([good])
   })
 
+  it('carries an approval through untouched, and strips one that is not even shaped like one', async () => {
+    // The fields are opaque here: whether an approval VERIFIES is the sealer's
+    // question, asked with keys this module never holds. What this module owes the
+    // chain is not to lose the fields on the way, and not to hand shapes that could
+    // never verify to code that would then have to say why.
+    const vouched = {
+      kid: 'kid-phone',
+      pub: 'A'.repeat(43),
+      approved_by: 'kid-anchor',
+      approval: 'B'.repeat(43)
+    }
+    // Three ways an approval fails the shape check, each dropped from the ENTRY and
+    // never the entry from the list: a wrong-typed approver, a well-typed approver
+    // beside a MAC that could never verify (wrong length, wrong alphabet), and an
+    // approver name past the bound the database enforces on the way in.
+    const wrongType = {
+      kid: 'kid-tablet',
+      pub: 'C'.repeat(43),
+      approved_by: 42,
+      approval: 'B'.repeat(43)
+    }
+    const macNotAMac = {
+      kid: 'kid-plotter',
+      pub: 'D'.repeat(43),
+      approved_by: 'kid-anchor',
+      approval: 'not base64url at all!'
+    }
+    const nameTooLong = {
+      kid: 'kid-spare',
+      pub: 'E'.repeat(43),
+      approved_by: 'x'.repeat(65),
+      approval: 'B'.repeat(43)
+    }
+    const calls = relayAnswers(
+      answered({ devices: [vouched, wrongType, macNotAMac, nameTooLong], keys: 'ok' })
+    )
+    const { sync } = keysync()
+
+    sync.start()
+    await until(() => calls.length > 0)
+    await until(() => sync.devices().length > 0)
+
+    expect(sync.devices()).toEqual([
+      vouched,
+      { kid: 'kid-tablet', pub: 'C'.repeat(43) },
+      { kid: 'kid-plotter', pub: 'D'.repeat(43) },
+      { kid: 'kid-spare', pub: 'E'.repeat(43) }
+    ])
+  })
+
   it('keeps knocking while the relay is unreachable, backing off as it goes', async () => {
     const calls = relayAnswers(new Error('offline'))
     const { sync } = keysync()

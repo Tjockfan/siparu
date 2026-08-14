@@ -478,10 +478,32 @@ function readDevices(raw: unknown): DevicePublicKey[] {
   for (const entry of raw) {
     if (out.length >= MAX_DEVICES) break
     if (!entry || typeof entry !== 'object') continue
-    const { kid, pub } = entry as { kid?: unknown; pub?: unknown }
-    if (typeof kid !== 'string' || !kid || kid.length > 64) continue
+    const { kid, pub, approved_by, approval } = entry as {
+      kid?: unknown
+      pub?: unknown
+      approved_by?: unknown
+      approval?: unknown
+    }
+    // The kid's charset matters beyond tidiness now: it is interpolated into refusal
+    // reasons served by /health, so it is held to the same alphabet the database
+    // enforces on the way in, not merely to a length.
+    if (typeof kid !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(kid)) continue
     if (typeof pub !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(pub)) continue
-    out.push({ kid, pub })
+    // The approval rides along opaquely - whether it VERIFIES is the sealer's question,
+    // asked with keys this module never holds. Carried only as a matched pair in the
+    // shapes that could possibly verify (a kid, and the 43 characters a 32-byte MAC
+    // spells); anything else is dropped from the entry rather than the entry from the
+    // list, because a device with a mangled approval is still a screen her owner added.
+    if (
+      typeof approved_by === 'string' &&
+      /^[A-Za-z0-9_-]{1,64}$/.test(approved_by) &&
+      typeof approval === 'string' &&
+      /^[A-Za-z0-9_-]{43}$/.test(approval)
+    ) {
+      out.push({ kid, pub, approved_by, approval })
+    } else {
+      out.push({ kid, pub })
+    }
   }
   return out
 }

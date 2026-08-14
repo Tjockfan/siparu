@@ -1,10 +1,13 @@
+import { generateKeyPairSync } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computeApproval } from '../src/approval'
 import type { RestDeps } from '../src/rest'
 import type { SealerDeps } from '../src/sealer'
+import { rawPrivate, rawPublic } from '../src/sealing'
 
 /**
  * The wiring in index.ts, which nothing else watches.
@@ -192,8 +195,116 @@ describe('what the plugin actually hands the sealer', () => {
       devices: 0,
       mode: expect.any(String),
       reason: health?.sealing.mode === 'blocked' ? expect.any(String) : null,
-      screens: []
+      screens: [],
+      screens_pinned: false,
+      screens_skipped: []
     })
+  })
+
+  it('holds the shore to the anchor on disk, and names what it refuses', async () => {
+    // A boat that pinned her first screen at pairing. The shore's answer then carries
+    // one entry she witnessed and one she did not, with nothing vouching for it - the
+    // exact shape of a key pressed into her list by whoever holds the infrastructure.
+    const anchorDev = { kid: 'kid-anchor', pub: 'A'.repeat(43) }
+    const stranger = { kid: 'kid-stranger', pub: 'B'.repeat(43) }
+    await fs.writeFile(
+      path.join(dir, 'anchor.json'),
+      JSON.stringify({
+        v: 1,
+        boat: 'boat-wiring',
+        paired_at: '2026-07-30T00:00:00.000Z',
+        kid: anchorDev.kid,
+        pub: anchorDev.pub
+      }),
+      { mode: 0o600 }
+    )
+    devices = [anchorDev, stranger]
+
+    const deps = await runOnce()
+    await until(() => deps.devices().length > 0)
+
+    // The sealer is handed the witnessed screen and never sees the stranger.
+    expect(deps.devices()).toEqual([anchorDev])
+
+    // And the refusal is named where a person can read it, because a skipped row here
+    // is the alarm this exists to raise, not bookkeeping.
+    const health = await rest?.health()
+    expect(health?.sealing.screens_pinned).toBe(true)
+    expect(health?.sealing.screens_skipped).toEqual([
+      { kid: 'kid-stranger', reason: expect.stringContaining('approval') }
+    ])
+    // The shore named two; she seals to one and says so.
+    expect(health?.sealing.devices).toBe(2)
+    expect(health?.sealing.screens).toHaveLength(1)
+  })
+
+  it('verifies a real approval end to end, with the keys the plugin actually loaded', async () => {
+    // Everything above refuses; this is the seam proving the wiring can also ACCEPT.
+    // acceptDevices is handed three things by index.ts - the anchor, the entries, and
+    // the boat's inbox private key - and a wrong key there (the identity, undefined)
+    // is invisible to every test that never puts a verifiable approval on the wire:
+    // the chain would silently shrink to "anchor only" and stay green.
+    const inbox = generateKeyPairSync('x25519')
+    const identity = generateKeyPairSync('ed25519')
+    await fs.writeFile(
+      path.join(dir, 'keys.json'),
+      JSON.stringify({
+        v: 1,
+        identity: {
+          priv: rawPrivate(identity.privateKey).toString('base64url'),
+          pub: rawPublic(identity.publicKey).toString('base64url')
+        },
+        inbox: {
+          priv: rawPrivate(inbox.privateKey).toString('base64url'),
+          pub: rawPublic(inbox.publicKey).toString('base64url')
+        }
+      }),
+      { mode: 0o600 }
+    )
+
+    const anchorKey = generateKeyPairSync('x25519')
+    const anchorDev = { kid: 'kid-anchor', pub: rawPublic(anchorKey.publicKey).toString('base64url') }
+    await fs.writeFile(
+      path.join(dir, 'anchor.json'),
+      JSON.stringify({
+        v: 1,
+        boat: 'boat-wiring',
+        paired_at: '2026-07-30T00:00:00.000Z',
+        kid: anchorDev.kid,
+        pub: anchorDev.pub
+      }),
+      { mode: 0o600 }
+    )
+
+    const laterKey = generateKeyPairSync('x25519')
+    const laterPub = rawPublic(laterKey.publicKey)
+    const approval = computeApproval({
+      approverPriv: anchorKey.privateKey,
+      inboxPub: rawPublic(inbox.publicKey),
+      boat: 'boat-wiring',
+      approverKid: anchorDev.kid,
+      subjectKid: 'kid-later',
+      subjectPub: laterPub
+    })
+    devices = [
+      anchorDev,
+      {
+        kid: 'kid-later',
+        pub: laterPub.toString('base64url'),
+        approved_by: anchorDev.kid,
+        approval: approval.toString('base64url')
+      }
+    ]
+
+    const deps = await runOnce()
+    await until(() => deps.devices().length > 0)
+
+    expect(deps.devices().map((d) => d.kid)).toEqual([anchorDev.kid, 'kid-later'])
+
+    const health = await rest?.health()
+    expect(health?.sealing.screens_pinned).toBe(true)
+    expect(health?.sealing.screens_skipped).toEqual([])
+    expect(health?.sealing.screens).toHaveLength(2)
   })
 
   /**

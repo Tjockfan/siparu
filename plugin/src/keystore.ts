@@ -173,6 +173,10 @@ export class BoatKeyStore {
     const run = async (): Promise<void> => {
       const tmp = `${this.file}.tmp`
       await fs.promises.writeFile(tmp, JSON.stringify(shape, null, 2), { mode: 0o600 })
+      // writeFile applies a mode only when it creates the file, and a crash can leave
+      // the temporary one behind - the latch and the anchor both guard this; the file
+      // holding the boat's private keys must not be the one that does not.
+      await fs.promises.chmod(tmp, 0o600)
       await fs.promises.rename(tmp, this.file)
     }
     this.writeChain = this.writeChain.then(run, run)
