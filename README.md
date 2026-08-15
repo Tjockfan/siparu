@@ -19,7 +19,7 @@ generator tab. The same gauges are also served over the API (`GET /live`,
   on every commit - grep this codebase and see for yourself.
 - **Nothing leaves until you pair her**, and pairing takes a deliberate tap at
   the helm. Unpair and it stops the same minute.
-- **What she sends once paired.** Her bridge, every ten seconds under way and
+- **What she sends once paired.** Her bridge, every two seconds under way and
   once a minute at rest: position,
   speed and course over ground, heading, rate of turn, magnetic variation and
   deviation, navigation state, apparent and true wind with gust and direction,
@@ -145,17 +145,24 @@ changes anything aboard, and the REST surface above is not proxied to it.
 ### The uplink, when she is paired
 
 She opens a WebSocket out to the relay and sends the live frame described above
-every ten seconds under way, once a minute at rest; if that socket cannot hold -
-marina networks mangle WebSockets - the same frame goes by HTTPS once a minute
-instead. Either way the shore keeps none of it: when she drops off, all that
-remains ashore is her name and when she was last seen. Both are outbound:
-she dials the relay, the relay never dials her.
+every two seconds under way, once a minute at rest; if that socket cannot hold -
+marina networks mangle WebSockets - she falls back to an HTTPS call once a
+minute that carries her clock and nothing else. There is no key exchange behind
+that call, so it could not encrypt a frame even if it were handed one: it says
+she is still there, not where she is. Either way the shore keeps none of it:
+when she drops off, all that remains ashore is her name and when she was last
+seen. Both are outbound: she dials the relay, the relay never dials her.
 
-Exactly one kind of message travels the other way:
+Five kinds of message travel the other way, and every one of them is a read of
+the store she wrote herself:
 
 | Inbound | Description |
 |---|---|
-| `{ type: 'history', id, path, query }` | Asks her to read one gauge's recorded history from her own store and send it back. Answered from the same NDJSON the local `GET /snapshots` serves; it reaches nothing else. |
+| `{ type: 'history', id, path, query }` | One gauge's recorded series, shaped for a graph. Answered from the same NDJSON the local `GET /snapshots` serves. |
+| `{ type: 'snapshots', id, query }` | Whole snapshot rows over a window: the logbook read, as the local `GET /snapshots` gives it. |
+| `{ type: 'voyages', id, limit }` | Her recent voyages, newest first. She clamps the count, so a request cannot ask for more than she will give. |
+| `{ type: 'track', id, voyageId }` | One voyage's recorded path, decimated aboard before it goes over the wire. |
+| `{ type: 'phases', id, limit }` | The activity band beneath the voyages, newest first, clamped the same way. |
 
 Anything else the shore sends is ignored, because a boat takes no command and so
 there is nothing else to hear.
@@ -174,8 +181,9 @@ signature, so neither can be rewritten in transit.
 
 Voyage detection opens after sustained movement, closes after sustained
 stillness, and folds short docking manoeuvres into the preceding voyage. Its
-behavior is pinned by a golden-fixture test against a reference
-implementation on ten days of real vessel data (`plugin/test/fixtures/`).
+behavior is pinned by a golden-fixture test against a reference implementation
+on ten days of a procedurally generated track (`plugin/test/fixtures/`, laid
+down from a seeded PRNG; no vessel's real movements are involved).
 
 All timestamps are epoch milliseconds (UTC). Values use Signal K's SI units
 (m/s, radians, Kelvin, Pascal).

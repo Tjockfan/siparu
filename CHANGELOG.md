@@ -7,11 +7,36 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The plugin is read-only by design. No release will ever add a write path to the vessel:
 `handleMessage`, PUT requests and NMEA 2000 output do not appear anywhere in this code base.
-The REST endpoints are GET-only but for pairing and the fuel-source picker, which move this
-plugin's own state (a tap at the helm, a choice of which engine feeds voyage fuel) and send
-nothing to the boat. CI proves both on every commit, and a sixth write route fails the build.
+The REST endpoints are GET-only but for seven, which move this plugin's own state and send
+nothing to the boat: four for pairing (a tap at the helm), one for the fuel source (which
+engine feeds voyage fuel) and two for correcting a passage the detector split or joined
+wrongly. CI proves both on every commit, and an eighth write route fails the build.
 
 ## [Unreleased]
+
+## [0.2.7] - 2026-08-16
+
+### Fixed
+
+- **The published description no longer claims a record the relay does not keep.** The npm
+  page and the Signal K App Store entry called this "an impartial, timestamped record of
+  every voyage". Nothing ashore keeps one: a frame's signature is verified in memory and
+  discarded, and the only mark left is the boat's name and when she was last seen. The
+  description now says what the wire actually does, which is seal the report to the devices
+  you name and sign it on the way out. The comment over the relay's frame handler said the
+  same untrue thing to the next developer and now says what is kept, and what is not.
+- **The README said the boat reports every ten seconds. She reports every two.** The cadence
+  was raised on 20 July and the README kept the old number through every release since,
+  understating the data an uplink uses by five times - the one figure that matters to an
+  owner on a metered Starlink or 4G plan. The fallback
+  line was wrong in the other direction: when the socket cannot hold, what goes by HTTPS once
+  a minute is her clock alone, not the frame.
+- **The inbound table listed one message; the socket answers five.** `snapshots`, `voyages`,
+  `track` and `phases` have been on the wire for months and were missing from the table.
+  All five are reads of the store the plugin wrote itself, and the table now says so.
+- **The golden fixture is synthetic and the README now says so.** It described ten days of
+  real vessel data; the track is laid down from a seeded PRNG and no vessel's real movements
+  are involved.
 
 ## [0.2.2] - 2026-08-08
 
@@ -847,7 +872,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.7
 [0.2.1]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.0
 [0.1.45]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.45
