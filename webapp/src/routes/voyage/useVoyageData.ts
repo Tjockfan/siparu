@@ -4,11 +4,28 @@
  *  backend reconciles the full history on every call). The track is fetched
  *  on-demand when a voyage is expanded. */
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+import { api, ApiError } from "../../lib/api";
 import type { Voyage, VoyageStatsCards } from "../../lib/api";
 import { usePolling } from "../../lib/usePolling";
 
 export type StatWindow = "today" | "yesterday" | "rolling_7d" | "season";
+
+const LOAD_FAILED = "Could not load voyage data";
+
+/** What a failed load puts on the banner.
+ *
+ * The raw Error message used to go there, which showed an owner "500: Internal Server Error"
+ * and, when the boat's wi-fi dropped mid-request, whatever the browser calls a timeout that
+ * day. Same rule as the fuel sheet: her server's own sentence is worth showing, the status
+ * code it is prefixed with is not, and anything that is neither gets this screen's words
+ * rather than the runtime's.
+ */
+export function voyageLoadError(e: unknown): string {
+  if (e instanceof ApiError) return e.detail || LOAD_FAILED;
+  // AbortSignal.timeout, which the API layer puts on every request.
+  if (e instanceof DOMException && e.name === "TimeoutError") return "She did not answer in time";
+  return LOAD_FAILED;
+}
 
 export interface VoyageData {
   current: Voyage | null;
@@ -47,7 +64,7 @@ export function useVoyageData(reloadKey = 0): VoyageData {
           setErr(null);
         }
       } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Could not load voyage data");
+        if (!cancelled) setErr(voyageLoadError(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
