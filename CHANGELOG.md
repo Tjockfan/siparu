@@ -14,6 +14,14 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-08-16
+
+### Fixed
+
+- **The description is one sentence shorter, because the registry cut the last one in half.**
+  npm truncates a package description at 255 characters and 0.2.7 ran past it, so the npm page
+  and the Signal K App Store both ended mid-word.
+
 ## [0.2.7] - 2026-08-16
 
 ### Fixed
@@ -872,7 +880,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.8
 [0.2.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.7
 [0.2.1]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.0
