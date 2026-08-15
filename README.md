@@ -43,6 +43,17 @@ generator tab. The same gauges are also served over the API (`GET /live`,
   Pi to a Victron Cerbo GX (Venus OS Large). Nothing here needs node-gyp.
 - **Compatibility floor:** Node 20 + signalk-server 2.18.
 
+## Not a safety system
+
+Siparu is not a navigation, safety or alarm system, and it is not a substitute for
+seamanship, a watchkeeper, or going aboard to look. It reads instruments that
+drift, break and lie, and it carries what they say over networks that fail,
+starting with the boat's own uplink: a screen with nothing wrong on it is not the
+same thing as a boat that is fine, and the plugin raises no alarm to tell you
+otherwise. The chart is for looking, not for navigating, and a depth reading is
+whichever plane the boat's own sounder reports, which is not always the water
+under the keel. Do not rely on this software to protect life or property.
+
 ## Before you pair: turn on Signal K security
 
 Signal K ships with security switched off, and nothing in the setup makes you turn

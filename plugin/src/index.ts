@@ -337,7 +337,7 @@ export = (app: ServerAPI): Plugin => {
     id: PLUGIN_ID,
     name: 'Siparu',
     description:
-      'Kept aboard, proven ashore: records position, wind, depth and voyage history on the boat and serves a read-only dashboard. Never writes to the boat. Turn Signal K security on (add an admin user) before pairing: with it off these endpoints answer anyone on your network, and someone else can link this vessel to their account.',
+      'Kept aboard, proven ashore: records position, wind, depth and voyage history on the boat and serves a read-only dashboard. Never writes to the boat. Not a navigation, safety or alarm system: it raises no alarm, and a screen with nothing wrong on it is not the same thing as a boat that is fine. Turn Signal K security on (add an admin user) before pairing: with it off these endpoints answer anyone on your network, and someone else can link this vessel to their account.',
     schema: CONFIG_SCHEMA,
 
     start(config: object, restart: (newConfiguration: object) => void): void {
