@@ -725,6 +725,37 @@ describe('a token the relay will not even let in', () => {
     live.stop()
   })
 
+  it('reads a refusal on the account as exactly that, and does not prescribe pairing', () => {
+    const { live, sockets, last } = uplink()
+    live.start()
+
+    // The relay knows her token perfectly well and will not carry her: the account behind
+    // her has stopped paying, so nothing ashore is allowed to watch and the socket she would
+    // hold open is satellite airtime spent on nobody. Told to "pair her again" the owner
+    // would walk to the boat, do it, and be turned away by the same gate.
+    last().refused(403)
+
+    expect(live.status().unentitled).toBe(true)
+    expect(live.status().rejected).toBe(false)
+    expect(live.status().lastError).toMatch(/remote watching/i)
+    expect(sockets[0].dead()).toBe(true)
+
+    // A door that opens on a payment does not open any sooner for being knocked on.
+    vi.advanceTimersByTime(60_000)
+    expect(sockets).toHaveLength(1)
+
+    // But it does open, and she is the one who has to notice: nothing ashore can reach a
+    // boat that is not connected, so the stand-off ending is the whole of the recovery.
+    vi.advanceTimersByTime(15 * 60_000)
+    expect(sockets).toHaveLength(2)
+
+    last().open()
+    expect(live.status().unentitled).toBe(false)
+    expect(live.status().lastError).toBe(null)
+
+    live.stop()
+  })
+
   it('treats any other refusal as the relay having a bad day, and comes back soon', () => {
     const { live, sockets, last } = uplink()
     live.start()

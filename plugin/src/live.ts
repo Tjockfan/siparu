@@ -107,8 +107,22 @@ const UNPAIRED_RECHECK_MS = 60_000
 const CLOSE_UNKNOWN_TOKEN = 1008
 const CLOSE_REPLACED = 1012
 
-/** HTTP, not WebSocket: this one comes back instead of an upgrade. */
+/**
+ * Ours, not the protocol's: 4000-4999 is the application range, and nothing on the wire ever
+ * carries this one. The relay refuses this case at the handshake, before there is a socket to
+ * close, and this is how that refusal reaches the one place that decides what to do next.
+ */
+const CLOSE_PLAN_REQUIRED = 4403
+
+/** HTTP, not WebSocket: these come back instead of an upgrade. */
 const REFUSED_UNKNOWN_TOKEN = 401
+/**
+ * The relay knows her token and will not carry her: the account she belongs to is not paying,
+ * so there is nothing ashore that is allowed to watch. Kept apart from 401 because the cure is
+ * the opposite: 401 means go to the boat and pair her again, and doing that here would end at
+ * the same gate.
+ */
+const REFUSED_PLAN_REQUIRED = 403
 
 /**
  * A handshake that never finishes. The TCP connection is up, so nothing errors and nothing
@@ -154,6 +168,12 @@ export interface LiveStatus {
   failures: number
   /** The relay does not know this token. Pairing her again is the only cure. */
   rejected: boolean
+  /**
+   * The relay knows her and is not carrying her: remote watching is not running on the
+   * account. Nothing on the boat is wrong and nothing on the boat fixes it, which is why it
+   * is not folded into `rejected` - that one sends the owner to the helm for no reason.
+   */
+  unentitled: boolean
   lastError: string | null
 }
 
@@ -272,6 +292,7 @@ export class LiveUplink {
   /** SOG (m/s) of the last frame sent; decides how soon the next one goes. Null until seen. */
   private lastSog: number | null = null
   private rejected = false
+  private unentitled = false
   private lastError: string | null = null
 
   /**
@@ -346,6 +367,7 @@ export class LiveUplink {
       lastFrameTs: this.lastFrameTs,
       failures: this.failures,
       rejected: this.rejected,
+      unentitled: this.unentitled,
       lastError: this.lastError
     }
   }
@@ -361,6 +383,7 @@ export class LiveUplink {
   reset(): void {
     this.failures = 0
     this.rejected = false
+    this.unentitled = false
     this.lastError = null
     this.lastFrameTs = null
     if (this.stopped) return
@@ -403,6 +426,7 @@ export class LiveUplink {
       this.connected = true
       this.failures = 0
       this.rejected = false
+      this.unentitled = false
       this.lastError = null
       this.awaitingPong = false
 
@@ -493,7 +517,14 @@ export class LiveUplink {
     sock.onRefused((status) => {
       if (gen !== this.gen) return
       this.kill(sock)
-      this.closed(gen, status === REFUSED_UNKNOWN_TOKEN ? CLOSE_UNKNOWN_TOKEN : 1006)
+      this.closed(
+        gen,
+        status === REFUSED_UNKNOWN_TOKEN
+          ? CLOSE_UNKNOWN_TOKEN
+          : status === REFUSED_PLAN_REQUIRED
+            ? CLOSE_PLAN_REQUIRED
+            : 1006
+      )
     })
   }
 
@@ -865,6 +896,20 @@ export class LiveUplink {
       // would run on every boat rather than on our own server.
       this.rejected = true
       this.lastError = 'Siparu no longer recognises this boat. Pair her again.'
+      this.deps.debug(`live uplink: ${this.lastError}`)
+      this.redial(STAND_OFF_MS)
+      return
+    }
+
+    if (code === CLOSE_PLAN_REQUIRED) {
+      // Nothing here is broken and nothing here is the cure. She keeps her token, keeps her
+      // own record, and waits: the gate opens on a payment made ashore, and the only thing
+      // she can do about it is be dialling again when it does. The stand-off is the same
+      // quarter of an hour a rejected token gets, for the same reason - a door that opens on
+      // something other than a retry is not opened any sooner by retrying.
+      this.unentitled = true
+      this.lastError =
+        'Remote watching is not active on this account. She is recording as usual, and starts sending again when it is.'
       this.deps.debug(`live uplink: ${this.lastError}`)
       this.redial(STAND_OFF_MS)
       return

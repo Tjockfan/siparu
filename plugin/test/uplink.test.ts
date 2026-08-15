@@ -318,6 +318,11 @@ describe('stopping', () => {
       lastSentTs: null,
       failures: 0,
       rejected: false,
+      // Never true on this path: the account gate stands in front of the socket, and this is
+      // the slow one that carries her clock. Asserted rather than omitted because the whole
+      // point of comparing the object is that a field appearing here would be a field nobody
+      // decided to add.
+      unentitled: false,
       lastError: null
     })
     up.stop()

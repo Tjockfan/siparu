@@ -57,8 +57,12 @@ function ago(ts: number): string {
  * screen that has not moved since Tuesday, and nobody is told why. So the boat says
  * whether her frames are landing, in the same breath as saying she is linked.
  */
-function uplinkLine(up: UplinkStatus | undefined): string {
+export function uplinkLine(up: UplinkStatus | undefined): string {
   if (!up) return "Checking the link…";
+  // Ahead of the failure count on purpose, and it has no failures to be ahead of: a refused
+  // account is not a link that keeps missing, it is a link that is not being offered. The
+  // sentence comes from the boat so this screen and the plugin's log say the same thing.
+  if (up.unentitled) return up.lastError ?? "Remote watching is not active on this account.";
   if (up.rejected || up.failures > 0) return up.lastError ?? "Not reaching Siparu.";
   if (up.lastSentTs) return `Sending · last frame ${ago(up.lastSentTs)}`;
   return "Waiting to send the first frame.";
@@ -343,7 +347,12 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
           // dead screen and only someone standing here can fix it.
           <div className={`pair${data.uplink?.rejected ? " err" : ""}`}>
             <div className="pl">
-              <div className="t">Remote viewing · on</div>
+              {/* Not "on" when nothing ashore is allowed to watch. Not dressed as an error
+                  either: the pairing stands, she is recording, and the thing that is missing
+                  is a subscription rather than a boat. */}
+              <div className="t">
+                {data.uplink?.unentitled ? "Remote viewing · paused" : "Remote viewing · on"}
+              </div>
               <div className="who">{data.email ?? "linked account"}</div>
               {/* Silent because she cannot seal: the uplink is fine and its own line would
                   say "Sending" under a band that has just said nothing is getting through.

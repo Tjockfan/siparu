@@ -36,6 +36,13 @@ export interface UplinkStatus {
    * no longer exists. Pairing her again is the only cure, and the screen says so.
    */
   rejected: boolean
+  /**
+   * The relay knows her and is not carrying her: remote watching is not running on the
+   * account she belongs to. Nothing aboard is broken and nothing aboard is the cure, which
+   * is why it does not share `rejected` - that one sends her owner to the helm to re-pair a
+   * boat that would be turned away by the same gate.
+   */
+  unentitled: boolean
   /** Why the last attempt failed, in words a skipper can act on. */
   lastError: string | null
 }
@@ -54,11 +61,40 @@ export interface UplinkStatus {
  * and so it is the one whose troubles are worth showing.
  */
 export function reportedStatus(
-  socket: { connected: boolean; lastFrameTs: number | null; rejected?: boolean } | null | undefined,
+  socket:
+    | {
+        connected: boolean
+        lastFrameTs: number | null
+        rejected?: boolean
+        unentitled?: boolean
+        lastError?: string | null
+      }
+    | null
+    | undefined,
   post: UplinkStatus | null
 ): UplinkStatus | null {
   if (socket?.connected) {
-    return { lastSentTs: socket.lastFrameTs, failures: 0, rejected: false, lastError: null }
+    return {
+      lastSentTs: socket.lastFrameTs,
+      failures: 0,
+      rejected: false,
+      unentitled: false,
+      lastError: null
+    }
+  }
+
+  // A socket refused on the account outranks the POST path's own troubles for the same reason
+  // a rejected token does: it is the one line that names a cause, and the cause is not on the
+  // boat. The sentence travels from the socket rather than being written again here, so the
+  // two halves of the uplink cannot end up telling the owner different stories.
+  if (socket?.unentitled) {
+    return {
+      lastSentTs: socket.lastFrameTs,
+      failures: 0,
+      rejected: false,
+      unentitled: true,
+      lastError: socket.lastError ?? 'Remote watching is not active on this account.'
+    }
   }
   // A socket told "unknown token" names the cause even while it stands off to redial, before
   // the POST path has had its own turn at the door. Losing it here would blank the one line
@@ -70,6 +106,7 @@ export function reportedStatus(
       lastSentTs: socket.lastFrameTs,
       failures: 0,
       rejected: true,
+      unentitled: false,
       lastError: 'Siparu no longer recognises this boat. Pair her again.'
     }
   }
@@ -152,6 +189,10 @@ export class Uplink {
       lastSentTs: this.lastSentTs,
       failures: this.failures,
       rejected: this.rejected,
+      // The slow path never learns this: the gate stands in front of the socket, and this one
+      // carries her clock rather than her records. It is here because the two halves share a
+      // shape, and whichever is speaking for her has to be able to say all of it.
+      unentitled: false,
       lastError: this.lastError
     }
   }

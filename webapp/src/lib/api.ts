@@ -371,6 +371,12 @@ export interface UplinkStatus {
   failures: number
   /** The relay does not know this token. Only pairing her again fixes it. */
   rejected: boolean
+  /**
+   * The relay knows her and will not carry her: remote watching is not running on the
+   * account. Optional because a boat on an older build does not send it, and a screen that
+   * read `undefined` as `false` would simply be back where it started.
+   */
+  unentitled?: boolean
   lastError: string | null
 }
 
