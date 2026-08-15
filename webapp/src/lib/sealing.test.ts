@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sealingNotice } from './sealing'
+import { sealingNotice, screenRefusals } from './sealing'
 
 describe('sealingNotice', () => {
   it('says nothing while she is sealing to somebody', () => {
@@ -47,5 +47,58 @@ describe('sealingNotice', () => {
     const n = sealingNotice({ devices: 0, mode: 'blocked', reason: null })
     expect(n).not.toBeNull()
     expect(n?.detail.length).toBeGreaterThan(0)
+  })
+})
+
+describe('screenRefusals', () => {
+  const sealing = { devices: 2, mode: 'sealed' as const, reason: null, screens_pinned: true }
+
+  it('says nothing about a pinned boat sealing to everybody on her list', () => {
+    expect(screenRefusals(sealing)).toBeNull()
+  })
+
+  it('says nothing when the plugin is too old to report any of this', () => {
+    // The three fields arrived together. A boat running an earlier build answers without them,
+    // and a screen that read their absence as "nothing refused" would be right by accident and
+    // wrong the day one of them means something.
+    expect(screenRefusals({ devices: 1, mode: 'sealed', reason: null })).toBeNull()
+  })
+
+  it('names a screen the chain refused, with the reason the boat gave', () => {
+    const r = screenRefusals({
+      ...sealing,
+      screens_skipped: [{ kid: 'k-1', reason: 'no approval from a screen she trusts' }]
+    })
+    expect(r?.unapproved).toEqual([{ kid: 'k-1', reason: 'no approval from a screen she trusts' }])
+    expect(r?.unpinned).toBe(false)
+  })
+
+  it('keeps a chain refusal apart from a screen the last frame could not be wrapped to', () => {
+    // Same shape, opposite meaning: one is somebody pressing a key onto her list, the other is
+    // an authorised screen that got nothing. Pooling them would put an alarm and a fault under
+    // one heading.
+    const r = screenRefusals({
+      ...sealing,
+      screens_skipped: [{ kid: 'k-1', reason: 'no approval from a screen she trusts' }],
+      screens_rejected: [{ kid: 'k-2', reason: 'duplicate key id' }]
+    })
+    expect(r?.unapproved.map((x) => x.kid)).toEqual(['k-1'])
+    expect(r?.unwrapped.map((x) => x.kid)).toEqual(['k-2'])
+  })
+
+  it('speaks for an unpinned boat even though she has refused nothing', () => {
+    // The legacy fleet. Nothing is wrong with her, and the thing worth saying is what she
+    // cannot do: she checks the shape of a key and never who vouched for it.
+    const r = screenRefusals({ ...sealing, screens_pinned: false })
+    expect(r).not.toBeNull()
+    expect(r?.unpinned).toBe(true)
+    expect(r?.unapproved).toEqual([])
+  })
+
+  it('stays quiet about an unpinned boat that is not sealing at all', () => {
+    // Not paired, or paired with nobody authorised. The band above is already saying so, and a
+    // second line telling her owner his screens are unpinned would be noise about a boat with
+    // no screens to pin.
+    expect(screenRefusals({ devices: 0, mode: 'none', reason: null, screens_pinned: false })).toBeNull()
   })
 })

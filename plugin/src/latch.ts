@@ -3,8 +3,11 @@
  *
  * The device list is the shore's answer and it changes with every poll. Whether anybody has
  * EVER been authorised is not the shore's to answer, and this is where that difference is
- * kept. Once it is set, an empty list means she says nothing; before it is set, an empty list
- * means what it always meant, that no screen is waiting and she reports as she always has.
+ * kept. It no longer decides how she reports: with the cleartext path gone, an empty list is
+ * silence whether this flag is set or not. What it still decides is which silence her skipper
+ * is looking at. A boat nobody has asked to read yet is waiting for her owner to add a
+ * screen; a boat whose screens went away has lost something she had, and the row ashore is
+ * where to look. The two are indistinguishable from the list alone.
  *
  * A flag and nothing else. An earlier draft kept the device list here too, so that a boat
  * could seal her first frame after a restart instead of waiting a round trip for the shore to

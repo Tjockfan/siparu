@@ -13,7 +13,7 @@
 import { useEffect, useState } from "react";
 import { api, type PairScreen, type SealingStatus, type UplinkStatus } from "../../lib/api";
 import { ageOf } from "../../lib/age";
-import { sealingNotice } from "../../lib/sealing";
+import { screenRefusals, sealingNotice } from "../../lib/sealing";
 import { usePolling } from "../../lib/usePolling";
 
 /*
@@ -145,6 +145,75 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
       </div>
     ) : null;
 
+  /*
+   * What she is refusing, which is the other half of the list above and the more urgent one.
+   *
+   * The list above says who may read her. This says who asked and was turned away, and one of
+   * those two is the alarm: a key on her list that nothing she trusts vouched for is what
+   * somebody adding a reader of their own looks like from the helm. It has no screen anywhere
+   * else in the product - ashore, the party that would have to report it is the party it would
+   * be reporting - so if it is not here, nobody ever sees it.
+   *
+   * The unpinned line is not an alarm and is not dressed as one. A boat paired before approvals
+   * existed is doing exactly what she was built to do, and the only thing worth telling her
+   * owner is what she cannot check and how to give her the ability.
+   */
+  const refusals = screenRefusals(sealing);
+  const refused = refusals ? (
+    <>
+      {refusals.unapproved.length > 0 ? (
+        <div className="pair warn">
+          <div className="pl">
+            <div className="t">She will not seal to these screens</div>
+            <div className="s">
+              Nothing she trusts has vouched for them, so they receive nothing at all. A line here
+              you did not add is somebody else's key on your list: remove it from the boat's page
+              ashore, and if you cannot account for it, pair her again from this screen.
+            </div>
+            <div className="fps">
+              {refusals.unapproved.map((r) => (
+                <span className="fp" key={r.kid}>
+                  {r.kid} · {r.reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {refusals.unwrapped.length > 0 ? (
+        <div className="pair warn">
+          <div className="pl">
+            <div className="t">Authorised, and still receiving nothing</div>
+            <div className="s">
+              These screens are on her list and she could not wrap her last report to them. From
+              ashore that looks exactly like a boat gone quiet, which is why it is named here.
+            </div>
+            <div className="fps">
+              {refusals.unwrapped.map((r) => (
+                <span className="fp" key={r.kid}>
+                  {r.kid} · {r.reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {refusals.unpinned ? (
+        <div className="pair">
+          <div className="pl">
+            <div className="t">Her screens are not pinned</div>
+            <div className="s">
+              She was paired before screens could vouch for one another, so she checks that a key
+              is well formed and nothing about who put it on her list. She still seals every
+              report. Pair her again from this screen to pin the first one, and every later screen
+              will have to chain to it.
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  ) : null;
+
   // Nothing until the first status lands: a band that appears and then changes shape
   // would shove the grid around on every boot. The fingerprints are not part of that shape -
   // they come from the health poll, not from this one, and a boat whose pairing status is slow
@@ -154,6 +223,7 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
       <>
         {silence}
         {fingerprints}
+        {refused}
       </>
     );
 
@@ -325,6 +395,7 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
       {revoking}
       {band}
       {fingerprints}
+      {refused}
     </>
   );
 }

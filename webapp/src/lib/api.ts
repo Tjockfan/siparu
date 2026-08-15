@@ -315,6 +315,16 @@ export type SealingStatus = {
    * Absent in the earlier plugin, so it is read as a list that may not be there at all.
    */
   screens?: string[]
+  /**
+   * Whether she holds a root of her own: a first screen witnessed at her helm, against which
+   * every later one has to chain. False for a boat paired before that existed, who checks the
+   * shape of a key and nothing about who vouched for it.
+   */
+  screens_pinned?: boolean
+  /** Rows of the shore's answer the chain refused, before sealing began. Pinned boats only. */
+  screens_skipped?: { kid: string; reason: string }[]
+  /** Screens the last sealed frame could not be wrapped to, though the chain had accepted them. */
+  screens_rejected?: { kid: string; reason: string }[]
 }
 
 export type HealthResult = {
