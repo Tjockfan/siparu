@@ -243,6 +243,39 @@ describe('when the relay refuses the token', () => {
     up.stop()
   })
 
+  it('reads a refusal on the account as its own state, not as a token to re-pair', async () => {
+    // The relay knows her token and will not take the frame: the account behind her has
+    // stopped paying, so there is nobody the heartbeat could reach. Told "pair her again"
+    // the owner would walk to the boat, do it, and be refused by the same gate.
+    relayAnswers(refused(403)())
+    const up = uplink()
+    up.start()
+
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+
+    expect(up.status()).toMatchObject({ unentitled: true, rejected: false })
+    expect(up.status().lastError).toMatch(/remote watching/i)
+    // Still a failure for the purposes of backing off: knocking every minute on a door that
+    // opens on a payment is the airtime this was meant to stop spending.
+    expect(up.status().failures).toBe(1)
+
+    up.stop()
+  })
+
+  it('clears the refusal the moment the frame is taken again', async () => {
+    relayAnswers(refused(403)(), ok())
+    const up = uplink()
+    up.start()
+
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    expect(up.status().unentitled).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(up.status()).toMatchObject({ unentitled: false, failures: 0 })
+
+    up.stop()
+  })
+
   it('treats a rejected frame as a failure but not as a rejection', async () => {
     relayAnswers(new Response(JSON.stringify({ error: 'bad_state' }), { status: 400 }))
     const up = uplink()

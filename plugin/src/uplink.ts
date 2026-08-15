@@ -160,6 +160,7 @@ export class Uplink {
   private lastSentTs: number | null = null
   private failures = 0
   private rejected = false
+  private unentitled = false
   private lastError: string | null = null
 
   constructor(private readonly deps: UplinkDeps) {
@@ -189,10 +190,7 @@ export class Uplink {
       lastSentTs: this.lastSentTs,
       failures: this.failures,
       rejected: this.rejected,
-      // The slow path never learns this: the gate stands in front of the socket, and this one
-      // carries her clock rather than her records. It is here because the two halves share a
-      // shape, and whichever is speaking for her has to be able to say all of it.
-      unentitled: false,
+      unentitled: this.unentitled,
       lastError: this.lastError
     }
   }
@@ -202,6 +200,7 @@ export class Uplink {
     this.lastSentTs = null
     this.failures = 0
     this.rejected = false
+    this.unentitled = false
     this.lastError = null
   }
 
@@ -279,15 +278,24 @@ export class Uplink {
         this.lastSentTs = Date.now()
         this.failures = 0
         this.rejected = false
+        this.unentitled = false
         this.lastError = null
         return
       }
 
       this.failures++
       this.rejected = res.status === 401
+      // Her token is real and the account behind her is not paying, so there is nobody this
+      // heartbeat could reach. Counted as a failure so the backoff takes hold - knocking every
+      // minute on a door that opens on a payment is the airtime this refusal exists to stop -
+      // but named apart from a rejected token, whose cure is a trip to the boat and would end
+      // at this same gate.
+      this.unentitled = res.status === 403
       this.lastError = this.rejected
         ? 'Siparu no longer recognises this boat. Pair her again.'
-        : `Relay refused the frame (${res.status}).`
+        : this.unentitled
+          ? 'Remote watching is not active on this account. She is recording as usual, and starts sending again when it is.'
+          : `Relay refused the frame (${res.status}).`
       // A rejection is not noise: it means the owner is watching a screen that will
       // never update, and the only thing that fixes it happens on this boat.
       this.deps.debug(`uplink: ${this.lastError}`)
