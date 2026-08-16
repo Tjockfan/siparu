@@ -14,6 +14,20 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-08-16
+
+### Changed
+
+- **Releases are published by CI, and carry a provenance attestation.** Until now the
+  upload came from a maintainer's laptop, authorised by a long-lived token in a plaintext
+  file that was scoped to every package the account owns and permitted to skip two-factor
+  authentication. Every vessel installs this plugin from the registry, so that file was
+  the shortest path from one compromised machine to code running aboard a customer's boat.
+  A tagged build now publishes over OIDC with no token in existence, and the attestation
+  lets anyone verify which commit in the public repository produced the tarball. The
+  clean-room scan over the published file set still gates the upload; it moved to
+  `tools/`, and its pattern list reaches CI as a secret rather than as a file on one Mac.
+
 ## [0.2.8] - 2026-08-16
 
 ### Fixed
@@ -880,7 +894,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.9
 [0.2.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.8
 [0.2.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.7
 [0.2.1]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.1
