@@ -33,7 +33,7 @@
     "watch": "tsc -p plugin/tsconfig.json --watch",
     "test": "vitest run",
     "prepack": "npm run build:all",
-    "prepublishOnly": "bash scripts/clean-room-scan.sh",
+    "prepublishOnly": "bash tools/clean-room-scan.sh",
     "build:webapp": "npm --prefix webapp run build",
     "build:all": "npm run build && npm run build:webapp",
     "ci:build": "npm --prefix ui ci && npm --prefix webapp ci && npm run build:all"

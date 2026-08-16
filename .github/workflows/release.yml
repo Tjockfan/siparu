@@ -1,0 +1,99 @@
+# Releases are published from here, and from nowhere else.
+#
+# There is no npm token in this repository and none on any machine that builds this
+# package. npm trusts this workflow directly: GitHub mints a short-lived OIDC token for
+# the run, npm checks it against the trusted publisher configured on the package, and the
+# upload is authorised for that one run only. A stolen laptop, a poisoned postinstall in
+# the dependency tree, or a phished password no longer reaches the registry, because none
+# of them can produce that token. The same exchange attaches a provenance attestation, so
+# anyone installing the plugin can see which commit in this repository built it.
+#
+# The previous arrangement was a long-lived token in a plaintext file on one Mac, scoped
+# to every package the account owns and able to skip two-factor authentication. Every boat
+# running Siparu installs from the registry, so that one file was the shortest path to
+# code execution on a customer's vessel.
+#
+# To cut a release: `npm version patch` (which commits and tags), then push the tag.
+# The tag is what fires this, and the version it names has to be the one in package.json.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # OIDC: this is what stands in for the token
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm 11.5.1 or later; the version bundled with Node 22 is
+      # older than that, and an older npm falls back to looking for a token it will not find.
+      - name: npm new enough to speak OIDC
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: The tag and the manifest name the same version
+        run: |
+          # `npm version` writes both, so a mismatch means someone hand-edited one of them.
+          # Publishing on that would put a version on the registry that no tag points at.
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag $GITHUB_REF_NAME says $tag, package.json says $pkg"
+            exit 1
+          fi
+          echo "releasing $pkg"
+
+      - name: Install
+        run: |
+          npm ci
+          npm --prefix ui ci
+          npm --prefix webapp ci
+
+      - name: Test
+        run: npm test
+
+      - name: Clean-room pattern source
+        env:
+          CLEAN_ROOM_FORBIDDEN: ${{ secrets.CLEAN_ROOM_FORBIDDEN }}
+        run: |
+          # The scan that runs on publish (tools/clean-room-scan.sh) reads its patterns
+          # from a file. The list is the private terms themselves - names, vessels,
+          # private repositories - so it
+          # cannot live in a public repository; it arrives as a secret and is written where
+          # only this run can read it. A gate that cannot run blocks, here as locally: no
+          # secret means no release, rather than a release nobody checked.
+          if [ -z "$CLEAN_ROOM_FORBIDDEN" ]; then
+            echo "CLEAN_ROOM_FORBIDDEN is not set. Refusing to publish unscanned."
+            exit 1
+          fi
+          case "$CLEAN_ROOM_FORBIDDEN" in
+            *"'"*) echo "the pattern list may not contain a single quote"; exit 1 ;;
+          esac
+          printf "FORBIDDEN='%s'\n" "$CLEAN_ROOM_FORBIDDEN" > "$RUNNER_TEMP/guard.sh"
+
+      # No token, no --provenance flag: OIDC is detected from the permissions above, and
+      # the attestation is generated for a public package built in a public repository.
+      # prepublishOnly runs the clean-room scan over what npm is about to upload.
+      - name: Publish
+        env:
+          CLEANROOM_GUARD: ${{ runner.temp }}/guard.sh
+        run: npm publish
+
+      - name: Say what landed
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          echo "signalk-siparu@$pkg published with provenance from ${GITHUB_SHA}"
