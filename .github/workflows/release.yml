@@ -33,10 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
+      # Deliberately no `registry-url`. It looks like the right thing to set and it is the
+      # thing that broke the first run: setup-node writes an .npmrc containing
+      # `_authToken=${NODE_AUTH_TOKEN}`, and with no such secret in the environment npm
+      # sends the literal placeholder as a credential. The registry answers 404 for a
+      # publish it will not authorise, so the failure reads as "package not found" rather
+      # than "you are not signed in". Without that file npm reaches the default registry
+      # and negotiates OIDC, which is the point of this workflow.
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing needs npm 11.5.1 or later; the version bundled with Node 22 is
       # older than that, and an older npm falls back to looking for a token it will not find.
