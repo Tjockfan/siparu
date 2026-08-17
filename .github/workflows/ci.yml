@@ -148,10 +148,16 @@ jobs:
           # in the repository and reached nobody who installed the plugin. It is in "files"
           # now, and this is what keeps it there.
           #
-          # The listing is read before it is searched. `npm pack --dry-run` writes the file
-          # list to stderr as notice lines, and a change in that format would turn this step
-          # into a grep over nothing, which passes.
-          listing=$(npm pack --dry-run 2>&1 | sed -n 's/^npm notice *[0-9.]*[kMG]*B *//p')
+          # --ignore-scripts because this job has no dependencies installed: prepack builds
+          # the plugin and the webapp, which cannot run here, and a pack that dies during
+          # prepack prints no file list at all. The list is read from "files" in package.json
+          # either way, which is the thing being checked.
+          #
+          # The listing is read before it is searched. `npm pack` writes the file list to
+          # stderr as notice lines, and a change in that format would turn this step into a
+          # grep over nothing, which passes. That control is not theoretical: it is what
+          # caught the missing dependencies here rather than letting the gate go quiet.
+          listing=$(npm pack --dry-run --ignore-scripts 2>&1 | sed -n 's/^npm notice *[0-9.]*[kMG]*B *//p')
           echo "$listing" | grep -qx 'LICENSE' || {
             echo "could not read the packed file list; this gate is measuring nothing"; exit 1; }
           echo "$listing" | grep -qx 'NOTICE' || {
