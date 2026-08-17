@@ -14,6 +14,14 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+### Fixed
+
+- **The attribution notices now travel with the package.** `NOTICE` carries the terms the
+  third-party map components are redistributed under, and npm does not add that file to a
+  tarball on its own the way it adds `LICENSE` and the README. For every release until this
+  one the file sat in the repository and reached nobody who installed the plugin. CI now
+  refuses a package that does not carry it.
+
 ## [0.2.9] - 2026-08-16
 
 ### Changed
@@ -59,6 +67,103 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 - **The golden fixture is synthetic and the README now says so.** It described ten days of
   real vessel data; the track is laid down from a seeded PRNG and no vessel's real movements
   are involved.
+
+## [0.2.6] - 2026-08-15
+
+### Fixed
+
+- **The slow uplink now says the same thing the socket says.** When the live socket cannot
+  hold, the boat falls back to a report over HTTPS once a minute, and that path read every
+  refusal that was not a rejected token as "Relay refused the frame (403)". A membership that
+  has lapsed is the one refusal an owner can do something about, and it was reaching the helm
+  as a status code. It now gets the same state the socket already had, and the same sentence.
+
+## [0.2.5] - 2026-08-15
+
+### Added
+
+- **The helm says when the shore is not allowed to watch her, and does not send anybody to
+  the boat.** The relay refuses a boat's socket while the account behind her is not on a
+  paying plan. Read as an ordinary failure that would have said "Cannot reach Siparu. Is the
+  boat online?", sending a skipper to check an aerial that works perfectly; read as a rejected
+  token it would have said something worse, which is to pair her again, meaning a trip to the
+  vessel and the same closed gate at the end of it. The refusal now has its own state: she
+  keeps her token, keeps recording, stands off for fifteen minutes rather than knocking, and
+  the pairing band says remote viewing is paused and why. Nothing about the boat's own screen
+  changes: on board she is free, always.
+
+### Fixed
+
+- **The voyage banner no longer speaks in status codes.** A failed load showed the raw error,
+  so an owner looking for his passages could be told "500: Internal Server Error". The fuel
+  sheet on the same screen already had the rule: the server's own sentence is what a helm
+  screen shows, and the code it arrived prefixed with is not.
+
+## [0.2.4] - 2026-08-15
+
+### Added
+
+- **The boat's own screen names the keys she turned away.** Her approval chain has refused
+  entries since it shipped, and the only place that refusal appeared was the health JSON.
+  Ashore it never could appear: the party that would have to report a key pressed onto the
+  list is the party that would be reporting itself. So the page at the helm now carries the
+  other half of the list she already prints, kept in three separate places because a screen
+  nothing vouched for, a screen the chain could not reach, and a screen the sealer could not
+  wrap to are three different problems with three different answers.
+- **What this is not, in the two places the plugin is actually read.** The only disclaimer
+  the product had lived on a terms page that is not published, so every surface a user reaches
+  said what Siparu does and nothing about what it must not be relied on for. The README and
+  the plugin's own description in the Signal K settings screen now both carry it: this is not
+  a navigation system, not a chart, and not a safety or alarm system, and nothing aboard is
+  steered, switched or commanded by it.
+
+## [0.2.3] - 2026-08-15
+
+### Removed
+
+- **The alarm channel is gone, and with it the last write the shore could make.** The
+  notification watch, the alert rule store and the rule write path have been taken out. The
+  live socket now answers five reads and nothing else, and a frame carries the sealed report,
+  her id and her timestamp under her signature, with no severity word and no event marker
+  beside it. A test pins the wire to exactly those fields, and it was checked by mutation
+  rather than trusted. An alarm you were told about and did not get is worse than one that was
+  never promised: nothing here rings, and nothing here says it will.
+
+### Security
+
+- **With Signal K security off, the plugin's own writes refuse.** Pairing, unpairing, voyage
+  edits and the fuel picker are locked until the owner either adds an admin user or ticks a
+  setting saying the open network is accepted. An unsecured server let anybody on the boat's
+  network reset the pairing (which kills the live token, so the relay's "not your boat" guard
+  cannot fire) and then start a new one, taking the next code. The lock cannot make an
+  unsecured server safe, and the setting's own description says so; what it changes is the
+  default posture, from silent permission to refusal. The status route says the door is
+  locked, so the screen explains the missing buttons instead of letting them fail.
+- **The relay address is no longer a plugin option.** It decides who receives the boat's
+  frames and whose devices she seals to, and plugin options can be written by anyone who can
+  reach the server's config route on an unsecured install. It is a constant now, overridable
+  only from the server process's own environment.
+- **A device list from ashore is only trusted as far as the chain aboard reaches.** The boat
+  used to seal to whatever list she was handed, checked by shape alone. An entry is now
+  accepted only when a device she already trusts vouched for it, chained back to an anchor
+  recorded on her own disk, and that anchor is written at the helm when the first screen is
+  approved. The shore stores and carries approvals it can neither verify nor mint, and it does
+  not get to choose which one is tried: every voucher a screen was given is attempted, because
+  which one verifies depends on an anchor the carrier deliberately does not know.
+
+### Added
+
+- **Depth says which plane it was measured from.** The gauge resolves depth below transducer,
+  below keel and below surface in priority order, and it can switch between them when a source
+  goes quiet. The difference between two of those planes is the boat's own draft, which is
+  exactly the margin somebody would be reading the number for. Snapshots carry the datum, and
+  the cell prints it in words under the figure. A snapshot from an older plugin, with no datum
+  recorded, says so rather than borrowing a plane.
+- **Health names the screens a frame left out.** The sealer has always refused to wrap to an
+  unusable device row and said so only in a debug line that is off by default, so a screen that
+  stopped receiving looked exactly like a boat gone quiet. The refusal now survives the log
+  being off, and it is served only while she is actually sealing: an unpaired boat no longer
+  names screens belonging to an account she has left.
 
 ## [0.2.2] - 2026-08-08
 
@@ -898,6 +1003,10 @@ being able to delete it is the point.
 [0.2.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.9
 [0.2.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.8
 [0.2.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.7
+[0.2.6]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.6
+[0.2.5]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.5
+[0.2.4]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.4
+[0.2.3]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.3
 [0.2.1]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.0
 [0.1.45]: https://github.com/Tjockfan/siparu/releases/tag/v0.1.45

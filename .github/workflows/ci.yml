@@ -139,6 +139,24 @@ jobs:
           done
           [ "$missing" -eq 0 ]
 
+      - name: Attribution gate - the notices travel with the package
+        run: |
+          # NOTICE carries the third-party terms this package is redistributed under: the
+          # seamark styling (BSD 2-Clause, which asks for the notice to be reproduced with
+          # the distribution) and the map data attribution. npm adds LICENSE and README to a
+          # tarball on its own and does NOT add NOTICE, so for 51 releases the file existed
+          # in the repository and reached nobody who installed the plugin. It is in "files"
+          # now, and this is what keeps it there.
+          #
+          # The listing is read before it is searched. `npm pack --dry-run` writes the file
+          # list to stderr as notice lines, and a change in that format would turn this step
+          # into a grep over nothing, which passes.
+          listing=$(npm pack --dry-run 2>&1 | sed -n 's/^npm notice *[0-9.]*[kMG]*B *//p')
+          echo "$listing" | grep -qx 'LICENSE' || {
+            echo "could not read the packed file list; this gate is measuring nothing"; exit 1; }
+          echo "$listing" | grep -qx 'NOTICE' || {
+            echo "NOTICE is not in the package. The attribution would ship with nothing."; exit 1; }
+
       - name: License gate - no Leaflet/CARTO/OpenSeaMap remnants
         run: |
           ! grep -rin "leaflet\|cartocdn\|openseamap" plugin/src webapp/src ui/src

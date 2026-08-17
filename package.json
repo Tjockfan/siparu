@@ -9,7 +9,8 @@
   "main": "plugin/dist/index.js",
   "files": [
     "plugin/dist",
-    "public"
+    "public",
+    "NOTICE"
   ],
   "signalk-plugin-enabled-by-default": true,
   "signalk": {
