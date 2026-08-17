@@ -342,7 +342,17 @@ export class RollupEngine {
     return [...byHour.values()]
   }
 
-  /** Hourly rollups intersecting [fromTs, toTs], ascending by hour. */
+  /**
+   * Hourly rollups intersecting [fromTs, toTs], ascending by hour.
+   *
+   * The months are intersected with the months that exist on disk before anything is read.
+   * clampRange already refuses a window outside [epoch, now], but epoch is still 1970: a
+   * request for `from=0` walks six hundred-odd months and asks the filesystem for every one
+   * of them, on the single event loop the whole Signal K server shares, for every request.
+   * A boat that has been recording for a season has a handful of files, and this reads
+   * exactly those. Nothing is narrowed for a caller asking about time the boat has data
+   * for, so the answer is the same answer; only the walk is shorter.
+   */
   async readHourly(fromTs: number, toTs: number): Promise<RollupHour[]> {
     ;[fromTs, toTs] = clampRange(fromTs, toTs)
     if (toTs < fromTs) return []
@@ -352,13 +362,26 @@ export class RollupEngine {
       months.add(d.toISOString().slice(0, 7))
       t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)
     }
+    const onDisk = await this.hourlyMonthsOnDisk()
     const out: RollupHour[] = []
     for (const month of [...months].sort()) {
+      if (!onDisk.has(month)) continue
       for (const h of await this.readHourlyMonth(month)) {
         if (h.last_ts >= fromTs && h.first_ts <= toTs) out.push(h)
       }
     }
     return out.sort((a, b) => a.hour.localeCompare(b.hour))
+  }
+
+  /** The months this boat actually has hourly rollups for, read from the directory itself. */
+  private async hourlyMonthsOnDisk(): Promise<Set<string>> {
+    const names = await fs.readdir(this.store.rollupDir).catch(() => [] as string[])
+    const months = new Set<string>()
+    for (const name of names) {
+      const m = /^hourly-(\d{4}-\d{2})\.ndjson$/.exec(name)
+      if (m?.[1]) months.add(m[1])
+    }
+    return months
   }
 
   /** Daily rollups intersecting [fromTs, toTs], ascending by date. */

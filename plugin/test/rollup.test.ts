@@ -241,11 +241,17 @@ describe('RollupEngine catch-up', () => {
 
     const hostile = await engine.readHourly(-8.64e15, 8.64e15)
 
-    // The DoS: bounded by the calendar, not by the machine. Same on a Cerbo and a laptop.
+    // The DoS: bounded by what this boat has recorded, not by the calendar and not by the
+    // machine. The months are intersected with the directory before anything is opened, so a
+    // vessel with one month of history answers this from one file however far back the query
+    // reaches. The calendar ceiling below is what the clamp alone used to buy and is kept as
+    // the outer bound: crossing it means the intersection AND the clamp are both gone.
     expect(walked.length).toBeGreaterThan(0)
     expect(walked.length).toBeLessThanOrEqual(monthsToNow)
-    // The correctness half: it really did start at the epoch rather than at NaN.
-    expect(walked[0]).toBe('1970-01')
+    expect(walked).toEqual(['2026-01'])
+    // The correctness half, which the walk no longer shows on its own: an unclamped `from`
+    // makes Date.UTC(-271821, ...) return NaN, the month loop never runs, and the query
+    // answers "no data" instantly and wrongly. A row coming back is what says it did not.
     expect(hostile).toHaveLength(1)
 
     engineInternals.readHourlyMonth = readMonth
