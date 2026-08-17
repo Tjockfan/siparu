@@ -14,6 +14,8 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-08-17
+
 ### Fixed
 
 - **The attribution notices now travel with the package.** `NOTICE` carries the terms the
@@ -21,6 +23,11 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
   tarball on its own the way it adds `LICENSE` and the README. For every release until this
   one the file sat in the repository and reached nobody who installed the plugin. CI now
   refuses a package that does not carry it.
+- **A history query no longer asks the filesystem about every month since 1970.** The hourly
+  rollup read walked the calendar from the start of the window to its end, one file lookup
+  per month, on the single event loop the whole Signal K server shares. It now reads the
+  months the boat actually has. The answer is unchanged for any query about time she
+  recorded; what is gone is six hundred lookups that were always going to miss.
 
 ## [0.2.9] - 2026-08-16
 
@@ -999,7 +1006,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.10
 [0.2.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.9
 [0.2.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.8
 [0.2.7]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.7
