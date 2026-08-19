@@ -55,6 +55,21 @@
   --map-vessel: #e5484d;
   --map-land-text: rgba(255, 255, 255, 0.34);
   --ctrl-icon-filter: invert(0.85); /* MapLibre +/- icons are dark - brighten at night */
+
+  /* GLASS. A pane is a translucent sheet lying on a lit ground, not a filled box, and the
+     blur has nothing to work on unless something is behind it: that is what --ground-* is
+     for, and why removing the ground turns every pane into flat grey. Corners stay square.
+     Only the grid carries backdrop-filter; the cells inside it just change opacity, because
+     one compositing layer per screen is affordable on a phone and thirty are not. */
+  --pane: rgba(255, 255, 255, 0.055);   /* the sheet itself */
+  --pane-edge: rgba(255, 255, 255, 0.15);
+  --pane-lit: rgba(255, 255, 255, 0.3); /* light falls from above, so the top edge is brighter */
+  --cell-hover: rgba(255, 255, 255, 0.1);
+  --pane-blur: 34px;
+  --cluster-gap: 14px;   /* ground between clusters; the glass is only glass where this shows */
+  --ground-lift: rgba(126, 163, 192, 0.3);  /* sea light, upper left */
+  --ground-warm: rgba(229, 72, 77, 0.17);   /* the accent, low and to starboard */
+  --ground-grid: rgba(255, 255, 255, 0.032);
 }
 
 /* ---------- TOKENS · DAY ---------- */
@@ -91,6 +106,19 @@
   --map-vessel: #c92a30;
   --map-land-text: rgba(0, 0, 0, 0.35);
   --ctrl-icon-filter: none;
+
+  /* Day keeps the opaque surfaces it has. A white sheet over a white ground is not glass,
+     it is nothing, and the day theme has already lost one figure that way (see tokens.test).
+     The glass pass for day is its own piece of work, with its own ground. */
+  --pane: #ffffff;
+  --pane-edge: rgba(0, 0, 0, 0.2);
+  --pane-lit: rgba(0, 0, 0, 0.2);
+  --cell-hover: rgba(0, 0, 0, 0.05);
+  --pane-blur: 0px;
+  --cluster-gap: 2px;
+  --ground-lift: transparent;
+  --ground-warm: transparent;
+  --ground-grid: transparent;
 }
 
 /* ============================================================
@@ -129,7 +157,15 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--ink-band);
+  /* Painted as layers on the screen itself rather than a ::before, which would need every
+     child to claim a stacking order. The grid lines are the sea grid the chart already
+     draws. In day every layer resolves to transparent and only --ink-band is left. */
+  background:
+    radial-gradient(120% 95% at 18% -8%, var(--ground-lift), transparent 60%),
+    radial-gradient(85% 80% at 96% 104%, var(--ground-warm), transparent 55%),
+    repeating-linear-gradient(0deg, var(--ground-grid) 0 1px, transparent 1px 68px),
+    repeating-linear-gradient(90deg, var(--ground-grid) 0 1px, transparent 1px 68px),
+    var(--ink-band);
   color: var(--text);
   transition: background 0.25s, transform 0.3s ease;
 }
@@ -441,7 +477,7 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--cluster-gap);
 }
 
 /* ============================================================
@@ -455,7 +491,13 @@ body {
 .swiss .sp-board {
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--ink-band);
+  padding: var(--cluster-gap);
+  /* Transparent so the screen's ground reaches the panes above it. This was an opaque
+     --ink-band fill, which covered the ground completely and left the glass a flat grey
+     sheet with nothing behind it to blur. The colour it painted is the screen's own, so
+     removing it changes nothing for a theme without a ground (day, and the no-backdrop
+     fallback below, both restore it). */
+  background: transparent;
 }
 /* The systems row. Each panel takes its content's width so the engine and generator matrices stay
  * compact; the tanks grow into what is left, since a fill bar reads better long than a matrix does
@@ -463,7 +505,7 @@ body {
 .swiss .sp-systems {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: var(--cluster-gap);
   align-items: flex-start;
 }
 .swiss .sp-systems .sp-sec { flex: 0 1 auto; }
@@ -531,7 +573,11 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--ink-band);
+  /* The sheet. Its own fill is transparent so the 2px gaps show the ground through the
+     blur and stay the rules they were, rather than becoming opaque bars. */
+  backdrop-filter: blur(var(--pane-blur)) saturate(155%);
+  -webkit-backdrop-filter: blur(var(--pane-blur)) saturate(155%);
+  border-top: 1px solid var(--pane-lit);
   gap: 2px;
   min-height: 0;
 }
@@ -603,7 +649,7 @@ body {
   .swiss .grid .matrix > .c { flex-basis: min(210px, 100%); }
 }
 .swiss .c {
-  background: var(--cell);
+  background: var(--pane);
   padding: 13px 14px;
   display: flex;
   flex-direction: column;
@@ -648,7 +694,7 @@ body {
 .swiss .c-state {
   /* A solid red fill read as an "alarm" (Anchored is a safe state) -
      reduced to a thin red accent, neutral background. */
-  background: var(--cell);
+  background: var(--pane);
   color: var(--text);
   border-left: 2px solid var(--accent);
   justify-content: flex-start;
@@ -1568,8 +1614,60 @@ body {
   padding: 24px 16px;
   font-size: 12px;
   color: var(--muted);
-  background: var(--cell);
+  background: var(--pane);
 }
+
+/* Hover is the pointer saying which reading it is on, and it is drawn as the same light that
+   lifts a pane: fill plus a brighter top edge. Guarded by (hover: hover) because a touch screen
+   reports a hover that never ends, and a cell that stayed lit after a tap would read as a
+   selection the owner cannot clear. Touch gets :active instead, which lasts as long as the
+   finger does. */
+@media (hover: hover) {
+  .swiss .c:hover,
+  .swiss .sm-cell:hover,
+  .swiss .sm-rl:hover { background: var(--cell-hover); }
+  .swiss .c:hover::after,
+  .swiss .sm-cell:hover::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: var(--pane-lit);
+    pointer-events: none;
+  }
+}
+.swiss .c:active,
+.swiss .sm-cell:active { background: var(--cell-hover); }
+/* .c is already position:relative; the matrix cell is not, and ::after needs a corner to sit in. */
+.swiss .sm-cell { position: relative; }
+
+/* A browser that cannot composite a backdrop-filter would show the sheet with nothing behind
+   it, which is a pale wash rather than a panel. Fall back to the opaque surfaces the screen
+   had before the glass, and drop the ground with them so nothing shows through the gaps. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --cluster-gap: 2px; }
+  .sp-screen { background: var(--ink-band); }
+  .swiss .sp-board { background: var(--ink-band); }
+  .swiss .c,
+  .swiss .c-state,
+  .swiss .sm-corner,
+  .swiss .sm-head,
+  .swiss .sm-rl,
+  .swiss .sm-cell,
+  .swiss .sm-cell.sm-empty { background: var(--cell); }
+  .swiss .sm-matrix { background: var(--rule); }
+}
+
+/* Day is not glass yet, so it must not pay for one. A zero blur still promotes a compositing
+   layer; none removes it. */
+[data-theme="day"] .swiss .grid {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--ink-band);
+  border-top: 0;
+}
+[data-theme="day"] .swiss .sm-matrix { background: var(--rule); }
+[data-theme="day"] .swiss .sp-board { background: var(--ink-band); padding: 0; }
 
 /* ============================================================
    SYSTEM MATRIX  (.sm-matrix) - engines and generators
@@ -1584,12 +1682,14 @@ body {
    * phone the tracks share the pane (1fr); the wide board narrows the matrix to its content below. */
   grid-template-columns: minmax(90px, auto) repeat(var(--sm-cols, 1), minmax(74px, 1fr));
   gap: 1px;
-  background: var(--rule);
-  border: 1px solid var(--rule);
+  /* Transparent, not --rule: a lit fill behind translucent cells cancels the glass. The 1px
+     gaps now show the pane through, which draws the same rules a shade darker. */
+  background: transparent;
+  border: 1px solid var(--pane-edge);
   align-content: start;
 }
 /* Top-left cell over the parameter labels: empty, and quiet about it. */
-.swiss .sm-corner { background: var(--cell); }
+.swiss .sm-corner { background: var(--pane); }
 .swiss .sm-head {
   padding: 8px 10px;
   text-align: center;
@@ -1601,7 +1701,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: var(--cell);
+  background: var(--pane);
   color: var(--text);
 }
 .swiss .sm-head.sm-port { background: var(--nav-port-bg); color: var(--nav-port-fg); }
@@ -1612,7 +1712,7 @@ body {
   display: flex;
   align-items: center;
   padding: 0 12px;
-  background: var(--cell);
+  background: var(--pane);
   font-size: 10.5px;
   letter-spacing: 0.02em;
   color: var(--muted);
@@ -1627,7 +1727,7 @@ body {
   justify-content: center;
   padding: 9px 8px;
   min-height: 46px;
-  background: var(--cell);
+  background: var(--pane);
 }
 .swiss .sm-cell .sm-v {
   font-family: var(--sp-mono);
@@ -1641,7 +1741,7 @@ body {
 }
 /* A column that does not report this parameter has an empty cell, not an invented reading. It
  * keeps the grid square and says nothing. */
-.swiss .sm-cell.sm-empty { background: var(--cell); }
+.swiss .sm-cell.sm-empty { background: var(--pane); }
 /* A gauge that has gone quiet keeps its last reading and loses its confidence, the same sentence
  * the flat cell told: the value fades and the age sits under it. */
 .swiss .sm-cell.quiet .sm-v { color: var(--muted); }
@@ -1791,8 +1891,26 @@ body {
     --accent: #a3282c;
     --accent-block: #a3282c;
     --on-block: #fff;
+    /* Paper has no ground to look through, and the night values would print the sea
+       light as two coloured smudges across a white page. Every glass token resolves
+       to the flat card this block already prints. */
+    --pane: #fff;
+    --pane-edge: #bbb;
+    --pane-lit: #bbb;
+    --cell-hover: transparent;
+    --pane-blur: 0px;
+    --cluster-gap: 2px;
+    --ground-lift: transparent;
+    --ground-warm: transparent;
+    --ground-grid: transparent;
     background: #fff;
   }
+  .swiss .grid,
+  .swiss .sp-rail {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .swiss .sp-board { padding: 0; }
 
   /* The panes scroll on screen because the app owns the viewport; on paper the
      document is as tall as it is, and an overflow container prints one screenful
