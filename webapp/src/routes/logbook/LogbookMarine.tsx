@@ -1,17 +1,10 @@
 /* Logbook - snapshot history (Swiss redesign).
  * Brutalist data table: Live|Day + granularity, UTC·SOG·HDG·TWS·BARO·DEP rows.
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { type Snapshot } from "../../lib/api";
-import {
-  dateToInput,
-  fmtNum,
-  knotToBeaufort,
-  msToKnots,
-  paToHPa,
-  radToDeg,
-  sogKnFiltered,
-} from "../../lib/format";
+import { dateToInput } from "../../lib/format";
+import { logbookColumns, type LogColumn, type WindUnit } from "./columns";
 import {
   useLogbookLive,
   useLogbookDay,
@@ -27,8 +20,6 @@ const GRAN_LABEL: Record<Granularity, string> = {
   "6h": "Last 10 days",
   "1d": "Last month",
 };
-
-type WindUnit = "kn" | "bft";
 
 export default function LogbookMarine() {
   const [mode, setMode] = useState<Mode>("live");
@@ -67,20 +58,34 @@ function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) 
   );
 }
 
-function Cols({ windUnit, toggleWind }: { windUnit: WindUnit; toggleWind: () => void }) {
+/**
+ * The width of the table, handed to CSS as a variable rather than baked into the stylesheet.
+ * The count is the boat's now, and a fixed `repeat(5, 1fr)` would keep laying out five tracks
+ * for a bare boat that fills two.
+ */
+function gridVar(cols: LogColumn[]): CSSProperties {
+  return { "--lb-cols": cols.length - 1 } as CSSProperties;
+}
+
+function Cols({ cols, toggleWind }: { cols: LogColumn[]; toggleWind: () => void }) {
   return (
-    <div className="lb-cols">
-      <span>UTC</span><span>SOG</span><span>HDG</span>
-      <span className="tap" onClick={toggleWind} title="Tap: knots ⇄ Beaufort">
-        {windUnit === "kn" ? "TWS" : "BFT"}
-      </span>
-      <span>BARO</span><span>DEP</span>
+    <div className="lb-cols" style={gridVar(cols)}>
+      {cols.map((c) =>
+        c.tappable ? (
+          <span key={c.key} className="tap" onClick={toggleWind} title="Tap: knots ⇄ Beaufort">
+            {c.head}
+          </span>
+        ) : (
+          <span key={c.key}>{c.head}</span>
+        ),
+      )}
     </div>
   );
 }
 
 function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
   const { granularity, changeGran, snaps, err, busy, hasMore, loadMore } = useLogbookLive();
+  const cols = logbookColumns(snaps, windUnit);
   return (
     <>
       <div className="lb-ctrl">
@@ -92,12 +97,12 @@ function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
         </div>
         <span className="lb-count">{snaps.length}</span>
       </div>
-      <Cols windUnit={windUnit} toggleWind={toggleWind} />
+      <Cols cols={cols} toggleWind={toggleWind} />
       <div className="lb-day"><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
       <Rows
         snaps={snaps}
-        windUnit={windUnit}
+        cols={cols}
         footer={
           hasMore ? (
             <button className="lb-more" onClick={loadMore} disabled={busy}>
@@ -112,6 +117,7 @@ function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
 
 function DayView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
+  const cols = logbookColumns(snaps, windUnit);
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
   const dayLabel = isToday
@@ -138,7 +144,7 @@ function DayView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
           <button onClick={goToday} disabled={isToday}>Now</button>
         </div>
       </div>
-      <Cols windUnit={windUnit} toggleWind={toggleWind} />
+      <Cols cols={cols} toggleWind={toggleWind} />
       <div className="lb-day"><span>{dayLabel}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
       {!busy && snaps.length === 0 ? (
@@ -147,38 +153,29 @@ function DayView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
           <div className="em-s">No telemetry was logged for this day.</div>
         </div>
       ) : (
-        <Rows snaps={snaps} windUnit={windUnit} footer={null} />
+        <Rows snaps={snaps} cols={cols} footer={null} />
       )}
     </>
   );
 }
 
-function Rows({ snaps, footer, windUnit }: { snaps: Snapshot[]; footer: React.ReactNode; windUnit: WindUnit }) {
+function Rows({ snaps, cols, footer }: { snaps: Snapshot[]; cols: LogColumn[]; footer: React.ReactNode }) {
   return (
     <div className="lb-rows">
-      {snaps.map((s) => <Row key={s.ts} s={s} windUnit={windUnit} />)}
+      {snaps.map((s) => <Row key={s.ts} s={s} cols={cols} />)}
       {footer}
     </div>
   );
 }
 
-function Row({ s, windUnit }: { s: Snapshot; windUnit: WindUnit }) {
-  const d = new Date(s.ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  const sog = sogKnFiltered(s.sog);
-  const hdg = radToDeg(s.heading_true ?? s.heading_mag);
-  const tws = msToKnots(s.wind_speed_true);
-  const wind =
-    tws === null ? "·" : windUnit === "kn" ? String(Math.round(tws)) : String(knotToBeaufort(tws) ?? "·");
-  const baro = paToHPa(s.air_pressure_pa);
+function Row({ s, cols }: { s: Snapshot; cols: LogColumn[] }) {
   return (
-    <div className="lb-row">
-      <span className="tm">{p(d.getUTCHours())}:{p(d.getUTCMinutes())}</span>
-      <span className="v">{fmtNum(sog, 1)}</span>
-      <span className="v">{hdg === null ? "·" : Math.round(hdg) + "°"}</span>
-      <span className="v">{wind}</span>
-      <span className="v dim">{baro === null ? "·" : Math.round(baro)}</span>
-      <span className="v">{s.depth === null ? "·" : s.depth.toFixed(1)}</span>
+    <div className="lb-row" style={gridVar(cols)}>
+      {cols.map((c, i) => (
+        <span key={c.key} className={i === 0 ? "tm" : c.dim ? "v dim" : "v"}>
+          {c.cell(s)}
+        </span>
+      ))}
     </div>
   );
 }

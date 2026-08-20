@@ -920,8 +920,18 @@ body {
   color: var(--text); cursor: pointer; display: grid; place-items: center; font-size: 13px;
 }
 .swiss .lb-date button:disabled { opacity: 0.4; cursor: default; }
+/* The track count is the boat's: a bare boat reporting a speed and a heading gets two columns,
+   not two columns and three empty lanes. --lb-cols is set on the element by the component,
+   which is the only place that knows how many readings the page earned. A default is declared
+   so the rule still stands up if the variable is ever missing.
+   The ceiling is what keeps a column a column. Plain 1fr shares out whatever is left, so the
+   fewer instruments a boat carried the further apart her figures sat - measured on a bare boat
+   at 803px a lane, two numbers pinned to opposite edges of the screen with nothing between them
+   to read across. Capped, a column is the same width on every boat, and the table is the same
+   table whether she reports six readings or two. The floor is 0 so a phone still shrinks them
+   rather than pushing the row wider than the screen. */
 .swiss .lb-cols {
-  display: grid; grid-template-columns: 58px repeat(5, 1fr); gap: 4px; padding: 9px 16px;
+  display: grid; grid-template-columns: 58px repeat(var(--lb-cols, 5), minmax(0, 160px)); gap: 4px; padding: 9px 16px;
   border-bottom: 1px solid var(--rule);
   font-family: var(--sp-font); font-size: 8.5px; font-weight: 700; letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--muted);
@@ -940,7 +950,7 @@ body {
 .swiss .lb-rows { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; overscroll-behavior: contain; }
 .swiss .lb-rows::-webkit-scrollbar { width: 0; }
 .swiss .lb-row {
-  display: grid; grid-template-columns: 58px repeat(5, 1fr); gap: 4px; padding: 11px 16px;
+  display: grid; grid-template-columns: 58px repeat(var(--lb-cols, 5), minmax(0, 160px)); gap: 4px; padding: 11px 16px;
   border-bottom: 1px solid var(--hair); align-items: baseline;
 }
 .swiss .lb-row .tm {
