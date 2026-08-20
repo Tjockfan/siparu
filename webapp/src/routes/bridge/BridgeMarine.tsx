@@ -31,6 +31,8 @@ import SystemsMarine from "./SystemsMarine";
 import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
 import { depthDatumLabel, depthDiagLabel } from "../../lib/depthDiag";
+import { quietFor, quietSince } from "../../lib/age";
+import type { MetricField } from "../../lib/api";
 import { useBridgeData, bridgeHasReading, type BridgeData, type GustHours } from "./useBridgeData";
 import { useMediaQuery } from "../../lib/useMediaQuery";
 import BaroPopup from "./BaroPopup";
@@ -84,9 +86,26 @@ function navDisplay(s: string): string {
   return NAV_HYPHEN[s] ?? titleCase(s);
 }
 
+/**
+ * A cell whose instrument has stopped talking, and how long ago it last did.
+ *
+ * The reading stays. A boat at anchor with a cold engine is not a fault, and neither is a
+ * depth sounder switched off alongside; blanking the figure would throw away the only thing
+ * the boat knows and ask a question the fade already answers. This is the systems panel's
+ * sentence, said the same way here because the two panels are tabs of one board.
+ *
+ * The position and nav-state cells are deliberately not in this scheme: they carry their own
+ * freshness line ("FIX 12s", "STALE 400s"), which is older than this mechanism and says more
+ * than an age does, because a fix is the one reading whose absence has its own word.
+ */
+function QuietAge({ s }: { s: number | null }) {
+  if (s === null) return null;
+  return <div className="c-age">{quietFor(s)}</div>;
+}
+
 // The band and matrix for the bridge tab, built from what the boat is saying. Pulled out of the
 // panel so the same instruments render in the phone's tab and in the wide board's bridge section.
-function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void }) {
+export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void }) {
   const loading = d.snap === null;
   const trend = baroTrend(d.baroDelta);
   const lat = d.snap?.lat ?? null;
@@ -97,16 +116,27 @@ function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void })
   // boat has put a value behind it.
   const has = (v: unknown) => loading || v !== null;
 
+  // How long each instrument has been silent, asked one cell at a time. The frame's own age
+  // cannot answer this: it is rebuilt on every poll whether or not anything was measured, so a
+  // boat sailing on a live GPS reports a healthy frame while her wind sensor has been dead for
+  // hours. The plugin measures these on the bus and sends one per field (contract: field_ages).
+  // `quiet` is the age when it is past the threshold and null while the reading is current, so
+  // the cells below both fade and print from the same call.
+  const quiet = (f: MetricField) => quietSince(d.snap?.field_ages?.[f]);
+  const cell = (name: string, q: number | null) => `c ${name}${q !== null ? " quiet" : ""}`;
+
   const band: ReactNode[] = [];
+  const qSog = quiet("sog");
   if (has(d.sogKn)) {
     band.push(
-      <div className="c c-sog" key="sog">
+      <div className={cell("c-sog", qSog)} key="sog">
         <div className="t">SOG · <span className="sub">Knots</span></div>
         {loading ? (
           <div className="n skel">8.4</div>
         ) : (
           <AnimatedNumber className="n" value={d.sogKn} digits={1} />
         )}
+        <QuietAge s={qSog} />
       </div>,
     );
   }
@@ -141,37 +171,45 @@ function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void })
   }
 
   const matrix: ReactNode[] = [];
+  const qCog = quiet("cog");
   if (has(d.cogDeg)) {
     matrix.push(
-      <div className="c c-cog" key="cog">
+      <div className={cell("c-cog", qCog)} key="cog">
         <div className="t">COG</div>
         <div className={`n${loading ? " skel" : ""}`}>{deg(d.cogDeg)}<span className="u">°</span></div>
+        <QuietAge s={qCog} />
       </div>,
     );
   }
+  const qHdg = quiet("heading_true");
   if (has(d.hdgTrue)) {
     matrix.push(
-      <div className="c c-hdg" key="hdg">
+      <div className={cell("c-hdg", qHdg)} key="hdg">
         <div className="t">HDG · <span className="sub">True</span></div>
         <div className={`n${loading ? " skel" : ""}`}>{deg(d.hdgTrue)}<span className="u">°</span></div>
+        <QuietAge s={qHdg} />
       </div>,
     );
   }
+  const qTws = quiet("wind_speed_true");
   if (has(d.twsKn)) {
     matrix.push(
-      <div className="c c-windtrue" key="windtrue">
+      <div className={cell("c-windtrue", qTws)} key="windtrue">
         <div className="t">Wind true{d.bft !== null && <> · <span className="sub">Bft {d.bft}</span></>}</div>
         <div className={`n${loading ? " skel" : ""}`}>
           {d.twsKn === null ? "·" : d.twsKn.toFixed(1)}<span className="u">kn</span>
         </div>
+        <QuietAge s={qTws} />
       </div>,
     );
   }
+  const qTwd = quiet("wind_direction_true");
   if (has(d.twdDeg)) {
     matrix.push(
-      <div className="c c-windfrom" key="windfrom">
+      <div className={cell("c-windfrom", qTwd)} key="windfrom">
         <div className="t">Wind from · <span className="sub">True</span></div>
         <div className={`n${loading ? " skel" : ""}`}>{deg(d.twdDeg)}<span className="u">°</span></div>
+        <QuietAge s={qTwd} />
       </div>,
     );
   }
@@ -195,17 +233,25 @@ function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void })
       </div>,
     );
   }
+  const qAwa = quiet("wind_angle_apparent");
   if (has(d.awaDeg)) {
     matrix.push(
-      <div className="c c-awa" key="awa">
+      <div className={cell("c-awa", qAwa)} key="awa">
         <div className="t">AWA · <span className="sub">Apparent</span></div>
         <div className={`n${loading ? " skel" : ""}`}>{awa(d.awaDeg)}</div>
+        <QuietAge s={qAwa} />
       </div>,
     );
   }
+  // The barometer is the one figure that need not come off the frame: with no live pressure
+  // path it falls back to the last hours of recorded history, and there is no field age behind
+  // that number. quiet() is null there by construction - the plugin sends an age only for a
+  // field it has a value for - so the fallback figure is drawn unqualified, which is right: an
+  // age taken from the missing live path would describe a different number than the one shown.
+  const qBaro = quiet("air_pressure_pa");
   if (has(d.baroHPa)) {
     matrix.push(
-      <div className="c c-baro tap" key="baro" onClick={onBaro} role="button" aria-label="Barometer detail">
+      <div className={`${cell("c-baro", qBaro)} tap`} key="baro" onClick={onBaro} role="button" aria-label="Barometer detail">
         <div className="left">
           <div className="t">Baro · <span className="sub">hPa</span></div>
           <div className={`n${loading ? " skel" : ""}`}>{d.baroHPa === null ? "·" : Math.round(d.baroHPa)}</div>
@@ -215,34 +261,40 @@ function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void })
           <Sparkline className="spark-b" data={d.baroSeries} color="var(--spark-baro)" height={38} top={4} />
           <div className="lab">3-hour trend · tap ⤢</div>
         </div>
+        <QuietAge s={qBaro} />
       </div>,
     );
   }
+  const qAir = quiet("air_temp_k");
   if (has(d.airC)) {
     matrix.push(
-      <div className="c c-air" key="air">
+      <div className={cell("c-air", qAir)} key="air">
         <div className="t">Air · <span className="sub">Outside</span></div>
         <div className={`n${loading ? " skel" : ""}`}>
           {d.airC === null ? "·" : d.airC.toFixed(1)}<span className="u">°C</span>
         </div>
+        <QuietAge s={qAir} />
       </div>,
     );
   }
+  const qSea = quiet("water_temp_k");
   if (has(d.waterC)) {
     matrix.push(
-      <div className="c c-sea" key="sea">
+      <div className={cell("c-sea", qSea)} key="sea">
         <div className="t">Sea · <span className="sub">Water</span></div>
         <div className={`n${loading ? " skel" : ""}`}>
           {d.waterC === null ? "·" : d.waterC.toFixed(1)}<span className="u">°C</span>
         </div>
+        <QuietAge s={qSea} />
       </div>,
     );
   }
   // Depth keeps its micro-diagnosis: a sounder that HAS reported and went quiet is a different
   // sentence from a boat with no sounder, and only the second one loses the cell.
+  const qDepth = quiet("depth");
   if (has(d.depth)) {
     matrix.push(
-      <div className="c c-depth" key="depth">
+      <div className={cell("c-depth", qDepth)} key="depth">
         <div className="t">Depth · <span className="sub">m</span></div>
         {loading ? <div className="n skel">32.4</div> : <AnimatedNumber className="n" value={d.depth} digits={1} />}
         {!loading && depthDiagLabel(d.depthDiag, d.now) && (
@@ -255,6 +307,7 @@ function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void })
         {!loading && d.depth !== null && (
           <div className="meta">{depthDatumLabel(d.snap?.depth_datum)}</div>
         )}
+        <QuietAge s={qDepth} />
       </div>,
     );
   }

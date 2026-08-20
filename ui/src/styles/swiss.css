@@ -731,6 +731,39 @@ body {
  * keep their own layout: baro's number is nested in .left, and gust has a sparkline and a
  * window selector instead of a bare number - neither matches, both are left alone. */
 .swiss .grid .matrix > .c > .n { margin-block: auto; }
+/* An instrument that has stopped talking keeps its reading and loses its confidence. The same
+   sentence the systems panel says, in the bridge's larger type: a faded figure with the moment
+   it was last true written beside it. Not blanked - a sounder switched off alongside is the
+   normal case, and an empty cell asks a question the fade already answers.
+   The position and nav-state cells are outside this: they carry FIX/STALE, which says more. */
+.swiss .grid .c.quiet .n,
+.swiss .grid .c.quiet .n .u,
+.swiss .grid .c.quiet .coords { color: var(--muted); }
+/* Out of the flow, for the reason the systems panel found the hard way: as a last flex child it
+   pushes the reading up, and margin-block:auto then centres the number against a box that is no
+   longer the box it was measured in. Top right is the only corner every bridge cell leaves
+   empty - the label runs along the top left, the value sits in the middle. */
+.swiss .grid .c .c-age {
+  position: absolute;
+  right: 14px;
+  top: 13px;
+  font-family: var(--sp-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+/* Room for the marker, measured against the widest string quietFor() can return ("59 MIN AGO",
+   62px) rather than against whichever one is on screen while this is being written. */
+.swiss .grid .c.quiet .t { padding-right: 68px; }
+/* The barometer keeps a sparkline in its top right, so its marker goes under the label instead,
+   where the cell's left column has room. Nothing else on the bridge is two-column. */
+.swiss .grid .c-baro .c-age {
+  right: auto;
+  left: 14px;
+  top: auto;
+  bottom: 13px;
+}
+.swiss .grid .c-baro.quiet .t { padding-right: 0; }
 .swiss .c-depth .meta {
   font-family: var(--sp-mono);
   font-size: 10px;

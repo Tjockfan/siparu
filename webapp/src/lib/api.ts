@@ -17,9 +17,9 @@
 // away and threw them out twice a second. A type-only import costs nothing at
 // runtime (contract.ts declares no values, so the bundler drops the import) and
 // makes the next such addition arrive here on its own.
-import type { LiveResult, RollupHour, Snapshot } from '../../../plugin/src/contract'
+import type { LiveResult, MetricField, RollupHour, Snapshot } from '../../../plugin/src/contract'
 
-export type { Snapshot }
+export type { MetricField, Snapshot }
 
 /** The live frame, exactly as the plugin's /live returns it. */
 export type LiveSnapshot = LiveResult

@@ -10,6 +10,11 @@ export default defineConfig({
       // Framework-free logic that lives beside a route (e.g. the bridge's data derivations). A
       // component test needing a DOM would have to set jsdom on itself; nothing here does.
       'webapp/src/routes/**/*.test.ts',
+      // Components too, where the assertion is about the markup a cell emits rather than about
+      // anything a user does to it: renderToStaticMarkup wants no DOM, so these run in the same
+      // plain node environment as everything above. This line is why they run at all - the .ts
+      // glob above does not match .tsx, and a component test outside it is a test nobody runs.
+      'webapp/src/routes/**/*.test.tsx',
       'ui/src/**/*.test.ts'
     ],
     // Fixture-backed IO tests run slowly on constrained CI runners (Windows fs,

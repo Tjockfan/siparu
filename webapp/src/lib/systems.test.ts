@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LiveSnapshot } from "./api";
 import { systemPanels } from "../routes/bridge/useSystems";
-import { quietFor } from "../routes/bridge/SystemsMarine";
+import { quietFor } from "./age";
 
 /**
  * The boat draws the panels her own frame justifies.

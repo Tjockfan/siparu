@@ -14,28 +14,8 @@
  */
 import { Fragment, type CSSProperties } from "react";
 import { systemPanels, toMatrix, type SystemGauge, type SystemMatrix } from "./useSystems";
-import { ageOf } from "../../lib/age";
+import { quietFor, quietSince } from "../../lib/age";
 import type { LiveSnapshot } from "../../lib/api";
-
-/** How stale a gauge has to be before the screen stops presenting it as current. */
-const QUIET_AFTER_S = 90;
-
-/**
- * How long a gauge has been quiet, in the panel's own voice.
- *
- * The tiers are in lib/age now, where the chart popup and the pairing band read them too:
- * this panel is where the floor and the day tier were worked out, and keeping them here
- * meant the other two screens went on answering the same question differently.
- *
- * Upper case, and the string carries it rather than a text-transform, which is what the
- * rest of swiss.css would do. Left as it is: the reserve this sits in was measured against
- * the widest string this returns, and moving the case into CSS is a change to that
- * measurement's terms rather than to the duplication this is fixing.
- */
-export function quietFor(s: number): string {
-  const { value, unit } = ageOf(s);
-  return `${value} ${unit.toUpperCase()} AGO`;
-}
 
 /**
  * The running-light side an instance column takes its header colour from, or none.
@@ -68,11 +48,11 @@ function headLabel(label: string): string {
 function MatrixCell({ g }: { g: SystemGauge | undefined }) {
   // A column silent on this parameter shows an empty square, not an invented reading.
   if (!g) return <div className="sm-cell sm-empty" aria-hidden="true" />;
-  const quiet = g.ageS !== null && g.ageS >= QUIET_AFTER_S;
+  const quiet = quietSince(g.ageS);
   return (
-    <div className={`sm-cell${quiet ? " quiet" : ""}`}>
+    <div className={`sm-cell${quiet !== null ? " quiet" : ""}`}>
       <span className="sm-v">{g.value}</span>
-      {quiet && <span className="sm-age">{quietFor(g.ageS!)}</span>}
+      {quiet !== null && <span className="sm-age">{quietFor(quiet)}</span>}
     </div>
   );
 }
@@ -122,9 +102,9 @@ function TankBar({ g }: { g: SystemGauge }) {
   // A tank with no reading ("·") is not a low tank: only accent a fuel level we actually have,
   // or an absent gauge would light the low-fuel red on an empty bar.
   const low = known && g.path.includes(".fuel.") && pct < 20;
-  const quiet = g.ageS !== null && g.ageS >= QUIET_AFTER_S;
+  const quiet = quietSince(g.ageS);
   return (
-    <div className={`tk${quiet ? " quiet" : ""}${low ? " low" : ""}`}>
+    <div className={`tk${quiet !== null ? " quiet" : ""}${low ? " low" : ""}`}>
       <div className="tk-l">{g.label}</div>
       <div className="tk-bar">
         <i style={{ width: `${pct}%` }} />
@@ -135,9 +115,9 @@ function TankBar({ g }: { g: SystemGauge }) {
 }
 
 function Cell({ g }: { g: SystemGauge }) {
-  const quiet = g.ageS !== null && g.ageS >= QUIET_AFTER_S;
+  const quiet = quietSince(g.ageS);
   return (
-    <div className={`c sy-c${quiet ? " quiet" : ""}`}>
+    <div className={`c sy-c${quiet !== null ? " quiet" : ""}`}>
       <div className="t">
         {g.label}
         {g.sub !== null && (
@@ -151,7 +131,7 @@ function Cell({ g }: { g: SystemGauge }) {
       {/* An instrument that has gone quiet says so and keeps its last reading. Blanking it would
           throw away the only thing it knows, and a boat at anchor with a cold engine is not a
           fault. */}
-      {quiet && <div className="sy-age">{quietFor(g.ageS!)}</div>}
+      {quiet !== null && <div className="sy-age">{quietFor(quiet)}</div>}
     </div>
   );
 }
