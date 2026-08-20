@@ -30,7 +30,7 @@ import { Sparkline } from "siparu-ui";
 import SystemsMarine from "./SystemsMarine";
 import { systemPanels } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
-import { depthDatumLabel, depthDiagLabel } from "../../lib/depthDiag";
+import { depthDatumLabel } from "../../lib/depthDiag";
 import { quietFor, quietSince } from "../../lib/age";
 import type { MetricField } from "../../lib/api";
 import { useBridgeData, bridgeHasReading, type BridgeData, type GustHours } from "./useBridgeData";
@@ -297,13 +297,10 @@ export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => 
       <div className={cell("c-depth", qDepth)} key="depth">
         <div className="t">Depth · <span className="sub">m</span></div>
         {loading ? <div className="n skel">32.4</div> : <AnimatedNumber className="n" value={d.depth} digits={1} />}
-        {!loading && depthDiagLabel(d.depthDiag, d.now) && (
-          <div className="meta">{depthDiagLabel(d.depthDiag, d.now)}</div>
-        )}
-        {/* The plane this number is measured from. The two metas cannot collide: the
-            diagnosis speaks only when depth is null, the datum only beside a number.
-            The label changes the moment the plugin switches planes, which is the
-            switch nothing on this screen could show before. */}
+        {/* The plane this number is measured from, named only beside a number: a datum
+            without its reading dates nothing, and a reading without its datum is the lie
+            this field exists to end. The label changes the moment the plugin switches
+            planes, which is the switch nothing on this screen could show before. */}
         {!loading && d.depth !== null && (
           <div className="meta">{depthDatumLabel(d.snap?.depth_datum)}</div>
         )}

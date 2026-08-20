@@ -99,6 +99,17 @@ describe("the logbook table over a boat's own instruments", () => {
   });
 
   /**
+   * An empty live page used to be a header over nothing at all - no way to tell a boat that
+   * logged nothing from a request that failed. The day view has always said it; the live view
+   * did not, and the live view is the one a reader opens first.
+   */
+  it("says why the page is empty instead of showing a header over nothing", async () => {
+    const html = await draw([]);
+    expect(html).toContain("No snapshots");
+    expect(html).toMatch(/Nothing was logged in this window/i);
+  });
+
+  /**
    * A drawn column still shows its holes. This is the dot that means something - the boat
    * measured depth on this page, and did not measure it in this row.
    */

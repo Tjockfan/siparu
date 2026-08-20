@@ -130,7 +130,8 @@ export default function MapMarine() {
   }, []);
 
   const {
-    containerRef, aisOn, setAisOn, aisMaxNm, setAisMaxNm, aisLimit, setAisLimit, latest, chartNote,
+    containerRef, aisOn, setAisOn, aisCount, aisMaxNm, setAisMaxNm, aisLimit, setAisLimit, latest,
+    chartNote,
   } = useMapEngine({
     track: { color: "#c23a3f", width: 1.8, dash: [2.8, 2.2] },
     zoomPosition: "bottom-left", // so the top strip doesn't cover the zoom buttons
@@ -144,10 +145,28 @@ export default function MapMarine() {
   const hdgDeg = latest ? radToDeg(latest.heading_true) : null;
   const sogKn = latest ? sogKnFiltered(latest.sog) : null;
   const navState = latest?.nav_state ? titleCase(latest.nav_state) : null;
-  const coords =
-    latest?.lat != null && latest?.lon != null
-      ? `${fmtCoordDM(latest.lat, ["N", "S"], 2)}  ${fmtCoordDM(latest.lon, ["E", "W"], 3)}`
-      : "·";
+  const hasFix = latest?.lat != null && latest?.lon != null;
+  const coords = hasFix
+    ? `${fmtCoordDM(latest!.lat!, ["N", "S"], 2)}  ${fmtCoordDM(latest!.lon!, ["E", "W"], 3)}`
+    : "·";
+
+  /**
+   * Why the chart is showing what it is showing, when that is not the boat.
+   *
+   * With no fix the map opens on its default centre, which is a stretch of the Mediterranean
+   * the boat has probably never seen, and said nothing at all about it. A chart with no vessel
+   * on it and no explanation reads as a broken map, or worse, as a boat somewhere off Monaco.
+   * The note is only raised once a frame has actually arrived: before that the screen does not
+   * know whether there is a fix, and "awaiting fix" would be a guess about a boat it has not
+   * heard from yet.
+   *
+   * Two notes can stand at once - no fix and no chart tiles are independent failures - so they
+   * are a list rather than a slot, and neither hides the other.
+   */
+  const notes = [
+    latest && !hasFix ? "Awaiting fix - the boat is not on this chart yet" : null,
+    chartNote,
+  ].filter((n): n is string => n !== null);
 
   return (
     <div className="mp">
@@ -162,11 +181,22 @@ export default function MapMarine() {
         {navState && <span className="navp">{navState}</span>}
       </div>
 
-      {chartNote && <div className="mp-chartnote">{chartNote}</div>}
+      {notes.length > 0 && (
+        <div className="mp-notes">
+          {notes.map((n) => (
+            <div className="mp-chartnote" key={n}>{n}</div>
+          ))}
+        </div>
+      )}
 
       <div className="mp-ctrl">
+        {/* The count was computed and returned by the engine and never asked for here, so
+            "AIS on, nothing within range" and "AIS on, four ships around us" were the same
+            button. It is shown only while AIS is on: a zero beside a switch that is off is
+            not a reading, it is the switch saying it is off twice. */}
         <button className={`mp-btn${aisOn ? " on" : ""}`} onClick={() => setAisOn(!aisOn)}>
           AIS
+          {aisOn && <span className="n">{aisCount}</span>}
         </button>
         <div style={{ position: "relative" }}>
           <button className="mp-btn" onClick={() => setFilterOpen((v) => !v)}>

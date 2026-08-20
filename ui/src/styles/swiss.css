@@ -1001,12 +1001,22 @@ body {
   font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
   text-transform: uppercase; color: var(--text); display: flex; align-items: center; gap: 8px; cursor: pointer;
 }
-.swiss .mp-btn .n { font-variant-numeric: tabular-nums; }
+/* The figure takes the button's colour, whatever the button currently is. Without this the
+   generic `.swiss .n` rule wins on specificity and paints it --text, which is exactly the
+   background an active button has: white on white, measured on the AIS count the moment that
+   count was first drawn. Nothing had ever put a number inside a button in its `on` state. */
+.swiss .mp-btn .n { font-variant-numeric: tabular-nums; color: inherit; }
 .swiss .mp-btn.on { background: var(--text); color: var(--cell); }
 
-/* Chart micro-diagnostic chip (a reasoned note instead of an empty box; yellow != error) */
-.swiss .mp-chartnote {
+/* Micro-diagnostic chips: why the chart shows what it shows (a reasoned note instead of an
+   empty box; yellow != error). Two can stand at once - no fix and no tiles are independent -
+   so the stack owns the corner and the chips sit in its flow rather than each claiming the
+   same absolute inset and covering the other. */
+.swiss .mp-notes {
   position: absolute; left: 12px; bottom: 44px; z-index: 600;
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+}
+.swiss .mp-chartnote {
   background: var(--cell); border: 1.5px solid var(--warn); color: var(--warn);
   font-family: var(--sp-font); font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
   padding: 6px 9px; max-width: 260px;

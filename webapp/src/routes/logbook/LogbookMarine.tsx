@@ -59,6 +59,23 @@ function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) 
 }
 
 /**
+ * Nothing recorded, and why that is not a fault.
+ *
+ * The day view has said this since it was written; the live view showed an empty page under a
+ * header and left the reader to guess whether the boat was silent, the plugin was broken or the
+ * request had failed. A boat alongside with her instruments off records nothing, which is the
+ * common case and the one an empty screen reads worst.
+ */
+function NoRows({ what }: { what: string }) {
+  return (
+    <div className="sp-empty">
+      <div className="em-t">No snapshots</div>
+      <div className="em-s">{what}</div>
+    </div>
+  );
+}
+
+/**
  * The width of the table, handed to CSS as a variable rather than baked into the stylesheet.
  * The count is the boat's now, and a fixed `repeat(5, 1fr)` would keep laying out five tracks
  * for a bare boat that fills two.
@@ -100,17 +117,21 @@ function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
       <Cols cols={cols} toggleWind={toggleWind} />
       <div className="lb-day"><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
-      <Rows
-        snaps={snaps}
-        cols={cols}
-        footer={
-          hasMore ? (
-            <button className="lb-more" onClick={loadMore} disabled={busy}>
-              {busy ? "Loading…" : `Load ${ROWS_LIMIT[granularity]} more`}
-            </button>
-          ) : null
-        }
-      />
+      {!busy && !err && snaps.length === 0 ? (
+        <NoRows what={`Nothing was logged in this window (${GRAN_LABEL[granularity].toLowerCase()}).`} />
+      ) : (
+        <Rows
+          snaps={snaps}
+          cols={cols}
+          footer={
+            hasMore ? (
+              <button className="lb-more" onClick={loadMore} disabled={busy}>
+                {busy ? "Loading…" : `Load ${ROWS_LIMIT[granularity]} more`}
+              </button>
+            ) : null
+          }
+        />
+      )}
     </>
   );
 }
@@ -148,10 +169,7 @@ function DayView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
       <div className="lb-day"><span>{dayLabel}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
       {!busy && snaps.length === 0 ? (
-        <div className="sp-empty">
-          <div className="em-t">No snapshots</div>
-          <div className="em-s">No telemetry was logged for this day.</div>
-        </div>
+        <NoRows what="No telemetry was logged for this day." />
       ) : (
         <Rows snaps={snaps} cols={cols} footer={null} />
       )}

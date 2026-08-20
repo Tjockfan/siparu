@@ -65,7 +65,6 @@ function bridge(over: Partial<BridgeData> = {}, snapOver: Partial<LiveSnapshot> 
     airC: 21.9,
     waterC: 18.8,
     depth: 18.2,
-    depthDiag: { kind: "ok" },
     sealing: null,
     navState: "UNDERWAY",
     utcClock: "12:00:00",
@@ -79,6 +78,39 @@ function bridge(over: Partial<BridgeData> = {}, snapOver: Partial<LiveSnapshot> 
 }
 
 const draw = (d: BridgeData) => renderToStaticMarkup(<BridgeInstruments d={d} onBaro={() => {}} />);
+
+/**
+ * The depth cell follows the same rule as every other: drawn when the boat puts a value behind
+ * it. It briefly had a second rule, for a micro-diagnosis that turned out to be unreachable
+ * (see lib/depthDiag.ts). These pin what is left, including the case the diagnosis was written
+ * for - a boat that has never reported a depth simply has no depth cell, which is the answer,
+ * not a gap where an answer should be.
+ */
+describe("the depth cell", () => {
+  it("draws the reading and the plane it was measured from", () => {
+    const html = draw(bridge({ depth: 18.2 }));
+    expect(html).toContain("c-depth");
+    expect(html).toContain("18.2");
+    expect(html).toContain("BELOW TRANSDUCER");
+  });
+
+  it("is not drawn at all on a boat that reports no depth", () => {
+    const html = draw(bridge({ depth: null }));
+    expect(html).not.toContain("c-depth");
+  });
+
+  /**
+   * A sounder that stops is not a special case any more: it keeps its last reading and fades
+   * like every other instrument, because the live frame holds the last known value and the
+   * frame carries its age. This is the sentence the removed diagnosis was reaching for.
+   */
+  it("says when a stopped sounder last spoke, the same way every other cell does", () => {
+    const html = draw(bridge({}, { field_ages: { depth: 7200 } }));
+    expect(html).toContain("c-depth quiet");
+    expect(html).toContain("18.2");
+    expect(html).toContain("2 H AGO");
+  });
+});
 
 describe("a bridge reading that has gone quiet", () => {
   it("says how long ago the instrument last spoke, and keeps the reading", () => {

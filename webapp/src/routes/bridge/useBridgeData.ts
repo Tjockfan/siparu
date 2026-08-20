@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import type { LiveSnapshot, BaroTrend, HealthResult, SealingStatus } from "../../lib/api";
 import { usePolling } from "../../lib/usePolling";
-import { depthDiagnosis, type DepthDiag } from "../../lib/depthDiag";
 import { useNow } from "../../lib/useNow";
 import {
   msToKnots,
@@ -39,8 +38,6 @@ export interface BridgeData {
   airC: number | null;
   waterC: number | null;
   depth: number | null;
-  /** Micro-diagnosis for why depth shows "·" (no sensor / gone silent). */
-  depthDiag: DepthDiag;
   /** What became of her last report ashore. Null until /health lands, or on an older plugin. */
   sealing: SealingStatus | null;
   navState: string;
@@ -202,7 +199,6 @@ export function useBridgeData(): BridgeData {
   const airC = kToC(snap?.air_temp_k);
   const waterC = kToC(snap?.water_temp_k);
   const depth = snap?.depth ?? null;
-  const depthDiag = depthDiagnosis(depth, health?.paths);
 
   const navState = snap?.nav_state?.toUpperCase() || "·";
 
@@ -236,7 +232,6 @@ export function useBridgeData(): BridgeData {
     airC,
     waterC,
     depth,
-    depthDiag,
     sealing: health?.sealing ?? null,
     navState,
     utcClock,

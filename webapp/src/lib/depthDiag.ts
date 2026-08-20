@@ -1,38 +1,23 @@
-/** Depth micro-diagnosis - a reasoned explanation instead of a bare "·"
- *  (fool-proof rule: a signature diagnosis instead of an empty box, yellow ≠ error).
- *  The last_seen_ts in /health.paths distinguishes "no sensor at all (normal)"
- *  from "was present, then went quiet". */
-import { formatTimeShort } from './format'
-
-/** Depth concept paths the plugin subscribes to (mirror of plugin/src/metrics.ts). */
-export const DEPTH_PATHS = [
-  'environment.depth.belowTransducer',
-  'environment.depth.belowKeel',
-  'environment.depth.belowSurface'
-] as const
-
-export type DepthDiag =
-  | { kind: 'none' }
-  | { kind: 'no-sensor' }
-  | { kind: 'quiet'; lastTs: number }
-
-export function depthDiagnosis(
-  depth: number | null,
-  healthPaths: Record<string, { last_seen_ts: number }> | null | undefined
-): DepthDiag {
-  if (depth !== null) return { kind: 'none' }
-  // If health hasn't arrived yet (or an older plugin doesn't return paths),
-  // stay silent - show a plain "·" rather than wrongly claiming "no sensor".
-  if (!healthPaths) return { kind: 'none' }
-  let last = 0
-  for (const p of DEPTH_PATHS) {
-    const e = healthPaths[p]
-    if (e && e.last_seen_ts > last) last = e.last_seen_ts
-  }
-  return last === 0 ? { kind: 'no-sensor' } : { kind: 'quiet', lastTs: last }
-}
-
-const DAY_MS = 86_400_000
+/**
+ * The plane a depth reading was taken from, in a person's words.
+ *
+ * This file used to carry a second thing: a micro-diagnosis that explained an absent depth
+ * ("NO SENSOR / NORMAL", "QUIET - last heard 14:02"). It was removed rather than repaired,
+ * and the measurement that decided it is worth keeping, because the same trap is one import
+ * away from any screen here.
+ *
+ * The diagnosis could not run. It spoke only when depth was null, and the live frame never
+ * nulls a depth it has once read - deliberately, since the shore is meant to show the last
+ * known value and say how old it is (plugin/src/index.ts, `live()`: "No horizon here"). So
+ * depth is null on exactly one kind of boat, the one that has never reported a depth at all,
+ * and that boat is given no depth cell to write a diagnosis in. Both halves were tested and
+ * green, and no reader could reach either.
+ *
+ * What the diagnosis was reaching for is now answered where it belongs: every core field
+ * carries its own age on the frame, so a sounder that stops fades its own cell and prints
+ * when it last spoke, the same as every other instrument. One mechanism, on the whole bridge,
+ * instead of a second one for depth alone that could not fire.
+ */
 
 /** The plane the number was read from, in a person's words, sized for the cell's
  *  meta line. A snapshot from before the field existed names no plane, and the
@@ -48,22 +33,5 @@ export function depthDatumLabel(datum: string | null | undefined): string {
       return 'BELOW SURFACE'
     default:
       return 'DATUM UNKNOWN'
-  }
-}
-
-/** Labels are sized for a narrow phone cell (~16 chars); "\n" is a deliberate
- *  line break (CSS white-space: pre-line). Time format matches the GUST label. */
-export function depthDiagLabel(diag: DepthDiag, now: number): string | null {
-  switch (diag.kind) {
-    case 'none':
-      return null
-    case 'no-sensor':
-      return 'NO SENSOR\nNORMAL'
-    case 'quiet': {
-      const age = now - diag.lastTs
-      // For silence older than 24h a clock time is misleading ("14:02" of which day?)
-      if (age >= DAY_MS) return `QUIET · ${Math.floor(age / DAY_MS)}d`
-      return `QUIET · ${formatTimeShort(diag.lastTs)}`
-    }
   }
 }

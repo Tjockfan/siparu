@@ -82,7 +82,7 @@ export interface MapEngine {
   /** Range (nautical miles) - changed via the slider, persisted to localStorage. */
   aisMaxNm: number;
   setAisMaxNm: (n: number) => void;
-  /** Maksimum hedef sayisi. */
+  /** Ceiling on how many targets are drawn at once - changed via the slider, persisted. */
   aisLimit: number;
   setAisLimit: (n: number) => void;
   latest: Snapshot | null;
