@@ -509,6 +509,7 @@ body {
   align-items: flex-start;
 }
 .swiss .sp-systems .sp-sec { flex: 0 1 auto; }
+.swiss .sp-systems .sp-sec-machinery { flex: 0 1 auto; min-width: 360px; }
 .swiss .sp-systems .sp-sec-tanks { flex: 1 1 320px; min-width: 300px; }
 /* The trip computer reads as a column beside the systems, not as a strip across the board. Its
  * cells are the ordinary matrix ones, which grow from a 158px basis, so eight of them left to
@@ -525,8 +526,14 @@ body {
   width: fit-content;
 }
 .swiss .sp-sec { display: flex; flex-direction: column; gap: 2px; flex: none; }
+/* Cluster heading: what this is, what she carries, and whether any of it has gone quiet. The
+   three sit on one line because they answer one question between them, and the badge takes the
+   far end so it can be found without reading the rest. */
 .swiss .sp-sec-h {
   margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   padding: 11px 14px 5px;
   font-family: var(--sp-font);
   font-size: 10px;
@@ -536,6 +543,40 @@ body {
   color: var(--muted);
   background: var(--ink-band);
 }
+.swiss .sp-sec-n { color: var(--text); }
+/* Counted off the readings, so it is a reading itself and is written as one: quieter than the
+   name, and never louder than the badge beside it. */
+.swiss .sp-sec-note {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.swiss .sp-sec-badge {
+  margin-left: auto;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+}
+/* Red is the screen's one call for attention, and this is a call: something under here stopped
+   talking and most of it is behind a disclosure. */
+.swiss .sp-sec-badge.quiet { color: var(--accent); }
+/* Which kind of machine a block is, inside a cluster that holds more than one. */
+.swiss .sy-sub {
+  padding: 10px 2px 2px;
+  font-family: var(--sp-font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.swiss .sy-sub:first-child { padding-top: 2px; }
 /* In the board the bridge grid is one section among several, not a pane to fill: flatten its
  * vertical grow so band and matrix stack at their content height and the column, not the grid,
  * owns the scroll. */

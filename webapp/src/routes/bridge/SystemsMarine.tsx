@@ -14,14 +14,14 @@
  */
 import { Fragment, type CSSProperties } from "react";
 import {
-  systemPanels,
   toSummary,
+  type SystemCluster,
   type SystemGauge,
   type SystemMatrix,
+  type SystemClusterPanel,
   type SystemSummary,
 } from "./useSystems";
 import { quietFor, quietSince } from "../../lib/age";
-import type { LiveSnapshot } from "../../lib/api";
 
 /**
  * The running-light side an instance column takes its header colour from, or none.
@@ -213,32 +213,16 @@ function Cell({ g }: { g: SystemGauge }) {
   );
 }
 
-export default function SystemsMarine({
-  snap,
-  tab,
-  frameAgeS = 0,
-}: { snap: LiveSnapshot | null; tab: string; frameAgeS?: number }) {
-  const panel = systemPanels(snap, frameAgeS).find((p) => p.key === tab);
-
-  // The tab row only offers a panel this boat has, so this is the case where she stopped
-  // reporting between the row being drawn and this rendering: say so rather than draw nothing.
-  if (!panel) {
-    return (
-      <div className="sy-wrap">
-        <div className="sy-none">No readings from this system right now.</div>
-      </div>
-    );
-  }
-
+function Panel({ p }: { p: SystemClusterPanel }) {
   // Tanks read as fill bars: a level is a proportion, and a bar shows it the way a figure alone
   // does not. Only the level metric (its sub is null - the label already says the tank) becomes a
   // bar; anything else a tank reports (a capacity, a temperature) keeps its cell, so no reading is
-  // dropped on the way to the nicer shape. Engines and generators pivot to the matrix instead.
-  if (panel.key === "tanks") {
-    const levels = panel.gauges.filter((g) => g.sub === null);
-    const rest = panel.gauges.filter((g) => g.sub !== null);
+  // dropped on the way to the nicer shape. Engines and generators lead with the summary instead.
+  if (p.key === "tanks") {
+    const levels = p.gauges.filter((g) => g.sub === null);
+    const rest = p.gauges.filter((g) => g.sub !== null);
     return (
-      <div className="sy-wrap">
+      <>
         {levels.length > 0 && (
           <div className="tk-list">
             {levels.map((g) => (
@@ -253,15 +237,43 @@ export default function SystemsMarine({
             ))}
           </div>
         )}
-      </div>
+      </>
     );
   }
+  return <Summary s={toSummary(p.gauges)} />;
+}
 
-  // Engines and generators lead with the summary. A boat reporting only the three a person
-  // checks first has nothing behind the disclosure, and it is not drawn.
+/**
+ * One cluster of the boat's systems, under the heading a person reads it by.
+ *
+ * The badge is the reason the heading is more than a word. Most of what is under it is behind
+ * the disclosure, so a gauge that stopped talking down there would have nobody to say so; the
+ * count of quiet gauges is the one thing the heading knows that the readings on screen do not.
+ * It says how many have gone silent and nothing about what any of them READS - that would need
+ * thresholds, and none are invented here.
+ */
+export default function SystemsMarine({ cluster }: { cluster: SystemCluster }) {
+  const quiet = cluster.quiet;
   return (
-    <div className="sy-wrap">
-      <Summary s={toSummary(panel.gauges)} />
-    </div>
+    <section className={`sp-sec sp-sec-${cluster.key}`}>
+      <h2 className="sp-sec-h">
+        <span className="sp-sec-n">{cluster.name}</span>
+        {cluster.note && <span className="sp-sec-note">{cluster.note}</span>}
+        <span className={`sp-sec-badge${quiet > 0 ? " quiet" : ""}`}>
+          {quiet > 0 ? `${quiet} quiet` : "All reporting"}
+        </span>
+      </h2>
+      <div className="sy-wrap">
+        {cluster.panels.map((p) => (
+          <Fragment key={p.key}>
+            {/* Named only where the cluster holds more than one kind: on a boat with engines and
+                generators the two blocks have to be told apart, and on one with engines alone the
+                heading above has already counted them. */}
+            {cluster.panels.length > 1 && <div className="sy-sub">{p.note}</div>}
+            <Panel p={p} />
+          </Fragment>
+        ))}
+      </div>
+    </section>
   );
 }

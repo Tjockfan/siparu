@@ -1,9 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { systemPanels, toMatrix, toSummary, type SystemGauge } from "./useSystems";
+import {
+  systemClusters,
+  systemPanels,
+  toMatrix,
+  toSummary,
+  type SystemGauge,
+} from "./useSystems";
 import type { LiveSnapshot } from "../../lib/api";
 
 function snap(paths: Record<string, number | string>): LiveSnapshot {
   return { paths } as LiveSnapshot;
+}
+
+/** The same frame with per-path ages attached, for the freshness cases below. */
+function aged(s: LiveSnapshot, ages: Record<string, number>): LiveSnapshot {
+  return { ...s, path_ages: ages } as LiveSnapshot;
 }
 
 describe("toMatrix", () => {
@@ -213,3 +224,82 @@ describe("toSummary", () => {
     expect(sum.params[0]).toBe("Boost pressure");
   });
 });
+
+describe("systemClusters", () => {
+  /**
+   * Engines and generators are one thing to the person reading them - the machinery - and were
+   * two panels because the plugin sorts paths into three families. That is a fact about paths,
+   * not about how a boat is read.
+   */
+  it("puts engines and generators under one heading, tanks under their own", () => {
+    const s = snap({
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.starboard.revolutions": 25.9,
+      "electrical.generators.0.voltage": 230.1,
+      "tanks.fuel.0.currentLevel": 0.74,
+    });
+    const c = systemClusters(s);
+    expect(c.map((x) => x.key)).toEqual(["machinery", "tanks"]);
+    expect(c[0].name).toBe("Machinery");
+    expect(c[0].panels.map((p) => p.key)).toEqual(["engine", "generator"]);
+  });
+
+  /**
+   * What she carries is counted off the readings rather than configured, and it is said in
+   * exactly one place: on the blocks where a cluster holds two kinds, on the heading where it
+   * holds one. A heading that repeated the blocks below it would say the same thing twice.
+   */
+  it("counts the units, once", () => {
+    const s = snap({
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.starboard.revolutions": 25.9,
+      "electrical.generators.0.voltage": 230.1,
+      "tanks.fuel.0.currentLevel": 0.74,
+      "tanks.freshWater.0.currentLevel": 0.58,
+    });
+    const c = systemClusters(s);
+    expect(c[0].panels.map((p) => p.note)).toEqual(["2 engines", "1 generator"]);
+    expect(c[0].note).toBe("");
+    // Tanks are one kind, so the heading carries the count and there is no block to name.
+    expect(c[1].note).toBe("2 tanks");
+  });
+
+  /**
+   * The badge is the one thing a heading can say that the readings under it cannot, because the
+   * disclosure hides most of them: whether anything in this cluster has stopped talking. It is
+   * freshness and nothing else - no judgement about what a reading MEANS, which would need
+   * thresholds this product refuses to invent.
+   */
+  it("names how many gauges have gone quiet, not what they read", () => {
+    const s = snap({
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.port.temperature": 355.15,
+      "electrical.generators.0.voltage": 230.1,
+    });
+    const fresh = systemClusters(aged(s, { "propulsion.port.revolutions": 2 }), 0);
+    expect(fresh[0].quiet).toBe(0);
+
+    const stale = systemClusters(
+      aged(s, {
+        "propulsion.port.revolutions": 400,
+        "propulsion.port.temperature": 2,
+        "electrical.generators.0.voltage": 900,
+      }),
+      0
+    );
+    // One engine gauge and one generator gauge: the cluster counts across both panels.
+    expect(stale[0].quiet).toBe(2);
+    expect(stale[0].total).toBe(3);
+  });
+
+  /**
+   * A frame that stopped arriving carries ages frozen at the moment it was built, so the frame's
+   * own age has to be added before anything is called fresh - the same sum the panels make.
+   */
+  it("ages the whole cluster by the frame carrying it", () => {
+    const s = snap({ "propulsion.port.revolutions": 26.0 });
+    const a = aged(s, { "propulsion.port.revolutions": 10 });
+    expect(systemClusters(a, 0)[0].quiet).toBe(0);
+    expect(systemClusters(a, 600)[0].quiet).toBe(1);
+  });
+})

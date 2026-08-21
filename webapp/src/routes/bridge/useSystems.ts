@@ -21,6 +21,7 @@ import {
   systemValue,
   type SystemTab,
 } from "../../../../plugin/src/units";
+import { quietSince } from "../../lib/age";
 import type { LiveSnapshot } from "../../lib/api";
 
 export interface SystemGauge {
@@ -166,6 +167,81 @@ export function toSummary(gauges: SystemGauge[], limit = HEAD_LIMIT): SystemSumm
     // choose the three, and past those it has nothing to say.
     rest: { cols: m.cols, rows: m.rows.filter((r) => !shown.has(r.sub)) },
   };
+}
+
+/** A panel inside a cluster, with what it carries counted: "3 engines". */
+export interface SystemClusterPanel extends SystemPanel {
+  note: string;
+}
+
+/** A heading on the board, and the panels it gathers under it. */
+export interface SystemCluster {
+  key: "machinery" | "tanks";
+  name: string;
+  /**
+   * What she carries, for a cluster holding one kind: "8 tanks". Empty where the cluster
+   * holds more than one, because there the blocks name themselves and a heading repeating
+   * them says the same thing twice on one screen.
+   */
+  note: string;
+  /** Gauges in this cluster that have stopped talking, and how many there are in all. */
+  quiet: number;
+  total: number;
+  panels: SystemClusterPanel[];
+}
+
+/** "1 engine", "3 engines" - the count and the word, since a heading says both. */
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** Instances in a panel: engines, generators, tanks, counted by the matrix pivot. */
+function unitCount(p: SystemPanel): number {
+  return toMatrix(p.gauges).cols.length;
+}
+
+const CLUSTER_UNIT: Record<SystemTab, string> = {
+  engine: "engine",
+  generator: "generator",
+  tanks: "tank",
+};
+
+/**
+ * The panels gathered under the headings a person reads them by.
+ *
+ * Engines and generators are one thing aboard - the machinery - and were two panels only
+ * because the plugin sorts paths into three families. That is a fact about paths, not about
+ * how a boat is read, and the split cost a tab of its own on the phone.
+ *
+ * The badge each heading carries is freshness and nothing else: how many gauges under it have
+ * stopped talking. That is the one thing a heading can say which the readings beneath it
+ * cannot, because the disclosure keeps most of them out of sight. What it deliberately does
+ * NOT say is whether a reading is good or bad - that needs thresholds, and this product shows
+ * none the boat has not stated herself.
+ */
+export function systemClusters(snap: LiveSnapshot | null, frameAgeS = 0): SystemCluster[] {
+  const panels = systemPanels(snap, frameAgeS);
+  const groups: { key: SystemCluster["key"]; name: string; tabs: SystemTab[] }[] = [
+    { key: "machinery", name: "Machinery", tabs: ["engine", "generator"] },
+    { key: "tanks", name: "Tanks", tabs: ["tanks"] },
+  ];
+
+  return groups
+    .map((g) => {
+      const mine = panels
+        .filter((p) => g.tabs.includes(p.key))
+        .map((p) => ({ ...p, note: plural(unitCount(p), CLUSTER_UNIT[p.key]) }));
+      const gauges = mine.flatMap((p) => p.gauges);
+      return {
+        key: g.key,
+        name: g.name,
+        note: mine.length === 1 ? mine[0].note : "",
+        quiet: gauges.filter((x) => quietSince(x.ageS) !== null).length,
+        total: gauges.length,
+        panels: mine,
+      };
+    })
+    .filter((c) => c.panels.length > 0);
 }
 
 /**

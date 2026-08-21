@@ -12,12 +12,20 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import SystemsMarine from "./SystemsMarine";
+import { systemClusters } from "./useSystems";
 import type { LiveSnapshot } from "../../lib/api";
 
-const draw = (paths: Record<string, number>, tab = "engine", ages?: Record<string, number>) =>
-  renderToStaticMarkup(
-    <SystemsMarine snap={{ paths, path_ages: ages } as unknown as LiveSnapshot} tab={tab} />
+const draw = (
+  paths: Record<string, number>,
+  cluster: "machinery" | "tanks" = "machinery",
+  ages?: Record<string, number>
+) => {
+  const c = systemClusters({ paths, path_ages: ages } as unknown as LiveSnapshot).find(
+    (x) => x.key === cluster
   );
+  if (!c) throw new Error(`no ${cluster} cluster in this frame`);
+  return renderToStaticMarkup(<SystemsMarine cluster={c} />);
+};
 
 /** A three-engine boat reporting five parameters each. */
 const THREE_ENGINES: Record<string, number> = {};
@@ -84,7 +92,7 @@ describe("the engine panel", () => {
         "propulsion.port.temperature": 355.15,
         "propulsion.port.oilPressure": 420000,
       },
-      "engine",
+      "machinery",
       { "propulsion.port.temperature": 300 }
     );
     expect(html).toContain("82.0 °C");
@@ -92,6 +100,57 @@ describe("the engine panel", () => {
     expect(html).toContain("5 MIN AGO");
     // Only the gauge that went quiet is marked.
     expect(html.match(/sms-c quiet/g) ?? []).toHaveLength(1);
+  });
+});
+
+describe("the cluster heading", () => {
+  it("names the cluster and counts what she carries", () => {
+    const html = draw({
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.starboard.revolutions": 25.9,
+      "electrical.generators.0.voltage": 230.1,
+    });
+    expect(html).toContain(">Machinery<");
+    // Counted on the blocks, since this cluster holds two kinds.
+    expect(html).toContain(">2 engines<");
+    expect(html).toContain(">1 generator<");
+  });
+
+  /**
+   * The badge exists because the disclosure hides most of the readings: a gauge that stopped
+   * talking down there has nobody else to say so.
+   */
+  it("says all is reporting, and says how many are not", () => {
+    const fresh = draw(
+      { "propulsion.port.revolutions": 26.0 },
+      "machinery",
+      { "propulsion.port.revolutions": 2 }
+    );
+    expect(fresh).toContain("All reporting");
+    expect(fresh).not.toContain("sp-sec-badge quiet");
+
+    const stale = draw(
+      { "propulsion.port.revolutions": 26.0, "propulsion.port.temperature": 355.15 },
+      "machinery",
+      { "propulsion.port.revolutions": 400, "propulsion.port.temperature": 2 }
+    );
+    expect(stale).toContain("1 quiet");
+    expect(stale).toContain("sp-sec-badge quiet");
+  });
+
+  /** Two kinds under one heading have to be told apart; one kind has already been named. */
+  it("names the blocks only where the cluster holds more than one kind", () => {
+    const both = draw({
+      "propulsion.port.revolutions": 26.0,
+      "electrical.generators.0.voltage": 230.1,
+    });
+    expect(both).toContain('class="sy-sub">1 engine<');
+    expect(both).toContain('class="sy-sub">1 generator<');
+
+    // One kind: the heading has already counted them and there is nothing to tell apart.
+    const engineOnly = draw({ "propulsion.port.revolutions": 26.0 });
+    expect(engineOnly).not.toContain("sy-sub");
+    expect(engineOnly).toContain('class="sp-sec-note">1 engine<');
   });
 });
 
@@ -104,7 +163,7 @@ describe("the generator panel", () => {
         "electrical.generators.0.current": 23.4,
         "electrical.generators.0.runTime": 1206000,
       },
-      "generator"
+      "machinery"
     );
     expect(html).toContain("Voltage");
     expect(html).toContain("Current");

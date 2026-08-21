@@ -28,7 +28,7 @@ import { useSearchParams } from "react-router-dom";
 import AnimatedNumber from "../../components/AnimatedNumber";
 import { Sparkline } from "siparu-ui";
 import SystemsMarine from "./SystemsMarine";
-import { systemPanels } from "./useSystems";
+import { systemClusters } from "./useSystems";
 import { fmtCoordDM, formatTimeShort } from "../../lib/format";
 import { depthDatumLabel } from "../../lib/depthDiag";
 import { quietFor, quietSince } from "../../lib/age";
@@ -351,6 +351,7 @@ function DashPanel({
   voyage,
   onTab,
   onBaro,
+  clusters,
 }: {
   tab: string;
   tabs: { key: string; name: string }[];
@@ -358,6 +359,7 @@ function DashPanel({
   voyage: Voyage | null;
   onTab: (key: string) => void;
   onBaro: () => void;
+  clusters: ReturnType<typeof systemClusters>;
 }) {
   return (
     <div className="sp-pane">
@@ -381,7 +383,9 @@ function DashPanel({
       ) : tab === "trip" ? (
         <TripComputer voyage={voyage} now={d.now} />
       ) : (
-        <SystemsMarine snap={d.snap} tab={tab} frameAgeS={d.frameAgeSec ?? 0} />
+        clusters
+          .filter((c) => c.key === tab)
+          .map((c) => <SystemsMarine key={c.key} cluster={c} />)
       )}
     </div>
   );
@@ -400,9 +404,9 @@ export default function BridgeMarine() {
   // sends only an engine has no empty bridge. The one exception is a boat reporting nothing at
   // all: the bridge stays as the single section so the screen can name why (see BridgeInstruments'
   // quiet cell) rather than going blank. There is no list of any of this to maintain.
-  const panels = systemPanels(d.snap);
+  const clusters = systemClusters(d.snap, d.frameAgeSec ?? 0);
   const loading = d.snap === null;
-  const showBridge = loading || bridgeHasReading(d) || panels.length === 0;
+  const showBridge = loading || bridgeHasReading(d) || clusters.length === 0;
 
   // The trip computer is one more section on the same footing as the systems: present when she
   // is on a passage, absent when she is not. `/voyages/current` answers null unless a voyage is
@@ -423,21 +427,22 @@ export default function BridgeMarine() {
         <div className="sp-dash sp-board">
           {showBridge && (
             <section className="sp-sec sp-sec-bridge">
-              <h2 className="sp-sec-h">Bridge</h2>
+              <h2 className="sp-sec-h">
+                <span className="sp-sec-n">Bridge</span>
+              </h2>
               <BridgeInstruments d={d} onBaro={openBaro} />
             </section>
           )}
-          {(panels.length > 0 || onPassage) && (
+          {(clusters.length > 0 || onPassage) && (
             <div className="sp-systems">
-              {panels.map((p) => (
-                <section className={`sp-sec sp-sec-${p.key}`} key={p.key}>
-                  <h2 className="sp-sec-h">{p.name}</h2>
-                  <SystemsMarine snap={d.snap} tab={p.key} frameAgeS={d.frameAgeSec ?? 0} />
-                </section>
+              {clusters.map((c) => (
+                <SystemsMarine key={c.key} cluster={c} />
               ))}
               {onPassage && (
                 <section className="sp-sec sp-sec-trip" key="trip">
-                  <h2 className="sp-sec-h">Trip computer</h2>
+                  <h2 className="sp-sec-h">
+                    <span className="sp-sec-n">Trip computer</span>
+                  </h2>
                   <TripComputer voyage={voyage} now={d.now} />
                 </section>
               )}
@@ -455,7 +460,7 @@ export default function BridgeMarine() {
   // or the bridge on a boat that only reports an engine) falls back to the first tab there is.
   const tabs = [
     ...(showBridge ? [{ key: "bridge", name: "Bridge" }] : []),
-    ...panels.map((p) => ({ key: p.key as string, name: p.name })),
+    ...clusters.map((c) => ({ key: c.key as string, name: c.name })),
     ...(onPassage ? [{ key: "trip", name: "Trip" }] : []),
   ];
   const valid = (k: string | null) => (k && tabs.some((t) => t.key === k) ? k : null);
@@ -469,7 +474,15 @@ export default function BridgeMarine() {
   return (
     <>
       <div className="sp-dash">
-        <DashPanel tab={a} tabs={tabs} d={d} voyage={voyage} onTab={setTab} onBaro={openBaro} />
+        <DashPanel
+          tab={a}
+          tabs={tabs}
+          d={d}
+          voyage={voyage}
+          clusters={clusters}
+          onTab={setTab}
+          onBaro={openBaro}
+        />
       </div>
       <PairBand sealing={d.sealing} />
       {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
