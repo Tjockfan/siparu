@@ -316,6 +316,20 @@ export interface HealthResult {
     hours_pending: number
   }
   /**
+   * Whether an AIS receiver has ever been proven aboard: a target once in her model.
+   *
+   * The map's AIS switch is a control rather than a readout, so it cannot be hidden on a
+   * count of zero - that is precisely the boat, alone at sea, whose skipper reaches for
+   * it. It must still be absent where there is no receiver, since nothing else in this
+   * product draws a box for data the boat does not send. The Signal K model cannot tell
+   * the two apart (both are an empty dictionary), so the boat remembers instead.
+   */
+  ais: {
+    receiver_seen: boolean
+    /** Null on a boat that has seen none, and on one whose record cannot be read. */
+    first_seen_ts: number | null
+  }
+  /**
    * Whether she is reporting sealed, or not at all. There is no third answer: a boat with no
    * screen to seal to sends nothing, which is the intended behaviour and is also
    * indistinguishable ashore from a vessel that has lost her connection. This is the surface

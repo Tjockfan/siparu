@@ -337,6 +337,13 @@ export type HealthResult = {
   paths?: Record<string, { last_seen_ts: number; active_source: string | null; sources: number }>
   /** Whether anything is reaching the shore at all. Absent in the earlier plugin. */
   sealing?: SealingStatus
+  /**
+   * Whether an AIS receiver has ever been proven aboard. The chart draws its AIS controls
+   * from this rather than from the target count: a count of zero is what a boat alone at
+   * sea reads, and taking the switch away from her is taking away the one control that
+   * answers "is anybody out there". Absent in the earlier plugin.
+   */
+  ais?: { receiver_seen: boolean; first_seen_ts: number | null }
 }
 
 export type MapConfig = {

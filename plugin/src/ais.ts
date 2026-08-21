@@ -142,3 +142,20 @@ export function clampAisQuery(maxNm?: number, maxAgeMin?: number, limit?: number
     limit: clamp(limit, 30, 1, 400)
   }
 }
+
+/**
+ * Whether the model holds any vessel other than this one.
+ *
+ * This is the only evidence a boat has that an AIS receiver is aboard, and it is
+ * deliberately unfiltered: range, age and target count belong to the overlay above, and a
+ * silent hulk 40 miles off proves a receiver just as well as a ferry alongside. Filtering
+ * here would make the switch vanish from a boat in open water, which is the one place
+ * somebody needs it.
+ *
+ * Remembered rather than asked afresh - see aisreceiver.ts for why.
+ */
+export function seesOtherVessels(vessels: unknown, selfContext: string): boolean {
+  if (!vessels || typeof vessels !== 'object') return false
+  const selfKey = selfContext.replace(/^vessels\./, '').trim()
+  return Object.keys(vessels as Record<string, unknown>).some((k) => k !== selfKey)
+}

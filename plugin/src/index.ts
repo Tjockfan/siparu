@@ -18,7 +18,8 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import type { Plugin, ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
-import { buildAisFeed, clampAisQuery } from './ais'
+import { buildAisFeed, clampAisQuery, seesOtherVessels } from './ais'
+import { AisReceiverMemory } from './aisreceiver'
 import { chartsDir, resolveMapConfig } from './charts'
 import { CONFIG_SCHEMA, INTERNAL, Options, RELAY_URL, resolveOptions } from './config'
 import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQuery } from './contract'
@@ -75,6 +76,9 @@ export = (app: ServerAPI): Plugin => {
   let sealingLatch: SealingLatch | null = null
   /** Held so stop() can wait for its writes, like the latch and the keys. */
   let anchorStore: AnchorStore | null = null
+  /** Her memory of ever having seen an AIS target, which is what decides whether the chart
+   * offers the switch at all. Held here so /health can answer and stop() can wait for it. */
+  let aisMemory: AisReceiverMemory | null = null
   /**
    * The device list as the approval chain leaves it, built in start() where the
    * anchor and the keys live. Health reads it so the screen shows the list the
@@ -261,6 +265,7 @@ export = (app: ServerAPI): Plugin => {
         oldest_raw: usage.oldest
       },
       rollup: await rollups.status(now),
+      ais: aisMemory?.status() ?? { receiver_seen: false, first_seen_ts: null },
       // A vessel that is sealing and has been left with nobody to seal to sends nothing, on
       // purpose. Ashore that is indistinguishable from a boat whose link is down, and the
       // pairing screen reports the socket as healthy either way, because the socket IS
@@ -418,8 +423,21 @@ export = (app: ServerAPI): Plugin => {
             }
           )
 
+          // Whether an AIS receiver is aboard, asked on the same tick as the snapshot. The
+          // question is cheap (the first foreign key in the model answers it) and the memory
+          // ignores everything after the first sighting it managed to write down, so a tick
+          // that finds a target on a full disk gets another go on the next one.
+          const ais = new AisReceiverMemory(app.getDataDirPath())
+          aisMemory = ais
+          ais.load()
+          const noteAisTraffic = () => {
+            if (seesOtherVessels(app.getPath('vessels'), app.selfContext)) ais.note(Date.now())
+          }
+          noteAisTraffic()
+
           timer = setInterval(() => {
             void writeSnapshot()
+            noteAisTraffic()
           }, opts.snapshotSeconds * 1000)
 
           setRestDeps({
@@ -632,6 +650,7 @@ export = (app: ServerAPI): Plugin => {
       if (boatKeyStore) await boatKeyStore.flush()
       if (sealingLatch) await sealingLatch.flush()
       if (anchorStore) await anchorStore.flush()
+      if (aisMemory) await aisMemory.flush()
       state = null
       store = null
       rollups = null
@@ -645,6 +664,7 @@ export = (app: ServerAPI): Plugin => {
       boatKeyStore = null
       sealingLatch = null
       anchorStore = null
+      aisMemory = null
       screensNow = null
       reloadAnchor = null
       app.setPluginStatus('Stopped')

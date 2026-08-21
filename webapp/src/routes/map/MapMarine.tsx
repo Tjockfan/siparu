@@ -2,8 +2,8 @@
  * Engine + AIS logic preserved; the basemap now uses its own PMTiles stack
  * (style.ts factory, night/day brand flavors). The overlays are designed
  * in-house. */
-import { useEffect, useState } from "react";
-import { api, type Snapshot, type AisTarget } from "../../lib/api";
+import { useState } from "react";
+import { type Snapshot, type AisTarget } from "../../lib/api";
 import { fmtCoordDM, fmtNum, formatTs, radToDeg, sogKnFiltered } from "../../lib/format";
 import { makeBoatIcon, makeAisIcon, relativeAgo, type BoatPalette } from "../../map/boatIcon";
 import { useMapEngine } from "./useMapEngine";
@@ -121,17 +121,9 @@ function titleCase(s: string): string {
 }
 
 export default function MapMarine() {
-  // The local vessel's name - fetched once from /health; falls back to a neutral title.
-  const [boatName, setBoatName] = useState<string | null>(null);
-  useEffect(() => {
-    let ok = true;
-    api.health().then((h) => { if (ok && h.boat_name) setBoatName(h.boat_name); }).catch(() => {});
-    return () => { ok = false; };
-  }, []);
-
   const {
     containerRef, aisOn, setAisOn, aisCount, aisMaxNm, setAisMaxNm, aisLimit, setAisLimit, latest,
-    chartNote,
+    chartNote, aisAvailable, boatName,
   } = useMapEngine({
     track: { color: "#c23a3f", width: 1.8, dash: [2.8, 2.2] },
     zoomPosition: "bottom-left", // so the top strip doesn't cover the zoom buttons
@@ -189,30 +181,37 @@ export default function MapMarine() {
         </div>
       )}
 
-      <div className="mp-ctrl">
-        {/* The count was computed and returned by the engine and never asked for here, so
-            "AIS on, nothing within range" and "AIS on, four ships around us" were the same
-            button. It is shown only while AIS is on: a zero beside a switch that is off is
-            not a reading, it is the switch saying it is off twice. */}
-        <button className={`mp-btn${aisOn ? " on" : ""}`} onClick={() => setAisOn(!aisOn)}>
-          AIS
-          {aisOn && <span className="n">{aisCount}</span>}
-        </button>
-        <div style={{ position: "relative" }}>
-          <button className="mp-btn" onClick={() => setFilterOpen((v) => !v)}>
-            Range · <span className="n">{aisMaxNm}</span> Nm
+      {/* Both controls belong to AIS, so both are absent on a boat that has never carried a
+          receiver - the same rule the instruments keep for a sensor she does not have. What
+          they are NOT hidden by is an empty horizon: a switch that vanishes when the count
+          falls to zero is a switch that leaves at sea, where it is the only way to ask
+          whether anybody is around. */}
+      {aisAvailable && (
+        <div className="mp-ctrl">
+          {/* The count was computed and returned by the engine and never asked for here, so
+              "AIS on, nothing within range" and "AIS on, four ships around us" were the same
+              button. It is shown only while AIS is on: a zero beside a switch that is off is
+              not a reading, it is the switch saying it is off twice. */}
+          <button className={`mp-btn${aisOn ? " on" : ""}`} onClick={() => setAisOn(!aisOn)}>
+            AIS
+            {aisOn && <span className="n">{aisCount}</span>}
           </button>
-          <AisFilterPopover
-            open={filterOpen}
-            onClose={() => setFilterOpen(false)}
-            maxNm={aisMaxNm}
-            setMaxNm={setAisMaxNm}
-            limit={aisLimit}
-            setLimit={setAisLimit}
-            variant="marine"
-          />
+          <div style={{ position: "relative" }}>
+            <button className="mp-btn" onClick={() => setFilterOpen((v) => !v)}>
+              Range · <span className="n">{aisMaxNm}</span> Nm
+            </button>
+            <AisFilterPopover
+              open={filterOpen}
+              onClose={() => setFilterOpen(false)}
+              maxNm={aisMaxNm}
+              setMaxNm={setAisMaxNm}
+              limit={aisLimit}
+              setLimit={setAisLimit}
+              variant="marine"
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

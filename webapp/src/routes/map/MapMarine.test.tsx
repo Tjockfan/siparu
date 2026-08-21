@@ -19,9 +19,10 @@ import type { Snapshot } from "../../lib/api";
 const engine: {
   aisOn: boolean;
   aisCount: number;
+  aisAvailable: boolean;
   latest: Snapshot | null;
   chartNote: string | null;
-} = { aisOn: true, aisCount: 0, latest: null, chartNote: null };
+} = { aisOn: true, aisCount: 0, aisAvailable: true, latest: null, chartNote: null };
 
 vi.mock("./useMapEngine", () => ({
   useMapEngine: () => ({
@@ -29,6 +30,8 @@ vi.mock("./useMapEngine", () => ({
     aisOn: engine.aisOn,
     setAisOn: () => {},
     aisCount: engine.aisCount,
+    aisAvailable: engine.aisAvailable,
+    boatName: "Test",
     aisMaxNm: 12,
     setAisMaxNm: () => {},
     aisLimit: 50,
@@ -37,12 +40,6 @@ vi.mock("./useMapEngine", () => ({
     chartNote: engine.chartNote,
     recenter: () => {},
   }),
-}));
-
-// The screen asks /health once for the vessel name; it is not what is under test.
-vi.mock("../../lib/api", async (orig) => ({
-  ...(await orig<Record<string, unknown>>()),
-  api: { health: () => Promise.resolve({ boat_name: "Test" }) },
 }));
 
 function fix(over: Partial<Snapshot> = {}): Snapshot {
@@ -60,7 +57,11 @@ function fix(over: Partial<Snapshot> = {}): Snapshot {
 }
 
 async function draw(state: Partial<typeof engine>): Promise<string> {
-  Object.assign(engine, { aisOn: true, aisCount: 0, latest: null, chartNote: null }, state);
+  Object.assign(
+    engine,
+    { aisOn: true, aisCount: 0, aisAvailable: true, latest: null, chartNote: null },
+    state
+  );
   const { default: MapMarine } = await import("./MapMarine");
   return renderToStaticMarkup(<MapMarine />);
 }
@@ -115,5 +116,28 @@ describe("the AIS switch and what it found", () => {
     const html = await draw({ aisOn: false, aisCount: 0, latest: fix() });
     expect(html).toContain("AIS");
     expect(html).not.toMatch(/AIS.*>0</s);
+  });
+
+  /**
+   * The switch was drawn on every boat, including ones with no AIS receiver at all, where it
+   * could only ever say zero. Everywhere else this product refuses to draw a box for data the
+   * boat does not send, and this was the exception.
+   */
+  it("offers no AIS controls on a boat that has never carried a receiver", async () => {
+    const html = await draw({ aisAvailable: false, aisCount: 0, latest: fix() });
+    // The switch itself, not the word: the stylesheet this screen inlines names AIS too.
+    expect(html).not.toMatch(/>AIS</);
+    expect(html).not.toContain("Range");
+    expect(html).not.toContain("mp-ctrl");
+  });
+
+  /**
+   * And the cure is not "hide it when the count is zero". A boat with a receiver and an empty
+   * horizon reads zero too, and she is the one whose skipper reaches for the switch.
+   */
+  it("keeps them on a boat whose horizon is simply empty", async () => {
+    const html = await draw({ aisAvailable: true, aisCount: 0, latest: fix() });
+    expect(html).toMatch(/AIS.*>0</s);
+    expect(html).toContain("Range");
   });
 });

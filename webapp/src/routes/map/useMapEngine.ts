@@ -85,6 +85,14 @@ export interface MapEngine {
   /** Ceiling on how many targets are drawn at once - changed via the slider, persisted. */
   aisLimit: number;
   setAisLimit: (n: number) => void;
+  /**
+   * Whether the boat has an AIS receiver, which is what decides if the chart offers its AIS
+   * controls at all. False until /health answers: a switch that appears a moment late is
+   * better than one that turns out to control nothing.
+   */
+  aisAvailable: boolean;
+  /** This vessel's name, for the popup. Null until /health answers, or on a boat with none. */
+  boatName: string | null;
   latest: Snapshot | null;
   /** Diagnostic micro-note explaining why chart tiles are absent; null = healthy. */
   chartNote: string | null;
@@ -108,6 +116,8 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
 
   const [aisOn, setAisOn] = useState(true);
   const [aisCount, setAisCount] = useState(0);
+  const [aisAvailable, setAisAvailable] = useState(false);
+  const [boatName, setBoatName] = useState<string | null>(null);
   const [chartNote, setChartNote] = useState<string | null>(null);
   // Slider preferences - loaded from localStorage, persisted on set.
   const [aisMaxNm, setAisMaxNmState] = useState<number>(() => loadAisPrefs().maxNm);
@@ -244,12 +254,30 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
     };
   }, [syncTrack]);
 
+  // ===== What the boat is, asked once =====
+  useEffect(() => {
+    let ok = true;
+    api
+      .health()
+      .then((h) => {
+        if (!ok) return;
+        setBoatName(h.boat_name);
+        // The count cannot answer this. An empty horizon and an absent receiver read the
+        // same from the overlay, so the boat is asked what she has ever seen instead.
+        setAisAvailable(h.ais?.receiver_seen === true);
+      })
+      .catch(() => {});
+    return () => {
+      ok = false;
+    };
+  }, []);
+
   // ===== AIS targets =====
   useEffect(() => {
-    if (!aisOn) {
+    if (!aisOn || !aisAvailable) {
       aisMarkersRef.current.forEach((m) => m.remove());
       aisMarkersRef.current = [];
-      // Intentional: AIS turned off - single shot since there is no fetch.
+      // Intentional: nothing to draw - the switch is off, or there is no receiver to ask.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAisCount(0);
       return;
@@ -292,7 +320,7 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
       window.clearTimeout(debounce);
       stopInterval();
     };
-  }, [aisOn, aisMaxNm, aisLimit]);
+  }, [aisOn, aisAvailable, aisMaxNm, aisLimit]);
 
   // ===== Track (24h) =====
   useEffect(() => {
@@ -394,6 +422,8 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
     setAisMaxNm,
     aisLimit,
     setAisLimit,
+    aisAvailable,
+    boatName,
     latest,
     chartNote,
     recenter,

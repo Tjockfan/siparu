@@ -35,6 +35,9 @@ function fakeApp(dataDir: string) {
     },
     getDataDirPath: () => dataDir,
     getSelfPath: () => undefined,
+    // The full model, read on the snapshot tick to learn whether an AIS receiver is aboard.
+    getPath: () => ({}),
+    selfContext: 'vessels.self',
     setPluginStatus: () => undefined,
     setPluginError: (msg: string) => calls.errors.push(msg),
     debug: () => undefined,
