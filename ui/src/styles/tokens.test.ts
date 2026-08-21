@@ -38,6 +38,29 @@ describe("swiss tokens", () => {
     expect(selectorsUsing("on-block").sort()).toEqual([...ON_ACCENT_FILL].sort());
   });
 
+  /**
+   * Both themes are glass now, and glass is a construction rather than a colour: a sheet, a
+   * blur to give it something to be in front of, and a ground for that blur to work on. Day
+   * shipped for a while with the tokens set to "no glass" (zero blur, transparent ground) and
+   * a comment saying so, which is a reasonable state to be in and an easy one to fall back
+   * into by editing one value. These are the three that cannot go back on their own.
+   */
+  it("gives the day theme a real ground to lie on", () => {
+    // The selector as it is written, not the substring: the file names the day theme in a
+    // comment first, and slicing from that read the NIGHT block and passed on its values.
+    const at = css.indexOf(':root[data-theme="day"] {');
+    expect(at).toBeGreaterThan(-1);
+    const block = css.slice(at, css.indexOf("}", at));
+    const value = (token: string) =>
+      (block.match(new RegExp(`--${token}:\\s*([^;]+);`)) ?? [])[1]?.trim();
+    // A zero blur has nothing to blur; a transparent ground leaves it nothing to blur.
+    expect(value("pane-blur")).not.toBe("0px");
+    expect(value("ground-lift")).not.toBe("transparent");
+    expect(value("ground-warm")).not.toBe("transparent");
+    // And the sheet has to stay off pure white, or it is not lighter than anything.
+    expect(value("pane")).not.toBe("#ffffff");
+  });
+
   it("declares --on-block and --accent-block together, wherever either is set", () => {
     // A block that sets one without the other inherits the odd one out from
     // whatever was declared last, which is how a fill and the text on it come to

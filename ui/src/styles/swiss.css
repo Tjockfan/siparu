@@ -75,7 +75,10 @@
 /* ---------- TOKENS · DAY ---------- */
 :root[data-theme="day"] {
   --cell: #ffffff;
-  --ink-band: #e9e7e3;
+  /* The ground the day glass lies on, and the band its headings sit in. Deepened when day
+     got its own glass: at #e9e7e3 a white pane over it was a white pane over white, and the
+     panels stopped being panels. */
+  --ink-band: #e3e0da;
   --text: #17191c;
   --muted: #6b7075;
   --band-muted: #5f6569;
@@ -107,18 +110,28 @@
   --map-land-text: rgba(0, 0, 0, 0.35);
   --ctrl-icon-filter: none;
 
-  /* Day keeps the opaque surfaces it has. A white sheet over a white ground is not glass,
-     it is nothing, and the day theme has already lost one figure that way (see tokens.test).
-     The glass pass for day is its own piece of work, with its own ground. */
-  --pane: #ffffff;
-  --pane-edge: rgba(0, 0, 0, 0.2);
-  --pane-lit: rgba(0, 0, 0, 0.2);
+  /* GLASS · DAY. The same construction as night with the light the other way up.
+     At night the ground is dark and the sheet is a lift out of it; here the ground is the
+     darker surface and the sheet is a white lying on it, so the pane must stay off pure
+     white or there is nothing for it to be lighter THAN. That was the state this theme sat
+     in while the night glass shipped: white on white, which reads as one flat sheet.
+     The lit edge inverts with it - at night the top edge catches white off a dark panel, in
+     day it is the brightest thing on a bright one and the panel's own edge does the work. */
+  --pane: rgba(255, 255, 255, 0.72);
+  --pane-edge: rgba(0, 0, 0, 0.14);
+  /* Inverted, and this is the whole difference between the two sets: at night the top edge
+     is where the sheet catches light out of a dark room, so it is drawn brighter than the
+     pane. In daylight the pane is already the brightest thing on the screen and cannot be
+     lifted further - what a real edge does there is shade, so this one darkens. */
+  --pane-lit: rgba(0, 0, 0, 0.1);
   --cell-hover: rgba(0, 0, 0, 0.05);
-  --pane-blur: 0px;
-  --cluster-gap: 2px;
-  --ground-lift: transparent;
-  --ground-warm: transparent;
-  --ground-grid: transparent;
+  --pane-blur: 20px;
+  --cluster-gap: 14px;
+  /* Daylight rather than sea light: cooler and weaker, because a bright ground shows a tint
+     far more readily than a dark one carries a glow. Same two lamps, same two corners. */
+  --ground-lift: rgba(88, 122, 154, 0.34);
+  --ground-warm: rgba(201, 42, 48, 0.13);
+  --ground-grid: rgba(0, 0, 0, 0.055);
 }
 
 /* ============================================================
@@ -1752,16 +1765,11 @@ body {
   .swiss .sm-matrix { background: var(--rule); }
 }
 
-/* Day is not glass yet, so it must not pay for one. A zero blur still promotes a compositing
-   layer; none removes it. */
-[data-theme="day"] .swiss .grid {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  background: var(--ink-band);
-  border-top: 0;
-}
-[data-theme="day"] .swiss .sm-matrix { background: var(--rule); }
-[data-theme="day"] .swiss .sp-board { background: var(--ink-band); padding: 0; }
+/* Day has its own glass now (see the day token block), so the three rules that held it on the
+   old opaque surfaces are gone: it keeps the blur, the transparent board and the matrix's
+   transparent gaps, and brings its own ground and its own lit edge. What still needs holding
+   is the browser that cannot composite a backdrop at all, and that is handled above, for both
+   themes at once. */
 
 /* ============================================================
    SYSTEM SUMMARY  (.sm-summary) - the glance, one line per unit
