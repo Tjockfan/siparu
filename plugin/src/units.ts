@@ -489,6 +489,11 @@ function unitId(id: string): string {
   return humanize(id).toLowerCase()
 }
 
+/** "Engine 0" for a numbered unit, "Port" for a named one. */
+function numberedUnit(kind: string, id: string): string {
+  return /^\d+$/.test(id) ? `${kind} ${id}` : humanize(id)
+}
+
 /**
  * Which tab a path belongs to and how to label it, or null for a path no tab claims.
  *
@@ -509,7 +514,11 @@ export function describePath(path: string): SystemReading | null {
   const sub = known && !known.sub ? null : (lookup(SYSTEM_SUB, path) ?? humanize(metric))
 
   if (path.startsWith('propulsion.') && seg.length >= 3) {
-    return { tab: 'engine', label: humanize(seg[1]!), sub }
+    // A boat with one engine usually numbers it rather than naming a side, and the bare id
+    // made a column headed "0": not a name, and not obviously an engine either. Numbered ones
+    // get the word in front of them, the way generators and tanks always have. A named one is
+    // left alone - she calls it Port, and "Engine port" is nobody's word for it.
+    return { tab: 'engine', label: numberedUnit('Engine', seg[1]!), sub }
   }
   if (path.startsWith('electrical.generators.') && seg.length >= 4) {
     return { tab: 'generator', label: `Generator ${unitId(seg[2]!)}`, sub }

@@ -57,6 +57,61 @@ export interface Snapshot {
 
 export type MetricField = Exclude<keyof Snapshot, 'ts' | 'path_values'>
 
+/**
+ * How history treats a core metric.
+ *
+ * `position` rides in pos_first/pos_last rather than in the metric bag, because a track is
+ * two numbers that belong together. `linear` averages: a speed or a temperature has a
+ * meaningful min, max and mean. `angular` and `text` keep the last value only - averaging 359
+ * and 1 gives 180, which is a heading pointing the wrong way, and there is no mean of
+ * "motoring".
+ */
+export type MetricKind = 'position' | 'linear' | 'angular' | 'text'
+
+/**
+ * Every core metric and its kind, declared once.
+ *
+ * This existed three times as hand-written lists - what the hour rollup averages, what it
+ * keeps the last of, and what a rollup row turns back into a snapshot - and a field added to
+ * the snapshot and to only some of them was recorded and then quietly lost on the way out.
+ * That is not hypothetical: `depth_datum` was rolled up and never read back, so a depth
+ * exported from any hour but today had lost the plane it was measured from.
+ *
+ * `satisfies Record<MetricField, MetricKind>` is what stops it happening again: a field added
+ * to Snapshot and not classified here does not compile.
+ */
+export const METRIC_KIND = {
+  lat: 'position',
+  lon: 'position',
+  sog: 'linear',
+  rate_of_turn: 'linear',
+  magnetic_variation: 'linear',
+  magnetic_deviation: 'linear',
+  wind_speed_apparent: 'linear',
+  wind_speed_true: 'linear',
+  wind_gust: 'linear',
+  air_temp_k: 'linear',
+  air_pressure_pa: 'linear',
+  depth: 'linear',
+  water_temp_k: 'linear',
+  gps_satellites: 'linear',
+  cog: 'angular',
+  heading_mag: 'angular',
+  heading_true: 'angular',
+  wind_angle_apparent: 'angular',
+  wind_direction_true: 'angular',
+  nav_state: 'text',
+  ais_class: 'text',
+  depth_datum: 'text'
+} as const satisfies Record<MetricField, MetricKind>
+
+/** The core metrics of the given kinds, in declaration order. */
+export function metricFields(...kinds: MetricKind[]): MetricField[] {
+  return (Object.keys(METRIC_KIND) as MetricField[]).filter((f) =>
+    kinds.includes(METRIC_KIND[f])
+  )
+}
+
 /** Per-metric aggregate inside a rollup line. Angular and string fields carry `last` only. */
 export interface MetricAgg {
   min?: number

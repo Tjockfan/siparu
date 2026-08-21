@@ -73,6 +73,30 @@ describe('bucket=1 (raw, today only)', () => {
   })
 })
 
+describe('what a bucketed row carries back', () => {
+  /**
+   * The plane a depth was measured from is recorded in every hour and was read back from
+   * none: the field was in the rollup's list and missing from the one that turns a rollup
+   * line into a snapshot. Nothing failed - the depth came out of history as a bare number,
+   * which is exactly the reading a surveyor is entitled to dismiss.
+   */
+  it('carries the depth datum out of history, not only the depth', async () => {
+    await store.append(
+      snap(YESTERDAY_NOON + 7_200_000, 5, undefined, {
+        depth: 18.4,
+        depth_datum: 'belowKeel'
+      })
+    )
+    await store.flush()
+    await engine.catchUp(NOW)
+
+    const r = await query.snapshots({ bucket: 60, order: 'asc' }, NOW)
+    const row = r.rows.find((x) => x.depth === 18.4)
+    expect(row, 'the hour holding the depth was not returned').toBeDefined()
+    expect(row?.depth_datum).toBe('belowKeel')
+  })
+})
+
 describe('bucket=60 (hourly rollups)', () => {
   it('returns one row per closed hour with last values', async () => {
     const r = await query.snapshots({ bucket: 60, order: 'asc' }, NOW)

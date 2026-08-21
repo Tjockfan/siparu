@@ -19,35 +19,22 @@ import {
   Snapshot,
   SnapshotsQuery,
   SnapshotsResult,
+  metricFields,
 } from './contract'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
 import { dayKey, startOfUtcDay } from './time'
 import { coreSeriesFor } from './units'
 
-const ALL_FIELDS: readonly MetricField[] = [
-  'lat',
-  'lon',
-  'sog',
-  'cog',
-  'heading_mag',
-  'heading_true',
-  'rate_of_turn',
-  'magnetic_variation',
-  'magnetic_deviation',
-  'nav_state',
-  'wind_speed_apparent',
-  'wind_angle_apparent',
-  'wind_speed_true',
-  'wind_gust',
-  'wind_direction_true',
-  'air_temp_k',
-  'air_pressure_pa',
-  'depth',
-  'water_temp_k',
-  'gps_satellites',
-  'ais_class'
-]
+/**
+ * The metrics a rollup row carries back out as a snapshot: everything but the position, which
+ * arrives in pos_last and is written below.
+ *
+ * This was a hand-written list and had fallen behind the rollup's: `depth_datum` was recorded
+ * every hour and never read back, so a depth from any hour but today came out of history with
+ * no plane named. It now reads the same declaration the rollup does.
+ */
+const ROLLUP_FIELDS: readonly MetricField[] = metricFields('linear', 'angular', 'text')
 
 export const LIMIT_DEFAULT = 200
 export const LIMIT_MAX = 5000
@@ -81,7 +68,7 @@ function aggToPoint(ts: number, agg: MetricAgg | undefined): PathSeriesPoint[] {
 
 function rollupToRow(r: RollupHour | RollupDay): Snapshot {
   const row = { ts: r.last_ts } as Snapshot
-  for (const field of ALL_FIELDS) {
+  for (const field of ROLLUP_FIELDS) {
     ;(row as unknown as Record<string, unknown>)[field] = r.metrics[field]?.last ?? null
   }
   row.lat = r.pos_last?.lat ?? null

@@ -117,6 +117,20 @@ describe('system readings', () => {
     expect(d?.sub).toBe('Oil pressure')
   })
 
+  /**
+   * A single-engine boat usually numbers hers rather than naming a side, and the label came
+   * straight off the path id: the column above three readings was the bare figure "0", which
+   * says nothing at all and is not even obviously an engine. Generators and tanks had been
+   * spelling their index out since the beginning; engines now do the same.
+   */
+  it('names a numbered engine rather than heading a column with a bare figure', () => {
+    expect(describePath('propulsion.0.revolutions')?.label).toBe('Engine 0')
+    expect(describePath('propulsion.1.temperature')?.label).toBe('Engine 1')
+    // A named one keeps its name: the boat calls it that, and "Engine port" is nobody's word.
+    expect(describePath('propulsion.port.revolutions')?.label).toBe('Port')
+    expect(describePath('propulsion.main.revolutions')?.label).toBe('Main')
+  })
+
   it('labels a tank by type and index, with no redundant metric under it', () => {
     const d = describePath('tanks.freshWater.0.currentLevel')
     expect(d?.label).toBe('Fresh water 0')

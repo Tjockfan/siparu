@@ -13,38 +13,20 @@
  */
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { MetricAgg, MetricField, RollupDay, RollupHour, Snapshot } from './contract'
+import { MetricAgg, MetricField, RollupDay, RollupHour, Snapshot, metricFields } from './contract'
 import { INTERNAL } from './config'
 import { Logger, Store, parseNdjson } from './store'
 import { dayKey, dayOfHourKey, monthOfHourKey } from './time'
 
-/** Linear numeric fields get min/max/avg/n; angular & string fields keep last only. */
-const LINEAR_FIELDS: readonly MetricField[] = [
-  'sog',
-  'wind_speed_apparent',
-  'wind_speed_true',
-  'wind_gust',
-  'air_temp_k',
-  'air_pressure_pa',
-  'depth',
-  'water_temp_k',
-  'gps_satellites',
-  'rate_of_turn',
-  'magnetic_variation',
-  'magnetic_deviation'
-]
-const LAST_ONLY_FIELDS: readonly MetricField[] = [
-  'cog',
-  'heading_mag',
-  'heading_true',
-  'wind_angle_apparent',
-  'wind_direction_true',
-  'nav_state',
-  'ais_class',
-  // The plane the depth was read from rides its own reading into history:
-  // an exported depth without its datum is a number a surveyor can dismiss.
-  'depth_datum'
-]
+/**
+ * Linear numeric fields get min/max/avg/n; angular and string fields keep last only.
+ *
+ * Read off the one declaration in contract.ts rather than written out here. Both lists used
+ * to be, and a field classified in one place and forgotten in another is how a reading gets
+ * recorded and then lost on the way back out - see METRIC_KIND for the one that did.
+ */
+const LINEAR_FIELDS: readonly MetricField[] = metricFields('linear')
+const LAST_ONLY_FIELDS: readonly MetricField[] = metricFields('angular', 'text')
 
 /**
  * Clamp a query window to [epoch, now]. No data exists before 1970 or in the
