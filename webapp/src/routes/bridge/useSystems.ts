@@ -90,6 +90,84 @@ export function toMatrix(gauges: SystemGauge[]): SystemMatrix {
   return { cols, rows: rowOrder.map((sub) => ({ sub, cells: at[sub] })) };
 }
 
+/** One instance's row of the summary: the same parameters as every other row. */
+export interface SystemSummaryRow {
+  /** The instance, "Port" or "Generator 1", as the matrix would head its column. */
+  label: string;
+  /** One cell per summary parameter, in that order, absent where this instance is silent. */
+  cells: (SystemGauge | undefined)[];
+}
+
+export interface SystemSummary {
+  /** The parameters every row reads, at most three, in the order they are checked. */
+  params: string[];
+  rows: SystemSummaryRow[];
+  /**
+   * Everything the summary is not showing, as a matrix of its own.
+   *
+   * The full matrix would repeat the three that are already on the rows above, which makes
+   * "9 more readings" open a table of twelve and turns the count into a lie. This holds the
+   * nine, so the label and what appears under it are the same fact.
+   */
+  rest: SystemMatrix;
+}
+
+/**
+ * The readings a person checks first, in the order they are checked.
+ *
+ * A ranking is a product judgement and it belongs on this side, not in units.ts: that file
+ * answers what a path IS, shared with the plugin and the shore, and it must not start
+ * carrying which readings a screen thinks are important. Matched on the path rather than the
+ * label because a label is a rendering that may be reworded, and this list must survive that.
+ *
+ * It is not a filter. Anything not listed keeps its place behind the ones that are, so a boat
+ * reporting parameters nobody here anticipated still gets a summary from her own order rather
+ * than an empty one.
+ */
+const HEAD_ORDER = ["revolutions", "temperature", "oilPressure", "voltage", "current"] as const;
+
+const HEAD_LIMIT = 3;
+
+function headRank(row: SystemMatrixRow): number {
+  const i = HEAD_ORDER.findIndex((p) =>
+    Object.values(row.cells).some((g) => g?.path.endsWith(`.${p}`))
+  );
+  return i === -1 ? HEAD_ORDER.length : i;
+}
+
+/**
+ * A panel reduced to one row per instance, and a count of what that leaves out.
+ *
+ * The matrix is the whole truth and stays one click away; this is the glance. Three engines
+ * with a dozen parameters each put 36 numbers on screen at one weight, which is the state
+ * this exists to end: the eye had nowhere to land.
+ *
+ * The chosen parameters are the panel's, not each instance's. A row showing rpm, coolant and
+ * oil beside one showing rpm and boost pressure would put two different readings under one
+ * another, which is the comparison the matrix exists to make possible and the summary must
+ * not break. An instance silent on a summary parameter gets no cell, the same as in the
+ * matrix - never an invented one.
+ *
+ * Instance order is the boat's, as everywhere else. Parameter order is not: she reports how
+ * she is wired, and a boat that happens to send load before oil pressure must not push oil
+ * pressure out of the three.
+ */
+export function toSummary(gauges: SystemGauge[], limit = HEAD_LIMIT): SystemSummary {
+  const m = toMatrix(gauges);
+  // Sorted by rank alone, which leaves equal ranks - everything unranked - in the boat's own
+  // first-seen order. That is what the fallback rides on.
+  const ranked = [...m.rows].sort((a, b) => headRank(a) - headRank(b));
+  const head = ranked.slice(0, limit);
+  const shown = new Set(head.map((r) => r.sub));
+  return {
+    params: head.map((r) => r.sub),
+    rows: m.cols.map((label) => ({ label, cells: head.map((r) => r.cells[label]) })),
+    // The boat's own row order for the remainder, not the ranking's: the ranking exists to
+    // choose the three, and past those it has nothing to say.
+    rest: { cols: m.cols, rows: m.rows.filter((r) => !shown.has(r.sub)) },
+  };
+}
+
 /**
  * The panels this frame justifies, in the order they are drawn, empty ones dropped.
  *

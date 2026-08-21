@@ -13,7 +13,13 @@
  * measured on the shore's version and reverted there. Here the cells grow to fill their row.
  */
 import { Fragment, type CSSProperties } from "react";
-import { systemPanels, toMatrix, type SystemGauge, type SystemMatrix } from "./useSystems";
+import {
+  systemPanels,
+  toSummary,
+  type SystemGauge,
+  type SystemMatrix,
+  type SystemSummary,
+} from "./useSystems";
 import { quietFor, quietSince } from "../../lib/age";
 import type { LiveSnapshot } from "../../lib/api";
 
@@ -82,6 +88,77 @@ function Matrix({ m }: { m: SystemMatrix }) {
         </Fragment>
       ))}
     </div>
+  );
+}
+
+/**
+ * The glance: one line per engine or generator, the same three readings on each.
+ *
+ * What this replaces is a wall. Three engines reporting a dozen parameters each is 36 figures
+ * at one weight, and an owner opening the screen to ask "is she running right" had to read all
+ * of them to find out. The rest is not gone, it is behind the disclosure below - the matrix is
+ * still the whole truth, and the readings that are not on this line are the ones nobody checks
+ * first.
+ *
+ * A silent instance keeps its gap rather than borrowing a neighbour's figure, the same rule
+ * the matrix follows.
+ */
+function SummaryRow({ label, cells, params }: { label: string; cells: (SystemGauge | undefined)[]; params: string[] }) {
+  const t = tone(label);
+  return (
+    <div className="sms-row">
+      <div className={`sms-l${t ? ` sm-${t}` : ""}`}>{headLabel(label)}</div>
+      {cells.map((g, i) => {
+        const quiet = g ? quietSince(g.ageS) : null;
+        return (
+          <div className={`sms-c${quiet !== null ? " quiet" : ""}`} key={params[i]}>
+            {g ? (
+              <>
+                <span className="sms-v">{g.value}</span>
+                <span className="sms-k">{params[i]}</span>
+                {/* The parameter name stays: it is the only thing naming this column, and a
+                    cell that swapped it for an age would leave the reader working out which
+                    reading had gone quiet. The age goes underneath, as it does in the
+                    matrix. */}
+                {quiet !== null && <span className="sms-age">{quietFor(quiet)}</span>}
+              </>
+            ) : (
+              /* This instance does not report this parameter. The column keeps its place so the
+                 rows still read across, and nothing is invented to fill it. */
+              <span className="sms-k" aria-hidden="true" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Summary({ s }: { s: SystemSummary }) {
+  return (
+    <>
+      {/* The parameter count is the boat's, so it reaches CSS as a variable rather than a
+          written-down number, exactly as the matrix column count does. */}
+      <div className="sm-summary" style={{ "--sms-cols": s.params.length } as CSSProperties}>
+        {s.rows.map((r) => (
+          <SummaryRow key={r.label} label={r.label} cells={r.cells} params={s.params} />
+        ))}
+      </div>
+      {/*
+        Closed by default, and that is the point of the whole panel: the summary is what the
+        screen answers with, the matrix is what it answers with when asked. A native disclosure
+        rather than a state flag, because it comes with the keyboard and the screen reader
+        already knowing what it is.
+      */}
+      {s.rest.rows.length > 0 && (
+        <details className="sm-more">
+          <summary>
+            {s.rest.rows.length} more {s.rest.rows.length === 1 ? "reading" : "readings"}
+          </summary>
+          <Matrix m={s.rest} />
+        </details>
+      )}
+    </>
   );
 }
 
@@ -180,9 +257,11 @@ export default function SystemsMarine({
     );
   }
 
+  // Engines and generators lead with the summary. A boat reporting only the three a person
+  // checks first has nothing behind the disclosure, and it is not drawn.
   return (
     <div className="sy-wrap">
-      <Matrix m={toMatrix(panel.gauges)} />
+      <Summary s={toSummary(panel.gauges)} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { systemPanels, toMatrix, type SystemGauge } from "./useSystems";
+import { systemPanels, toMatrix, toSummary, type SystemGauge } from "./useSystems";
 import type { LiveSnapshot } from "../../lib/api";
 
 function snap(paths: Record<string, number | string>): LiveSnapshot {
@@ -102,5 +102,114 @@ describe("a gauge's age counts the frame it arrived in", () => {
 
   it("defaults to the age aboard when no frame age is given", () => {
     expect(ageOfPort()).toBe(4);
+  });
+});
+
+describe("toSummary", () => {
+  /**
+   * The matrix draws every reading an engine has, all at one weight: three engines with a
+   * dozen parameters each is 36 numbers on the screen before the eye has found the first
+   * one. The summary is what a person actually checks - is she turning, is she hot, does
+   * she have oil pressure - with the rest a click away.
+   */
+  it("gives each instance the three readings a person checks first", () => {
+    const s = snap({
+      // Deliberately in an order that is NOT the order they should be read in: the boat
+      // reports how she is wired, and load arriving before oil pressure must not push oil
+      // pressure out of the summary.
+      "propulsion.port.engineLoad": 0.63,
+      "propulsion.port.oilPressure": 420000,
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.port.temperature": 355.15,
+      "propulsion.port.runTime": 4312800,
+    });
+    const engine = systemPanels(s).find((p) => p.key === "engine")!;
+    const sum = toSummary(engine.gauges);
+    expect(sum.rows.map((r) => r.label)).toEqual(["Port"]);
+    expect(sum.params).toEqual(["Revolutions", "Temperature", "Oil pressure"]);
+  });
+
+  it("counts what it is holding back, so the screen can say so", () => {
+    const s = snap({
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.port.temperature": 355.15,
+      "propulsion.port.oilPressure": 420000,
+      "propulsion.port.engineLoad": 0.63,
+      "propulsion.port.runTime": 4312800,
+      "propulsion.starboard.revolutions": 25.9,
+      "propulsion.starboard.boostPressure": 170000,
+    });
+    const engine = systemPanels(s).find((p) => p.key === "engine")!;
+    const sum = toSummary(engine.gauges);
+    // Parameters, not cells: what opening the matrix adds is rows. The summary shows the
+    // panel's first three (rpm, coolant, oil); engine load, run time and boost pressure are
+    // what it is holding back, including one that only the starboard engine reports.
+    expect(sum.rest.rows.map((r) => r.sub)).toEqual([
+      "Engine load",
+      "Run time",
+      "Boost pressure",
+    ]);
+    // And the three already on the summary rows are not repeated underneath.
+    expect(sum.rest.rows.some((r) => sum.params.includes(r.sub))).toBe(false);
+  });
+
+  /**
+   * The rows share their parameters, so an instance that does not report one has a gap
+   * rather than somebody else's reading shifted into its place.
+   */
+  it("leaves a gap where an instance is silent on a summary parameter", () => {
+    const s = snap({
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.port.temperature": 355.15,
+      "propulsion.starboard.revolutions": 25.9,
+    });
+    const engine = systemPanels(s).find((p) => p.key === "engine")!;
+    const sum = toSummary(engine.gauges);
+    expect(sum.params).toEqual(["Revolutions", "Temperature"]);
+    const stbd = sum.rows.find((r) => r.label === "Starboard")!;
+    expect(stbd.cells[0]?.value).toBe("1554 rpm");
+    expect(stbd.cells[1]).toBeUndefined();
+  });
+
+  /** A boat that reports nothing beyond the summary has nothing to open. */
+  it("holds nothing back when the boat has nothing more to say", () => {
+    const s = snap({
+      "propulsion.port.revolutions": 26.0,
+      "propulsion.port.temperature": 355.15,
+    });
+    const engine = systemPanels(s).find((p) => p.key === "engine")!;
+    expect(toSummary(engine.gauges).rest.rows).toEqual([]);
+  });
+
+  /**
+   * A generator is not an engine with a different name. Volts and amps are what a person
+   * checks on one, and the same ranking has to reach them without a second list.
+   */
+  it("reads a generator by its own three", () => {
+    const s = snap({
+      "electrical.generators.0.runTime": 1206000,
+      "electrical.generators.0.current": 23.4,
+      "electrical.generators.0.voltage": 230.1,
+      "electrical.generators.0.revolutions": 25.0,
+    });
+    const gen = systemPanels(s).find((p) => p.key === "generator")!;
+    expect(toSummary(gen.gauges).params).toEqual(["Revolutions", "Voltage", "Current"]);
+  });
+
+  /**
+   * A boat reporting only parameters nobody ranked still gets a summary. Falling back to her
+   * own order is what keeps the screen from going blank on hardware we have not met.
+   */
+  it("falls back to the boat's own order for readings it does not rank", () => {
+    const s = snap({
+      "propulsion.port.boostPressure": 170000,
+      "propulsion.port.engineLoad": 0.63,
+      "propulsion.port.runTime": 4312800,
+      "propulsion.port.alternatorVoltage": 28.3,
+    });
+    const engine = systemPanels(s).find((p) => p.key === "engine")!;
+    const sum = toSummary(engine.gauges);
+    expect(sum.params).toHaveLength(3);
+    expect(sum.params[0]).toBe("Boost pressure");
   });
 });

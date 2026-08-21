@@ -1723,6 +1723,124 @@ body {
 [data-theme="day"] .swiss .sp-board { background: var(--ink-band); padding: 0; }
 
 /* ============================================================
+   SYSTEM SUMMARY  (.sm-summary) - the glance, one line per unit
+   ============================================================
+   What the panel answers with before it is asked anything. One row per engine or generator,
+   the same three parameters across every row so they still read down the column, and the rest
+   of the readings behind the disclosure below. The label rail matches the matrix's, which is
+   what makes the two look like one panel opening rather than two panels. */
+.swiss .sm-summary {
+  display: grid;
+  /* Label rail, then one track per summary parameter, the count handed in as --sms-cols the
+   * way the matrix does it. auto-fit was wrong here: it fits as many tracks as the width
+   * allows and lets the rest overflow, which drew a generator's volts on top of its rpm.
+   *
+   * One grid for the whole panel rather than one per row, because the tracks have to line up
+   * DOWN the panel: three engines with labels of different widths each sized their own rail
+   * and the readings stopped forming columns, which is the comparison these rows exist for. */
+  grid-template-columns: minmax(66px, auto) repeat(var(--sms-cols, 1), minmax(0, 1fr));
+  gap: 1px;
+  background: transparent;
+  border: 1px solid var(--pane-edge);
+}
+/* The row is a grouping for the reader of this file, not a box: its cells belong to the grid
+   above so they share its tracks. */
+.swiss .sms-row { display: contents; }
+.swiss .sms-l {
+  padding: 10px;
+  font-family: var(--sp-font);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--cell);
+}
+.swiss .sms-l.sm-port { background: var(--nav-port-bg); color: var(--nav-port-fg); }
+.swiss .sms-l.sm-stbd { background: var(--nav-stbd-bg); color: var(--nav-stbd-fg); }
+.swiss .sms-l.sm-center { background: var(--nav-center-bg); color: var(--nav-center-fg); }
+.swiss .sms-c {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 10px;
+  min-width: 0;
+  background: var(--pane);
+}
+.swiss .sms-v {
+  font-family: var(--sp-mono);
+  font-variant-numeric: tabular-nums;
+  /* Sized against the row it sits in rather than the viewport: three of these share a panel
+   * that is a third of the board on a wide screen and the whole pane on a phone. */
+  font-size: clamp(15px, 2vw, 24px);
+  line-height: 1;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The parameter is named under its own figure rather than in a header band: these rows are
+ * read across, one unit at a time, and a header three rows up is not where the eye is. */
+.swiss .sms-k {
+  font-family: var(--sp-font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* An absent reading still occupies its column, so the rows keep reading down. */
+  min-height: 11px;
+}
+/* A gauge that has gone quiet keeps its last figure and loses its confidence, and its label
+ * slot says how long it has been silent instead of naming the parameter again. */
+.swiss .sms-c.quiet .sms-v { color: var(--muted); }
+.swiss .sms-c.quiet .sms-k { color: var(--muted); }
+.swiss .sms-age {
+  font-family: var(--sp-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  white-space: nowrap;
+}
+
+/* The disclosure holding the full matrix. Closed on arrival: the summary is the answer, the
+   matrix is the answer to a second question. */
+.swiss .sm-more { margin-top: var(--cluster-gap, 10px); }
+.swiss .sm-more > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 10px;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--pane-edge);
+  user-select: none;
+}
+.swiss .sm-more > summary::-webkit-details-marker { display: none; }
+.swiss .sm-more > summary::before {
+  content: "+ ";
+  color: var(--accent);
+}
+.swiss .sm-more[open] > summary::before { content: "- "; }
+.swiss .sm-more[open] > summary { margin-bottom: 1px; }
+/* On a phone the matrix wants more width than the pane has (a label rail plus a track per
+   engine), so it scrolls inside the disclosure rather than making the page wide - the same
+   rule the logbook table follows. */
+.swiss .sm-more[open] { overflow-x: auto; }
+@media (hover: hover) {
+  .swiss .sm-more > summary:hover { background: var(--cell-hover); color: var(--text); }
+}
+
+/* ============================================================
    SYSTEM MATRIX  (.sm-matrix) - engines and generators
    ============================================================
    One parameter per row, one instance per column, so a three-engine boat's three tachometers
