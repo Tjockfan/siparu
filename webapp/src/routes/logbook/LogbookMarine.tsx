@@ -4,7 +4,14 @@
 import { useState, type CSSProperties } from "react";
 import { type Snapshot } from "../../lib/api";
 import { dateToInput } from "../../lib/format";
+import ColumnPicker from "./ColumnPicker";
 import { logbookColumns, type LogColumn, type WindUnit } from "./columns";
+import {
+  loadSelection,
+  saveSelection,
+  visibleColumns,
+  type ColumnSelection,
+} from "./columnSelection";
 import {
   useLogbookLive,
   useLogbookDay,
@@ -34,7 +41,26 @@ export default function LogbookMarine() {
       return n;
     });
 
-  const shared = { mode, setMode, windUnit, toggleWind };
+  // Which columns are drawn, and the panel that changes them. Held here rather than in each
+  // view so switching Live/Day does not reopen the picker or forget the choice.
+  const [selection, setSelection] = useState<ColumnSelection>(loadSelection);
+  const [picking, setPicking] = useState(false);
+  const applySelection = (sel: ColumnSelection) => {
+    setSelection(sel);
+    saveSelection(sel);
+    setPicking(false);
+  };
+
+  const shared = {
+    mode,
+    setMode,
+    windUnit,
+    toggleWind,
+    selection,
+    picking,
+    setPicking,
+    applySelection,
+  };
   return (
     <div className="lb">
       {mode === "live" ? <LiveView {...shared} /> : <DayView {...shared} />}
@@ -47,6 +73,10 @@ interface ViewProps {
   setMode: (m: Mode) => void;
   windUnit: WindUnit;
   toggleWind: () => void;
+  selection: ColumnSelection;
+  picking: boolean;
+  setPicking: (v: boolean) => void;
+  applySelection: (sel: ColumnSelection) => void;
 }
 
 function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
@@ -84,6 +114,20 @@ function gridVar(cols: LogColumn[]): CSSProperties {
   return { "--lb-cols": cols.length - 1 } as CSSProperties;
 }
 
+/**
+ * The button that opens the picker, and its count.
+ *
+ * The count excludes the time column, which is not a choice: a person reading "Columns 7" and
+ * finding six he can turn off has been given a number that is not about anything he can do.
+ */
+function ColumnsButton({ shown, open, onOpen }: { shown: number; open: boolean; onOpen: () => void }) {
+  return (
+    <button className={`lb-colbtn${open ? " on" : ""}`} onClick={onOpen}>
+      Columns · <b>{shown}</b>
+    </button>
+  );
+}
+
 function Cols({ cols, toggleWind }: { cols: LogColumn[]; toggleWind: () => void }) {
   return (
     <div className="lb-cols" style={gridVar(cols)}>
@@ -100,9 +144,19 @@ function Cols({ cols, toggleWind }: { cols: LogColumn[]; toggleWind: () => void 
   );
 }
 
-function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
+function LiveView({
+  mode,
+  setMode,
+  windUnit,
+  toggleWind,
+  selection,
+  picking,
+  setPicking,
+  applySelection,
+}: ViewProps) {
   const { granularity, changeGran, snaps, err, busy, hasMore, loadMore } = useLogbookLive();
-  const cols = logbookColumns(snaps, windUnit);
+  const earned = logbookColumns(snaps, windUnit);
+  const cols = visibleColumns(earned, selection);
   return (
     <>
       <div className="lb-ctrl">
@@ -112,8 +166,17 @@ function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
             <button key={g} className={granularity === g ? "on" : ""} onClick={() => changeGran(g)}>{g}</button>
           ))}
         </div>
+        <ColumnsButton shown={cols.length - 1} open={picking} onOpen={() => setPicking(!picking)} />
         <span className="lb-count">{snaps.length}</span>
       </div>
+      {picking && (
+        <ColumnPicker
+          cols={earned}
+          applied={selection}
+          onApply={applySelection}
+          onCancel={() => setPicking(false)}
+        />
+      )}
       <Cols cols={cols} toggleWind={toggleWind} />
       <div className="lb-day"><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
@@ -136,9 +199,19 @@ function LiveView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
   );
 }
 
-function DayView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
+function DayView({
+  mode,
+  setMode,
+  windUnit,
+  toggleWind,
+  selection,
+  picking,
+  setPicking,
+  applySelection,
+}: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
-  const cols = logbookColumns(snaps, windUnit);
+  const earned = logbookColumns(snaps, windUnit);
+  const cols = visibleColumns(earned, selection);
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
   const dayLabel = isToday
@@ -164,7 +237,16 @@ function DayView({ mode, setMode, windUnit, toggleWind }: ViewProps) {
           <button onClick={nextDay} disabled={isToday} aria-label="Next day">›</button>
           <button onClick={goToday} disabled={isToday}>Now</button>
         </div>
+        <ColumnsButton shown={cols.length - 1} open={picking} onOpen={() => setPicking(!picking)} />
       </div>
+      {picking && (
+        <ColumnPicker
+          cols={earned}
+          applied={selection}
+          onApply={applySelection}
+          onCancel={() => setPicking(false)}
+        />
+      )}
       <Cols cols={cols} toggleWind={toggleWind} />
       <div className="lb-day"><span>{dayLabel}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}

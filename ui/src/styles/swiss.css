@@ -964,6 +964,83 @@ body {
   margin-left: auto; font-family: var(--sp-font); font-size: 10px; font-weight: 700;
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
 }
+
+/* ============================================================
+   COLUMN PICKER  (.lb-pick) - the two books
+   ============================================================
+   A panel under the controls rather than a floating layer: on a phone the choice is the
+   screen's whole business for a moment, and a popover over a table that scrolls sideways is a
+   fight nobody wins. Nothing in here reaches the table until the button at the foot is
+   pressed. */
+.swiss .lb-colbtn {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 6px 9px; background: var(--cell); color: var(--text);
+  border: 1.5px solid var(--rule); cursor: pointer;
+}
+.swiss .lb-colbtn b { color: var(--accent); font-weight: 700; }
+.swiss .lb-colbtn.on { background: var(--text); color: var(--cell); }
+.swiss .lb-colbtn.on b { color: var(--cell); }
+.swiss .lb-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 2px solid var(--rule);
+  background: var(--pane);
+}
+.swiss .lbp-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.swiss .lbp-k,
+.swiss .lbp-n,
+.swiss .lbp-s {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.swiss .lbp-k { color: var(--muted); }
+.swiss .lbp-n { color: var(--text); }
+.swiss .lbp-s { color: var(--muted); font-weight: 600; letter-spacing: 0.06em; }
+.swiss .lbp-presets button,
+.swiss .lbp-all button {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 5px 9px; background: var(--cell); color: var(--text);
+  border: 1.5px solid var(--rule); cursor: pointer;
+}
+.swiss .lbp-presets button.on { background: var(--text); color: var(--cell); }
+/* Two books side by side where there is room, one under the other on a phone. */
+.swiss .lbp-books { display: flex; flex-wrap: wrap; gap: 12px 26px; }
+.swiss .lbp-book { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.swiss .lbp-h { display: flex; align-items: baseline; gap: 8px; }
+.swiss .lbp-all { margin-left: auto; display: flex; gap: 4px; }
+.swiss .lbp-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+/* A chip carries its own state in a square block at its left, so the choice reads at a glance
+   rather than from a shade of grey. */
+.swiss .lbp-c {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--sp-mono); font-size: 10px; letter-spacing: 0.02em;
+  padding: 5px 8px; background: var(--cell); color: var(--muted);
+  border: 1.5px solid var(--rule); cursor: pointer;
+}
+.swiss .lbp-c::before {
+  content: ""; width: 7px; height: 7px; flex: none;
+  border: 1.5px solid var(--muted); background: transparent;
+}
+.swiss .lbp-c.on { color: var(--text); }
+.swiss .lbp-c.on::before { background: var(--accent); border-color: var(--accent); }
+.swiss .lbp-act { display: flex; justify-content: flex-end; gap: 8px; }
+.swiss .lbp-act button {
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 7px 14px; background: var(--cell); color: var(--text);
+  border: 1.5px solid var(--rule); cursor: pointer;
+}
+.swiss .lbp-act .lbp-go { background: var(--accent-block); color: var(--on-block); border-color: var(--accent-block); }
+/* Nothing to apply: the draft is what the table is already showing. */
+.swiss .lbp-act .lbp-go:disabled { background: var(--cell); color: var(--muted); border-color: var(--rule); cursor: default; }
+@media (hover: hover) {
+  .swiss .lbp-c:hover,
+  .swiss .lbp-presets button:hover,
+  .swiss .lbp-all button:hover,
+  .swiss .lb-colbtn:hover { background: var(--cell-hover); }
+  .swiss .lbp-act .lbp-go:disabled:hover { background: var(--cell); }
+}
 .swiss .lb-date { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .swiss .lb-date .dt {
   font-family: var(--sp-font); font-size: 12px; font-weight: 600; color: var(--text);

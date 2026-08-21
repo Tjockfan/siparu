@@ -20,7 +20,13 @@ const css = readFileSync(fileURLToPath(new URL("./swiss.css", import.meta.url)),
  * check what the new rule is painted on; a test that only counted them would go
  * green for a fourth rule on a white card.
  */
-const ON_ACCENT_FILL = [".swiss .btn.primary", ".swiss .pair.asking .t"];
+const ON_ACCENT_FILL = [
+  ".swiss .btn.primary",
+  ".swiss .pair.asking .t",
+  // The column picker's apply button: an accent fill while there is something to apply, and it
+  // gives the fill up along with this colour when there is not (see the :disabled rule).
+  ".swiss .lbp-act .lbp-go",
+];
 
 /** Selectors of every rule whose body mentions `var(--<token>)`. */
 function selectorsUsing(token: string): string[] {

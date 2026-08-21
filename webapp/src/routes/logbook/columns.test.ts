@@ -114,3 +114,117 @@ describe("logbookColumns", () => {
     expect(at("ts")).toMatch(/^\d{2}:\d{2}$/);
   });
 });
+
+describe("the two books", () => {
+  /**
+   * A logbook is kept twice on a ship: the chief officer's, and the engineer's. The screen had
+   * only the first, so a boat reporting three engines put none of them in her log at all.
+   */
+  it("files the navigation columns under the bridge book", () => {
+    const cols = logbookColumns([row({ sog: 4.1, depth: 18.2 })], "kn");
+    expect(cols.every((c) => c.book === "bridge")).toBe(true);
+  });
+
+  it("earns an engine column from a gauge the boat actually reported", () => {
+    const cols = logbookColumns(
+      [row({ path_values: { "propulsion.port.revolutions": 26.0 } })],
+      "kn"
+    );
+    const eng = cols.filter((c) => c.book === "engine");
+    expect(eng.map((c) => c.head)).toEqual(["P RPM"]);
+    expect(eng[0].cell(row({ path_values: { "propulsion.port.revolutions": 26.0 } }))).toBe("1560");
+  });
+
+  /**
+   * The rule the whole screen keeps, applied to the second book: a boat with one engine is not
+   * offered three tachometer columns, and never was offered them by a list somebody wrote down.
+   */
+  it("offers one engine's columns to a boat with one engine, and three to a boat with three", () => {
+    const single = logbookColumns(
+      [row({ path_values: { "propulsion.0.revolutions": 24.0, "propulsion.0.temperature": 355 } })],
+      "kn"
+    );
+    expect(single.filter((c) => c.book === "engine").map((c) => c.head)).toEqual([
+      "E0 RPM",
+      "E0 TEMP",
+    ]);
+
+    const triple = logbookColumns(
+      [
+        row({
+          path_values: {
+            "propulsion.port.revolutions": 26.0,
+            "propulsion.center.revolutions": 26.1,
+            "propulsion.starboard.revolutions": 25.9,
+          },
+        }),
+      ],
+      "kn"
+    );
+    expect(triple.filter((c) => c.book === "engine").map((c) => c.head)).toEqual([
+      "P RPM",
+      "C RPM",
+      "S RPM",
+    ]);
+  });
+
+  it("keeps a generator apart from an engine in the same book", () => {
+    const cols = logbookColumns(
+      [row({ path_values: { "electrical.generators.0.voltage": 230.1 } })],
+      "kn"
+    );
+    expect(cols.filter((c) => c.book === "engine").map((c) => c.head)).toEqual(["G0 VOLT"]);
+  });
+
+  /** A path no reading describes is not given a column headed with a guess. */
+  it("draws no column for a path it cannot name", () => {
+    const cols = logbookColumns([row({ path_values: { "sensors.foo.bar": 1 } })], "kn");
+    expect(cols.filter((c) => c.book === "engine")).toEqual([]);
+  });
+
+  /**
+   * Two columns headed the same thing are worse than one column missing: the reader picks
+   * "P GEARBOX" out of a list of forty and gets whichever of the two came first. It happened
+   * on the first boat with a gearbox, where oil temperature and oil pressure both shortened to
+   * their first word.
+   */
+  it("heads no two gauges of one boat the same way", () => {
+    const paths: Record<string, number> = {};
+    for (const id of ["port", "center", "starboard"]) {
+      for (const m of [
+        "revolutions",
+        "temperature",
+        "oilPressure",
+        "oilTemperature",
+        "alternatorVoltage",
+        "engineLoad",
+        "boostPressure",
+        "runTime",
+        "transmission.oilTemperature",
+        "transmission.oilPressure"
+      ]) {
+        paths[`propulsion.${id}.${m}`] = 1;
+      }
+      paths[`propulsion.${id}.fuel.rate`] = 1;
+      paths[`propulsion.${id}.fuel.used`] = 1;
+    }
+    for (const g of ["0", "1"]) {
+      for (const m of ["revolutions", "voltage", "current", "runTime"]) {
+        paths[`electrical.generators.${g}.${m}`] = 1;
+      }
+    }
+    const heads = logbookColumns([row({ path_values: paths })], "kn")
+      .filter((c) => c.book === "engine")
+      .map((c) => c.head);
+    expect(heads.length).toBeGreaterThan(30);
+    expect(new Set(heads).size).toBe(heads.length);
+  });
+
+  it("completes the bridge book the mockup drew: course, apparent wind, air and sea", () => {
+    const cols = logbookColumns(
+      [row({ cog: 1.9, wind_angle_apparent: 0.7, air_temp_k: 295, water_temp_k: 292 })],
+      "kn"
+    );
+    expect(cols.map((c) => c.head)).toEqual(["UTC", "COG", "AWA", "AIR", "SEA"]);
+  });
+});

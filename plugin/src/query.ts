@@ -73,6 +73,16 @@ function rollupToRow(r: RollupHour | RollupDay): Snapshot {
   }
   row.lat = r.pos_last?.lat ?? null
   row.lon = r.pos_last?.lon ?? null
+
+  // The dynamic gauges too. They are recorded every hour and were left out of the row, so a
+  // logbook could offer an engineer's column for today and none for yesterday: the same boat,
+  // the same recording, a table losing half its columns the moment an hour closed. Absent
+  // rather than empty on a boat that reports none, exactly as in the raw record.
+  const gauges: Record<string, number> = {}
+  for (const [path, agg] of Object.entries(r.path_metrics ?? {})) {
+    if (typeof agg.last === 'number') gauges[path] = agg.last
+  }
+  if (Object.keys(gauges).length > 0) row.path_values = gauges
   return row
 }
 

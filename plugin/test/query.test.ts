@@ -80,6 +80,18 @@ describe('what a bucketed row carries back', () => {
    * line into a snapshot. Nothing failed - the depth came out of history as a bare number,
    * which is exactly the reading a surveyor is entitled to dismiss.
    */
+  /**
+   * The engine gauges are in the rollup (path_metrics) and were not in the row it produced, so
+   * the logbook could offer an engineer's column for today and none for yesterday: the same
+   * boat, the same recording, a table that lost half its columns as soon as the hour closed.
+   */
+  it('carries the engine gauges out of history, not only the navigation ones', async () => {
+    const r = await query.snapshots({ bucket: 60, order: 'asc' }, NOW)
+    const withRpm = r.rows.filter((x) => typeof x.path_values?.[RPM] === 'number')
+    expect(withRpm.length, 'no hourly row carried an engine gauge').toBeGreaterThan(0)
+    expect(withRpm[0]?.path_values?.[RPM]).toBeGreaterThan(0)
+  })
+
   it('carries the depth datum out of history, not only the depth', async () => {
     await store.append(
       snap(YESTERDAY_NOON + 7_200_000, 5, undefined, {
