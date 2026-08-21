@@ -77,3 +77,30 @@ describe("toMatrix", () => {
     expect(m.rows[1].cells["Port"]?.value).toBe("started");
   });
 });
+
+/**
+ * A gauge's age has two halves: how long ago the instrument spoke, measured aboard, and how
+ * long ago the frame carrying that measurement was built. The panel judges on the sum. Reading
+ * the first alone is how a boat that went off the air keeps a full set of confident engine
+ * readings on screen - the frame stops arriving, its ages freeze, and the poller holds the
+ * last one deliberately.
+ */
+describe("a gauge's age counts the frame it arrived in", () => {
+  const frame = {
+    ts: 1_770_000_000_000,
+    paths: { "propulsion.port.revolutions": 1590 },
+    path_ages: { "propulsion.port.revolutions": 4 },
+  } as unknown as LiveSnapshot;
+
+  const ageOfPort = (frameAgeS?: number) =>
+    systemPanels(frame, frameAgeS).flatMap((p) => p.gauges).find((g) => g.path.endsWith("revolutions"))?.ageS;
+
+  it("adds the frame's own age to the reading's", () => {
+    expect(ageOfPort(0)).toBe(4);
+    expect(ageOfPort(3600)).toBe(3604);
+  });
+
+  it("defaults to the age aboard when no frame age is given", () => {
+    expect(ageOfPort()).toBe(4);
+  });
+});

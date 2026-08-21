@@ -136,8 +136,12 @@ function Cell({ g }: { g: SystemGauge }) {
   );
 }
 
-export default function SystemsMarine({ snap, tab }: { snap: LiveSnapshot | null; tab: string }) {
-  const panel = systemPanels(snap).find((p) => p.key === tab);
+export default function SystemsMarine({
+  snap,
+  tab,
+  frameAgeS = 0,
+}: { snap: LiveSnapshot | null; tab: string; frameAgeS?: number }) {
+  const panel = systemPanels(snap, frameAgeS).find((p) => p.key === tab);
 
   // The tab row only offers a panel this boat has, so this is the case where she stopped
   // reporting between the row being drawn and this rendering: say so rather than draw nothing.

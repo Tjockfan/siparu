@@ -116,13 +116,24 @@ export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => 
   // boat has put a value behind it.
   const has = (v: unknown) => loading || v !== null;
 
-  // How long each instrument has been silent, asked one cell at a time. The frame's own age
-  // cannot answer this: it is rebuilt on every poll whether or not anything was measured, so a
-  // boat sailing on a live GPS reports a healthy frame while her wind sensor has been dead for
-  // hours. The plugin measures these on the bus and sends one per field (contract: field_ages).
-  // `quiet` is the age when it is past the threshold and null while the reading is current, so
-  // the cells below both fade and print from the same call.
-  const quiet = (f: MetricField) => quietSince(d.snap?.field_ages?.[f]);
+  // How long each instrument has been silent, asked one cell at a time, and counted from here
+  // rather than from aboard.
+  //
+  // The frame's own age cannot answer this on its own: it is rebuilt on every poll whether or
+  // not anything was measured, so a boat sailing on a live GPS reports a healthy frame while
+  // her wind sensor has been dead for hours. Neither can the field's age on its own: those are
+  // measured aboard when the frame is built, so a frame that stops arriving freezes them, and
+  // a screen reading them alone would call a whole dead bridge current. The poller holds the
+  // last frame through a failed fetch and restores one from cache on load, which is the right
+  // behaviour and exactly what makes the second half matter.
+  //
+  // So: the age aboard plus the age of the frame carrying it. This is the sum the shore portal
+  // has always used, and the two screens now answer the question the same way.
+  const quiet = (f: MetricField) => {
+    const aboard = d.snap?.field_ages?.[f];
+    if (typeof aboard !== "number") return null;
+    return quietSince(aboard + (d.frameAgeSec ?? 0));
+  };
   const cell = (name: string, q: number | null) => `c ${name}${q !== null ? " quiet" : ""}`;
 
   const band: ReactNode[] = [];
@@ -370,7 +381,7 @@ function DashPanel({
       ) : tab === "trip" ? (
         <TripComputer voyage={voyage} now={d.now} />
       ) : (
-        <SystemsMarine snap={d.snap} tab={tab} />
+        <SystemsMarine snap={d.snap} tab={tab} frameAgeS={d.frameAgeSec ?? 0} />
       )}
     </div>
   );
@@ -421,7 +432,7 @@ export default function BridgeMarine() {
               {panels.map((p) => (
                 <section className={`sp-sec sp-sec-${p.key}`} key={p.key}>
                   <h2 className="sp-sec-h">{p.name}</h2>
-                  <SystemsMarine snap={d.snap} tab={p.key} />
+                  <SystemsMarine snap={d.snap} tab={p.key} frameAgeS={d.frameAgeSec ?? 0} />
                 </section>
               ))}
               {onPassage && (

@@ -38,6 +38,15 @@ export interface BridgeData {
   airC: number | null;
   waterC: number | null;
   depth: number | null;
+  /**
+   * How long ago the boat built the frame on screen. Added to every field's own age before it
+   * is judged: the ages inside a frame were measured aboard at the moment it was built, so a
+   * frame that stopped arriving carries a set of ages frozen at whatever they were then. The
+   * poller keeps the last frame on a failed fetch (and restores one from cache on load), which
+   * is right - a last known picture beats an empty screen - but it means the freeze is exactly
+   * how a bridge full of dead instruments goes on reading fresh.
+   */
+  frameAgeSec: number | null;
   /** What became of her last report ashore. Null until /health lands, or on an older plugin. */
   sealing: SealingStatus | null;
   navState: string;
@@ -218,6 +227,7 @@ export function useBridgeData(): BridgeData {
     snap: snap ?? null,
     now,
     ageSec,
+    frameAgeSec,
     live,
     hasFix,
     hdgTrue,

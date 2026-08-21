@@ -51,6 +51,7 @@ function bridge(over: Partial<BridgeData> = {}, snapOver: Partial<LiveSnapshot> 
     snap,
     now: NOW,
     ageSec: 2,
+    frameAgeSec: 0,
     live: true,
     hasFix: true,
     hdgTrue: 107,
@@ -174,6 +175,30 @@ describe("a bridge reading that has gone quiet", () => {
     expect(html).not.toContain("quiet");
     expect(html).not.toContain("AGO");
     expect(html).toContain("12.4");
+  });
+
+  /**
+   * The other half of the same question, and the half that was missing.
+   *
+   * The ages inside a frame are measured aboard at the moment it is built, so they freeze the
+   * instant frames stop arriving - and the poller deliberately keeps the last frame through a
+   * failed fetch, and restores one from cache on load. A screen reading those ages alone tells
+   * an owner his whole bridge is current over a boat that went off the air an hour ago. The
+   * portal ashore has always added the frame's own age; this is the bridge doing the same.
+   */
+  it("ages every reading by the frame carrying it, so a frozen frame goes quiet", () => {
+    const fresh = { wind_speed_true: 1, depth: 1, air_temp_k: 1 };
+    expect(draw(bridge({ frameAgeSec: 2 }, { field_ages: fresh }))).not.toContain("quiet");
+    const stale = draw(bridge({ frameAgeSec: 3600 }, { field_ages: fresh }));
+    for (const cell of ["c-windtrue", "c-depth", "c-air"]) expect(stale).toContain(`${cell} quiet`);
+    // The readings stay: an hour-old picture is still the last thing she said.
+    expect(stale).toContain("12.4");
+  });
+
+  it("crosses the threshold on the sum, not on either half", () => {
+    // Neither age reaches 90 alone; together they do.
+    expect(draw(bridge({ frameAgeSec: 45 }, { field_ages: { depth: 44 } }))).not.toContain("quiet");
+    expect(draw(bridge({ frameAgeSec: 45 }, { field_ages: { depth: 45 } }))).toContain("c-depth quiet");
   });
 
   /**

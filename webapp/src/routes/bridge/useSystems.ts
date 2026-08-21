@@ -90,8 +90,16 @@ export function toMatrix(gauges: SystemGauge[]): SystemMatrix {
   return { cols, rows: rowOrder.map((sub) => ({ sub, cells: at[sub] })) };
 }
 
-/** The panels this frame justifies, in the order they are drawn, empty ones dropped. */
-export function systemPanels(snap: LiveSnapshot | null): SystemPanel[] {
+/**
+ * The panels this frame justifies, in the order they are drawn, empty ones dropped.
+ *
+ * `frameAgeS` is how long ago the boat built this frame, and it is added to each gauge's own
+ * age before the panel judges it. The ages inside a frame are measured aboard when it is
+ * built, so a frame that stops arriving carries ages frozen at that moment - and the poller
+ * deliberately keeps the last frame through a failed fetch. Without the sum, a boat that went
+ * off the air an hour ago shows a full set of confident engine readings.
+ */
+export function systemPanels(snap: LiveSnapshot | null, frameAgeS = 0): SystemPanel[] {
   const byTab: Record<SystemTab, SystemGauge[]> = { engine: [], generator: [], tanks: [] };
 
   for (const [path, value] of Object.entries(snap?.paths ?? {})) {
@@ -103,7 +111,7 @@ export function systemPanels(snap: LiveSnapshot | null): SystemPanel[] {
       label: d.label,
       sub: d.sub,
       value: systemValue(path, value),
-      ageS: typeof age === "number" ? age : null,
+      ageS: typeof age === "number" ? age + frameAgeS : null,
     });
   }
 
