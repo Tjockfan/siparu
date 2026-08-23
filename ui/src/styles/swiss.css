@@ -505,6 +505,13 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--cluster-gap);
+  /* A column, so room the boat's panels do not need can be handed to the ones below rather
+     than left at the floor. On a laptop there is none to hand out and this changes nothing;
+     what it answers is the desk monitor, where a boat sending four panels left 19% of the
+     board bare at 1920 and 43% at 2560, all of it pooled under the last row and reading as
+     a screen that had stopped halfway. Measured before and after at both. */
+  display: flex;
+  flex-direction: column;
   /* Transparent so the screen's ground reaches the panes above it. This was an opaque
      --ink-band fill, which covered the ground completely and left the glass a flat grey
      sheet with nothing behind it to blur. The colour it painted is the screen's own, so
@@ -519,8 +526,18 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cluster-gap);
-  align-items: flex-start;
+  /* The panels end on one line rather than each at its own content's depth: the row is read
+     across, engines against generators against tanks, and three ragged floors made that one
+     comparison harder to hold. Stretch, not a height: the tallest panel is still the boat's
+     to set. */
+  align-items: stretch;
+  /* Takes the board's spare depth; shrink stays off, so a boat with more to say than the
+     window holds still overflows into the board's own scroll rather than being squeezed. */
+  flex: 1 0 auto;
 }
+/* The bridge keeps its content height. It runs across the top as one strip and has no second
+   panel beside it to line up with, so depth spent here is depth taken from the systems row. */
+.swiss .sp-board > .sp-sec-bridge { flex: 0 0 auto; }
 .swiss .sp-systems .sp-sec { flex: 0 1 auto; }
 .swiss .sp-systems .sp-sec-machinery { flex: 0 1 auto; min-width: 360px; }
 .swiss .sp-systems .sp-sec-tanks { flex: 1 1 320px; min-width: 300px; }
@@ -590,13 +607,16 @@ body {
   color: var(--muted);
 }
 .swiss .sy-sub:first-child { padding-top: 2px; }
-/* In the board the bridge grid is one section among several, not a pane to fill: flatten its
- * vertical grow so band and matrix stack at their content height and the column, not the grid,
- * owns the scroll. */
-.swiss .sp-board .grid { flex: none; }
+/* In the board a section's tiers stack at their content height and the column, not the grid,
+ * owns the scroll: shrink stays off on all of them, so nothing here is ever squeezed under what
+ * it needs. Grow is left on the section's own surface (.grid, .sy-wrap) so a panel can take the
+ * spare depth its row was given and the row can end on one line; the tiers inside keep their
+ * content height, which is what holds the readings at a set size instead of letting a panel with
+ * two rows in it swell them to fill a desk monitor. */
+.swiss .sp-board .grid { flex: 1 0 auto; }
 .swiss .sp-board .grid .band,
 .swiss .sp-board .grid .matrix { flex: none; }
-.swiss .sp-board .sy-wrap { flex: none; }
+.swiss .sp-board .sy-wrap { flex: 1 0 auto; }
 /* Dense cells: a moderate fixed height and number, so a mixed dashboard reads as many equal
  * readings rather than a few pane-filling heroes. The single bridge screen keeps its large type;
  * these overrides apply only inside the board. */
