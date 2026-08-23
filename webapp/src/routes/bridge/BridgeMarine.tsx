@@ -23,7 +23,7 @@
  * because "she has not told us yet" and "she does not have one" are different sentences and
  * only the second one may remove a box.
  */
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import AnimatedNumber from "../../components/AnimatedNumber";
 import { Sparkline } from "siparu-ui";
@@ -74,16 +74,23 @@ function titleCase(s: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase();
 }
 
-// Fit the nav state into the narrow status cell: a soft hyphen (U+00AD) lets it
-// break into two lines on narrow screens as "Anchor-/ed", "Under-/way", "Moor-/ed".
-const NAV_HYPHEN: Record<string, string> = {
-  UNDERWAY: "Under­way",
-  ANCHORED: "An­chored", // break at the correct syllable ("Anchor-ed" read wrong)
-  MOORED: "Moored", // single syllable - no hyphen, 6 letters already fit
-};
 function navDisplay(s: string): string {
   if (s === "·") return "·";
-  return NAV_HYPHEN[s] ?? titleCase(s);
+  return titleCase(s);
+}
+
+/**
+ * How wide the state has to be set to fit its cell, in characters: its longest single word,
+ * since a space is where a line may break and a letter is not.
+ *
+ * This replaced a table of three states carrying a soft hyphen apiece. Signal K's state is an
+ * open set (motoring, sailing, aground, drifting, and whatever a gateway forwards next), so a
+ * table only fits the states someone remembered to add and every other one fell through to a
+ * bare overflow-wrap, which split "Motoring" across two lines as "Motorin/g" on a phone.
+ * Measuring the word is one rule for every state, including the ones this build never saw.
+ */
+function navFitWidth(s: string): number {
+  return s.split(/\s+/).reduce((w, word) => Math.max(w, word.length), 1);
 }
 
 /**
@@ -157,7 +164,9 @@ export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => 
     band.push(
       <div className="c c-state" key="state">
         <div className="t">Nav state</div>
-        <div className="s">{navDisplay(d.navState)}</div>
+        <div className="s" style={{ "--nav-w": navFitWidth(navDisplay(d.navState)) } as CSSProperties}>
+          {navDisplay(d.navState)}
+        </div>
         <div className="meta">
           {d.snap === null || !d.hasFix
             ? "AWAITING FIX"

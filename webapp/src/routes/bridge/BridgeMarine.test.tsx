@@ -213,3 +213,28 @@ describe("a bridge reading that has gone quiet", () => {
     expect(html).not.toContain("c-baro quiet");
   });
 });
+
+/**
+ * The nav state is set to fit its cell rather than picked from a list of states someone
+ * remembered to size. It used to be a table of three, each carrying a soft hyphen so it could
+ * break in two on a phone; a state outside the table (Signal K's set is open, and a motor yacht
+ * sends "motoring" all day) fell through to a bare overflow-wrap and broke mid-word as
+ * "Motorin/g". The cell now gets the width the word needs and CSS sizes the type to it.
+ */
+describe("the nav state cell", () => {
+  it("carries the width of its longest word, whatever state she sends", () => {
+    expect(draw(bridge({ navState: "MOTORING" }))).toContain("--nav-w:8");
+    expect(draw(bridge({ navState: "MOORED" }))).toContain("--nav-w:6");
+  });
+
+  it("measures the longest word, not the whole phrase, so a space can take the break", () => {
+    // Two words: the line may break at the space, so only "command" has to fit.
+    expect(draw(bridge({ navState: "NOT UNDER COMMAND" }))).toContain("--nav-w:7");
+  });
+
+  it("puts no break inside the word", () => {
+    const html = draw(bridge({ navState: "MOTORING" }));
+    expect(html).toContain("Motoring");
+    expect(html).not.toContain("­"); // soft hyphen: the old table's break point
+  });
+});

@@ -613,12 +613,20 @@ body {
  * window: a tablet in portrait sits below the board threshold and shows this one pane, which must
  * lay out for its own width rather than a phone's. inline-size, not size: size would need a
  * definite height and collapse the flex fill to zero. */
+/* The pane scrolls, the way the wide board does. A phone panel holds whatever the boat
+ * reports, and a boat reporting a full bridge asks for more height than a handset has;
+ * without a scroller here the surplus escapes the pane (overflow was visible all the way
+ * up to .sp-screen) and lands on top of the pairing band below it, one readout printed
+ * over another. Sizing the cells down instead was the other way out and it is the wrong
+ * one: the count is the boat's to decide, so no cell height survives every boat. */
 .swiss .sp-pane {
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   container-type: inline-size;
   container-name: pane;
 }
@@ -638,12 +646,18 @@ body {
 /* The band answers "where is she and what is she doing" - the question you ask before any
  * other. Weights, not positions: a member she does not report is not rendered, and grow
  * spreads her share over the rest. No arithmetic and no table of fallbacks to keep in sync. */
+/* The 1:2 weights share out room the tiers have over their content, never room they need:
+ * basis auto with shrink off. A basis of 0 let them be sized purely by the weights, and a
+ * tier whose cells had wrapped to a second row was then handed less height than its own
+ * rows occupied. Nothing clipped it (the tiers are visible by design, so a cell can carry
+ * a popup), so the surplus rows drew straight over the tier below: position printed across
+ * the COG and HDG readouts. The pane scrolls, so height a tier needs is height it gets. */
 .swiss .grid .band {
   display: flex;
   flex-wrap: wrap;
   align-content: stretch;
   gap: 2px;
-  flex: 1 1 0;
+  flex: 1 0 auto;
   min-height: 0;
 }
 /* Everything else she reports, equal cells, wrapping. */
@@ -651,7 +665,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  flex: 2 1 0;
+  flex: 2 0 auto;
   min-height: 0;
   align-content: stretch;
 }
@@ -754,19 +768,26 @@ body {
   justify-content: flex-start;
 }
 .swiss .c-state .t { color: var(--accent); }
+/* Its own container so the state can be set to the cell it is in rather than to the pane: the
+   cell takes a third of the band, so the pane's width is not the width the word has. Left
+   unnamed on purpose, so the named `pane` query keeps resolving past it. */
+.swiss .c-state { container-type: inline-size; }
 .swiss .c-state .s {
   font-family: var(--sp-font);
   font-weight: 300;
-  font-size: 30px;
+  /* Set to fit: the width the boat's own word needs, never a size that splits it. --nav-w is
+     that word's length in characters (BridgeMarine's navFitWidth); 0.58 is this face's average
+     advance at weight 300, measured against the states a boat actually sends. 100cqi is the
+     cell's content box, so the padding is already off it. Below 17px the state stops being a
+     headline, so it wraps at a space instead - a state whose longest word cannot fit at that
+     size is two words or more, and there is a break to take. */
+  font-size: clamp(17px, calc(100cqi / (var(--nav-w, 8) * 0.58)), 30px);
   line-height: 0.92;
   letter-spacing: -0.01em;
   /* The state and its fix line are one thought and stay together: margin-top:auto on the
      state and margin-bottom:auto on the fix line push the pair to the centre as a block,
      rather than centring the state alone and stranding the fix line at the floor. */
   margin-top: auto;
-  /* If Anchored/Underway/Moored doesn't fit the narrow cell, break onto 2 lines at a soft hyphen. */
-  overflow-wrap: break-word;
-  hyphens: manual;
 }
 .swiss .c-state .meta {
   font-family: var(--sp-mono);
@@ -844,7 +865,9 @@ body {
 .swiss .spark { display: block; width: 100%; max-width: 220px; height: 42px; }
 
 @media (max-width: 410px) {
-  .swiss .c-state .s { font-size: 27px; }
+  /* The state is not stepped down here: it is sized to its cell and its own word above, which
+     already gives a narrow screen a smaller figure than a wide one, and a flat size at this
+     width would overrule that and split the longer states. */
   .swiss .grid .c-pos .coords { font-size: 13.5px; white-space: nowrap; }
   .swiss .spark { max-width: 150px; }
   .swiss .gustseg button { padding: 4px 7px; font-size: 9px; }
