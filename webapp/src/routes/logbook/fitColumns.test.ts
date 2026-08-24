@@ -20,6 +20,23 @@ const col = (key: string): LogColumn => ({
 
 const deck = ["ts", "sog", "cog", "hdg", "tws", "awa", "baro", "air", "sea", "dep"].map(col);
 
+/**
+ * The half of the contract this side holds.
+ *
+ * These three are the stylesheet's, copied here because the count of lanes has to be worked
+ * out in TypeScript and CSS cannot hand a figure back. The sheet declares them once on
+ * `.swiss .lb` (`--lb-tm`, `--lb-gap`, `--lb-pad`) and its own test pins them there, so
+ * whichever copy is edited alone goes red pointing at the other. Silently, the two disagreeing
+ * draws a lane half off the right edge of a phone.
+ */
+describe("the stylesheet's measurements", () => {
+  it("holds the figures the rows are actually drawn with", () => {
+    expect(TIME_LANE).toBe(58);
+    expect(LANE_GAP).toBe(4);
+    expect(SIDE_PAD).toBe(32);
+  });
+});
+
 describe("lanesThatFit", () => {
   it("gives a 390px phone five lanes beside the time", () => {
     expect(lanesThatFit(390)).toBe(5);

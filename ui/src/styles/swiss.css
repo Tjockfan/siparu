@@ -989,6 +989,14 @@ body {
 .swiss .lb {
   flex: 1; display: flex; flex-direction: column; background: var(--cell); color: var(--text);
   overflow: hidden; transition: background 0.25s; min-height: 0;
+  /* What the table is built out of, in one place. The head, the rows and the band under them
+     are one block and have to agree on how wide that block is, and fitColumns.ts works out how
+     many lanes a screen can draw from the same three numbers. A test reads them back out of
+     this rule and fails if the two drift apart. */
+  --lb-tm: 58px;
+  --lb-lane: 160px;
+  --lb-gap: 4px;
+  --lb-pad: 16px;
 }
 .swiss .lb-ctrl {
   display: flex; align-items: center; gap: 9px; padding: 11px 16px;
@@ -1003,11 +1011,6 @@ body {
 .swiss .seg button:last-child { border-right: none; }
 .swiss .seg button.on { background: var(--text); color: var(--cell); }
 .swiss .seg button:disabled { opacity: 0.4; cursor: default; }
-.swiss .lb-count {
-  margin-left: auto; font-family: var(--sp-font); font-size: 10px; font-weight: 700;
-  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
-}
-
 /* ============================================================
    COLUMN PICKER  (.lb-pick) - the two books
    ============================================================
@@ -1105,12 +1108,32 @@ body {
    table whether she reports six readings or two. The floor is 0 so a phone still shrinks them
    rather than pushing the row wider than the screen. */
 .swiss .lb-cols {
-  display: grid; grid-template-columns: 58px repeat(var(--lb-cols, 5), minmax(0, 160px)); gap: 4px; padding: 9px 16px;
+  display: grid; grid-template-columns: var(--lb-tm) repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane)));
+  gap: var(--lb-gap); padding: 9px var(--lb-pad);
   border-bottom: 1px solid var(--rule);
   font-family: var(--sp-font); font-size: 8.5px; font-weight: 700; letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--muted);
 }
 .swiss .lb-cols span:not(:first-child) { text-align: right; }
+/* The table is as wide as its lanes, and the desk it leaves over is desk.
+   A lane has a ceiling so a figure sits the same distance from its neighbour on every boat
+   (see the note above), and on a wide screen that ceiling leaves room over: measured at 1920,
+   a nine-column table ends 154px short of the panel and a reader who has turned half his
+   columns off ends 482px short. What was filling that room was the table itself - a rule under
+   every row and a band with the count in it, both drawn to the panel's edge over lanes that
+   were not there, which reads as columns that failed to arrive rather than as a margin. Now
+   the block stops where its last lane stops and the count in the band lands over that lane.
+   The floor of one lane is for the day a boat logged nothing: the page still draws a head and
+   a band, and clamped to the time column alone the band would spill its own date.
+   A phone never reaches the ceiling, so this clamps nothing there - the lanes shrink first
+   (the minmax floor is 0) and fitColumns holds back the ones that cannot be read. */
+.swiss .lb-cols,
+.swiss .lb-day,
+.swiss .lb-rows {
+  max-width: calc(
+    var(--lb-tm) + max(1, var(--lb-cols, 5)) * (var(--lb-lane) + var(--lb-gap)) + 2 * var(--lb-pad)
+  );
+}
 /* A narrow screen draws fewer lanes than the reader selected (fitColumns.ts), and that is what
    buys the head room to be read. 8.5px is a caption across a wide desk of figures; on a phone
    it was the one thing on the page nobody could read, on the screen where two columns of
@@ -1124,7 +1147,7 @@ body {
   text-decoration: underline dotted; text-underline-offset: 3px;
 }
 .swiss .lb-day {
-  padding: 9px 16px; background: var(--ink-band); color: var(--chrome-text);
+  padding: 9px var(--lb-pad); background: var(--ink-band); color: var(--chrome-text);
   font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.13em;
   text-transform: uppercase; display: flex; justify-content: space-between;
 }
@@ -1132,7 +1155,8 @@ body {
 .swiss .lb-rows { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; overscroll-behavior: contain; }
 .swiss .lb-rows::-webkit-scrollbar { width: 0; }
 .swiss .lb-row {
-  display: grid; grid-template-columns: 58px repeat(var(--lb-cols, 5), minmax(0, 160px)); gap: 4px; padding: 11px 16px;
+  display: grid; grid-template-columns: var(--lb-tm) repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane)));
+  gap: var(--lb-gap); padding: 11px var(--lb-pad);
   border-bottom: 1px solid var(--hair); align-items: baseline;
 }
 .swiss .lb-row .tm {

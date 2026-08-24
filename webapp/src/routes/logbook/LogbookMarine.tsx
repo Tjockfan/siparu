@@ -119,8 +119,12 @@ function NoRows({ what }: { what: string }) {
  * The width of the table, handed to CSS as a variable rather than baked into the stylesheet.
  * The count is the boat's now, and a fixed `repeat(5, 1fr)` would keep laying out five tracks
  * for a bare boat that fills two.
+ *
+ * It goes on the head, on the scroller holding the rows and on the band that captions them,
+ * because all three are that same table and the stylesheet sizes all three from it. The rows
+ * inherit it from the scroller rather than carrying a copy each.
  */
-function gridVar(cols: LogColumn[]): CSSProperties {
+function laneVar(cols: LogColumn[]): CSSProperties {
   return { "--lb-cols": cols.length - 1 } as CSSProperties;
 }
 
@@ -154,7 +158,7 @@ function ColumnsButton({
 
 function Cols({ cols, toggleWind }: { cols: LogColumn[]; toggleWind: () => void }) {
   return (
-    <div className="lb-cols" style={gridVar(cols)}>
+    <div className="lb-cols" style={laneVar(cols)}>
       {cols.map((c) =>
         c.tappable ? (
           <span key={c.key} className="tap" onClick={toggleWind} title="Tap: knots ⇄ Beaufort">
@@ -198,7 +202,6 @@ function LiveView({
           open={picking}
           onOpen={() => setPicking(!picking)}
         />
-        <span className="lb-count">{snaps.length}</span>
       </div>
       {picking && (
         <ColumnPicker
@@ -209,7 +212,7 @@ function LiveView({
         />
       )}
       <Cols cols={drawn} toggleWind={toggleWind} />
-      <div className="lb-day"><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
+      <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
       {!busy && !err && snaps.length === 0 ? (
         <NoRows what={`Nothing was logged in this window (${GRAN_LABEL[granularity].toLowerCase()}).`} />
@@ -286,7 +289,7 @@ function DayView({
         />
       )}
       <Cols cols={drawn} toggleWind={toggleWind} />
-      <div className="lb-day"><span>{dayLabel}</span><b>{snaps.length}</b></div>
+      <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
       {!busy && snaps.length === 0 ? (
         <NoRows what="No telemetry was logged for this day." />
@@ -299,7 +302,7 @@ function DayView({
 
 function Rows({ snaps, cols, footer }: { snaps: Snapshot[]; cols: LogColumn[]; footer: React.ReactNode }) {
   return (
-    <div className="lb-rows">
+    <div className="lb-rows" style={laneVar(cols)}>
       {snaps.map((s) => <Row key={s.ts} s={s} cols={cols} />)}
       {footer}
     </div>
@@ -308,7 +311,7 @@ function Rows({ snaps, cols, footer }: { snaps: Snapshot[]; cols: LogColumn[]; f
 
 function Row({ s, cols }: { s: Snapshot; cols: LogColumn[] }) {
   return (
-    <div className="lb-row" style={gridVar(cols)}>
+    <div className="lb-row">
       {cols.map((c, i) => (
         <span key={c.key} className={i === 0 ? "tm" : c.dim ? "v dim" : "v"}>
           {c.cell(s)}
