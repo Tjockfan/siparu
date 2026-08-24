@@ -1111,6 +1111,14 @@ body {
   text-transform: uppercase; color: var(--muted);
 }
 .swiss .lb-cols span:not(:first-child) { text-align: right; }
+/* A narrow screen draws fewer lanes than the reader selected (fitColumns.ts), and that is what
+   buys the head room to be read. 8.5px is a caption across a wide desk of figures; on a phone
+   it was the one thing on the page nobody could read, on the screen where two columns of
+   degrees most need telling apart. The tracking comes down with it so a four-letter head still
+   sits inside its lane. */
+@media (max-width: 560px) {
+  .swiss .lb-cols { font-size: 11px; letter-spacing: 0.06em; }
+}
 .swiss .lb-cols span.tap {
   cursor: pointer; color: var(--accent); user-select: none;
   text-decoration: underline dotted; text-underline-offset: 3px;

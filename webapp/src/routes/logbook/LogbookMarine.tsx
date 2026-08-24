@@ -4,8 +4,10 @@
 import { useState, type CSSProperties } from "react";
 import { type Snapshot } from "../../lib/api";
 import { dateToInput } from "../../lib/format";
+import { useElementWidth } from "../../lib/useElementWidth";
 import ColumnPicker from "./ColumnPicker";
 import { logbookColumns, type LogColumn, type WindUnit } from "./columns";
+import { fittedColumns } from "./fitColumns";
 import {
   loadSelection,
   saveSelection,
@@ -51,6 +53,11 @@ export default function LogbookMarine() {
     setPicking(false);
   };
 
+  // What the table has to lay out in. Measured rather than assumed, because the same screen is
+  // read on a phone and beside a chart table, and the number of columns that can be read at
+  // once is the one thing that genuinely differs between them.
+  const [tableRef, width] = useElementWidth<HTMLDivElement>();
+
   const shared = {
     mode,
     setMode,
@@ -60,9 +67,10 @@ export default function LogbookMarine() {
     picking,
     setPicking,
     applySelection,
+    width,
   };
   return (
-    <div className="lb">
+    <div className="lb" ref={tableRef}>
       {mode === "live" ? <LiveView {...shared} /> : <DayView {...shared} />}
     </div>
   );
@@ -77,6 +85,8 @@ interface ViewProps {
   picking: boolean;
   setPicking: (v: boolean) => void;
   applySelection: (sel: ColumnSelection) => void;
+  /** Width of the table, or null before it has been measured. */
+  width: number | null;
 }
 
 function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
@@ -119,11 +129,25 @@ function gridVar(cols: LogColumn[]): CSSProperties {
  *
  * The count excludes the time column, which is not a choice: a person reading "Columns 7" and
  * finding six he can turn off has been given a number that is not about anything he can do.
+ *
+ * "5 of 9" is the narrow screen saying so out loud. The selection is still nine; the phone has
+ * room to draw five of them, and a reader who is not told that is left hunting for a column he
+ * turned on and cannot see.
  */
-function ColumnsButton({ shown, open, onOpen }: { shown: number; open: boolean; onOpen: () => void }) {
+function ColumnsButton({
+  shown,
+  chosen,
+  open,
+  onOpen,
+}: {
+  shown: number;
+  chosen: number;
+  open: boolean;
+  onOpen: () => void;
+}) {
   return (
     <button className={`lb-colbtn${open ? " on" : ""}`} onClick={onOpen}>
-      Columns · <b>{shown}</b>
+      Columns · <b>{shown < chosen ? `${shown} of ${chosen}` : chosen}</b>
     </button>
   );
 }
@@ -153,10 +177,12 @@ function LiveView({
   picking,
   setPicking,
   applySelection,
+  width,
 }: ViewProps) {
   const { granularity, changeGran, snaps, err, busy, hasMore, loadMore } = useLogbookLive();
   const earned = logbookColumns(snaps, windUnit);
   const cols = visibleColumns(earned, selection);
+  const drawn = fittedColumns(cols, width);
   return (
     <>
       <div className="lb-ctrl">
@@ -166,7 +192,12 @@ function LiveView({
             <button key={g} className={granularity === g ? "on" : ""} onClick={() => changeGran(g)}>{g}</button>
           ))}
         </div>
-        <ColumnsButton shown={cols.length - 1} open={picking} onOpen={() => setPicking(!picking)} />
+        <ColumnsButton
+          shown={drawn.length - 1}
+          chosen={cols.length - 1}
+          open={picking}
+          onOpen={() => setPicking(!picking)}
+        />
         <span className="lb-count">{snaps.length}</span>
       </div>
       {picking && (
@@ -177,7 +208,7 @@ function LiveView({
           onCancel={() => setPicking(false)}
         />
       )}
-      <Cols cols={cols} toggleWind={toggleWind} />
+      <Cols cols={drawn} toggleWind={toggleWind} />
       <div className="lb-day"><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
       {!busy && !err && snaps.length === 0 ? (
@@ -185,7 +216,7 @@ function LiveView({
       ) : (
         <Rows
           snaps={snaps}
-          cols={cols}
+          cols={drawn}
           footer={
             hasMore ? (
               <button className="lb-more" onClick={loadMore} disabled={busy}>
@@ -208,10 +239,12 @@ function DayView({
   picking,
   setPicking,
   applySelection,
+  width,
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
   const earned = logbookColumns(snaps, windUnit);
   const cols = visibleColumns(earned, selection);
+  const drawn = fittedColumns(cols, width);
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
   const dayLabel = isToday
@@ -237,7 +270,12 @@ function DayView({
           <button onClick={nextDay} disabled={isToday} aria-label="Next day">›</button>
           <button onClick={goToday} disabled={isToday}>Now</button>
         </div>
-        <ColumnsButton shown={cols.length - 1} open={picking} onOpen={() => setPicking(!picking)} />
+        <ColumnsButton
+          shown={drawn.length - 1}
+          chosen={cols.length - 1}
+          open={picking}
+          onOpen={() => setPicking(!picking)}
+        />
       </div>
       {picking && (
         <ColumnPicker
@@ -247,13 +285,13 @@ function DayView({
           onCancel={() => setPicking(false)}
         />
       )}
-      <Cols cols={cols} toggleWind={toggleWind} />
+      <Cols cols={drawn} toggleWind={toggleWind} />
       <div className="lb-day"><span>{dayLabel}</span><b>{snaps.length}</b></div>
       {err && <div className="lb-err">{err}</div>}
       {!busy && snaps.length === 0 ? (
         <NoRows what="No telemetry was logged for this day." />
       ) : (
-        <Rows snaps={snaps} cols={cols} footer={null} />
+        <Rows snaps={snaps} cols={drawn} footer={null} />
       )}
     </>
   );
