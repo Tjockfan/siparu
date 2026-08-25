@@ -1,18 +1,12 @@
 /**
- * How wide the logbook's table is, and that the sheet says so in one place.
+ * What decides how wide a screen's content is, in the cases where the answer is written down
+ * twice and the two copies can drift apart.
  *
- * The head, the scroller the rows sit in and the caption band under them are one block, and
- * they are clamped to the width their lanes add up to. Without that clamp each of them was
- * drawn to the panel's edge instead: measured in a browser at 1920, a rule ran under every row
- * for 154px past the last lane with nine columns on and 482px past it with seven, and the
- * count in the band sat out there on its own. Ruled emptiness reads as columns that failed to
- * arrive, where a plain margin reads as a margin.
- *
- * The numbers are declared once on `.swiss .lb` because two readers work from them: these
- * rules, and `fitColumns.ts` in the webapp, which decides how many lanes a narrow screen can
- * draw and holds its own copy of the time lane, the gap and the side padding. Its test pins
- * that copy against the same figures. Changing one of them here means changing it there, and
- * whichever of the two is edited alone goes red naming the other.
+ * None of these widths is a matter of taste. Each comes from something outside the rule that
+ * uses it - the lanes a table holds, the paper a record prints on, the figures a module in the
+ * webapp measures screens with - and each of those is a second place the same number lives.
+ * This file is what makes a drift loud. Quietly, it shows up as a lane drawn half off the edge
+ * of a phone, or as a rule ruled across a column that is not there.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -53,6 +47,12 @@ const declared = (name: string): number => {
   return Number((m as RegExpExecArray)[1]);
 };
 
+/**
+ * The logbook table's own three, which `fitColumns.ts` in the webapp holds a copy of so it can
+ * work out how many lanes a narrow screen has room for. That file says in a comment that
+ * changing one without the other shows up as a lane drawn half off the right edge; the comment
+ * states a condition, so it is a test, and its own suite pins the other half.
+ */
 describe("the measurements the logbook table is laid out from", () => {
   it("declares them once, on the table itself", () => {
     expect(tableSelector).toBe(".swiss .lb");
@@ -108,6 +108,13 @@ const TIME_LANE = declared("lb-tm");
 const GAP = declared("lb-gap");
 const SIDES = declared("lb-pad") * 2;
 
+/**
+ * The head, the scroller the rows sit in and the caption band under them are one block, clamped
+ * to the width their lanes add up to. Without that clamp each was drawn to the panel's edge
+ * instead: measured at 1920, a rule ran under every row for 154px past the last lane with nine
+ * columns on and 482px past it with seven, and the count in the band sat out there on its own.
+ * Ruled emptiness reads as columns that failed to arrive; a plain margin reads as a margin.
+ */
 describe("the block the logbook table draws in", () => {
   it("clamps the head, the rows and the band together", () => {
     expect(blockSelector).toBe(".swiss .lb-cols, .swiss .lb-day, .swiss .lb-rows");
@@ -127,5 +134,49 @@ describe("the block the logbook table draws in", () => {
    */
   it("keeps a lane's width for the day there is nothing to show", () => {
     expect(widthOf(0)).toBe(SIDES + TIME_LANE + (LANE + GAP));
+  });
+});
+
+/**
+ * The voyage record's column, and the page it is printed on.
+ *
+ * A passage row pins its distance to the row's right edge, so a window twice as wide puts the
+ * two halves of one row twice as far apart: measured with a season of passages behind it, the
+ * date and the figure sat 1111px apart on a laptop and 1575px on a desk. A row is a line
+ * rather than a grid, so it cannot use that width the way the board or the log table can, and
+ * it is given a measure instead. The measure is the one the same record has on paper, so that
+ * the Print button produces the document that was on the screen.
+ *
+ * That makes two figures which have to agree: the page margin the print rules set, and the
+ * measure the screen holds. This is what keeps them in step. A4 is 210mm.
+ */
+describe("the measure the voyage record is set to", () => {
+  const A4_MM = 210;
+
+  /** The @page rule lives inside the print block, which the rule parser above cannot reach. */
+  const pageMargin = (): number => {
+    const m = /@page\s*\{\s*margin:\s*([\d.]+)mm/.exec(css);
+    expect(m, "@page declares a margin in mm").not.toBeNull();
+    return Number((m as RegExpExecArray)[1]);
+  };
+
+  const measure = (): number => {
+    const [, body] = ruleDeclaring("--vy-measure");
+    const m = /--vy-measure:\s*([\d.]+)mm/.exec(body);
+    expect(m, "--vy-measure is declared in mm").not.toBeNull();
+    return Number((m as RegExpExecArray)[1]);
+  };
+
+  it("is the width of the column this record prints in", () => {
+    expect(measure()).toBe(A4_MM - 2 * pageMargin());
+    expect(measure()).toBe(186);
+  });
+
+  it("holds every part of the screen to it, not only the list", () => {
+    // Capping the rows alone would leave the banner and the cards running to the panel's edge
+    // over a list that stops, which is the ragged half-width the log table had.
+    const [, body] = ruleDeclaring("max-width", "--vy-measure");
+    expect(body).toContain("var(--vy-measure)");
+    expect(rules().some(([s]) => s === ".swiss .vy > *")).toBe(true);
   });
 });

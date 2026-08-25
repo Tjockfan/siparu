@@ -1423,7 +1423,20 @@ body {
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
   overscroll-behavior: contain; background: var(--ink-band);
   display: flex; flex-direction: column; gap: 2px;
+  /* A column of paper, because that is what this screen is.
+     A passage row carries a date and a figure and pins the figure to its right edge, so the
+     wider the window the further apart the two halves of one row sit: measured with a season
+     of passages behind it, 1111px apart on a laptop and 1575px on a desk, at which point the
+     dates read as one list and the distances as another. A row cannot use that width the way
+     the bridge board or the log table can - it is a line, not a grid - so it is given a
+     measure instead of the window.
+     The measure is the one this record already has on paper: A4 is 210mm and the print rules
+     below set a 12mm page margin, so the column an owner prints is 186mm. Screen and paper are
+     now the same document, which is the point of the Print button. The tokens test holds the
+     two figures together. Below the measure nothing changes, so a phone never meets it. */
+  --vy-measure: 186mm;
 }
+.swiss .vy > * { max-width: var(--vy-measure); }
 .swiss .vy::-webkit-scrollbar { width: 0; }
 
 /* --- active voyage banner --- */
