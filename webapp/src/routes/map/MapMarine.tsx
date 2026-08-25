@@ -9,7 +9,16 @@ import { makeBoatIcon, makeAisIcon, relativeAgo, type BoatPalette } from "../../
 import { useMapEngine } from "./useMapEngine";
 import AisFilterPopover from "./AisFilterPopover";
 
-const MAP_CSS = `
+/**
+ * Which corner of the chart the zoom control stands in.
+ *
+ * Named rather than typed into the engine's options, because the note stack in swiss.css has
+ * to stay out of whichever corner this is, and the two are in different files. The top of the
+ * chart is the coordinate strip's, so the zoom cannot go there.
+ */
+export const ZOOM_CORNER = "bottom-left" as const;
+
+export const MAP_CSS = `
 .mp .maplibregl-map { background: var(--map-sea); font-family: var(--sp-font); font-size: 11px; outline: none; }
 .mp .maplibregl-canvas { outline: none; }
 
@@ -43,8 +52,14 @@ const MAP_CSS = `
 .sp-boat-marker { z-index: 3; }
 .sp-ais-marker { z-index: 2; cursor: pointer; }
 
-/* AIS filter popover - brutalist, opens upward above the button */
-.mp .ais-filter { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 700; width: 232px; padding: 14px; background: var(--cell); border: 1.5px solid var(--rule); color: var(--text); }
+/* AIS filter panel - brutalist, and part of the control stack rather than a layer over it.
+   It used to be positioned above the button that opens it, which is where the AIS switch
+   stands: measured with the panel open, it covered the whole of that switch - the one control
+   that answers "is anybody out there", which the stack below refuses to hide even when the
+   count falls to zero. Opening to the left instead only moved the problem, onto the zoom
+   control on a phone. In the stack it covers nothing: the column is anchored at the bottom, so
+   the panel grows upward over chart and the two buttons do not move. */
+.mp .ais-filter { width: 232px; padding: 14px; background: var(--cell); border: 1.5px solid var(--rule); color: var(--text); }
 .mp .ais-filter .aisf-row { margin-bottom: 14px; }
 .mp .ais-filter .aisf-row:last-child { margin-bottom: 0; }
 .mp .ais-filter .aisf-label > span:first-child { font-family: var(--sp-font); font-size: 9px; letter-spacing: 0.16em; font-weight: 700; color: var(--muted); text-transform: uppercase; }
@@ -126,7 +141,7 @@ export default function MapMarine() {
     chartNote, aisAvailable, boatName,
   } = useMapEngine({
     track: { color: "#c23a3f", width: 1.8, dash: [2.8, 2.2] },
-    zoomPosition: "bottom-left", // so the top strip doesn't cover the zoom buttons
+    zoomPosition: ZOOM_CORNER,
     popupHtml: (s, now) => popupHtml(s, now, boatName ?? "This vessel"),
     aisPopupHtml,
     makeBoat: (h) => makeBoatIcon(h, ACCENT_BOAT),
@@ -188,6 +203,17 @@ export default function MapMarine() {
           whether anybody is around. */}
       {aisAvailable && (
         <div className="mp-ctrl">
+          {/* First in the stack, so opening it pushes nothing and covers nothing: the column is
+              anchored at the bottom of the chart and grows upward over open water. */}
+          <AisFilterPopover
+            open={filterOpen}
+            onClose={() => setFilterOpen(false)}
+            maxNm={aisMaxNm}
+            setMaxNm={setAisMaxNm}
+            limit={aisLimit}
+            setLimit={setAisLimit}
+            variant="marine"
+          />
           {/* The count was computed and returned by the engine and never asked for here, so
               "AIS on, nothing within range" and "AIS on, four ships around us" were the same
               button. It is shown only while AIS is on: a zero beside a switch that is off is
@@ -196,20 +222,9 @@ export default function MapMarine() {
             AIS
             {aisOn && <span className="n">{aisCount}</span>}
           </button>
-          <div style={{ position: "relative" }}>
-            <button className="mp-btn" onClick={() => setFilterOpen((v) => !v)}>
-              Range · <span className="n">{aisMaxNm}</span> Nm
-            </button>
-            <AisFilterPopover
-              open={filterOpen}
-              onClose={() => setFilterOpen(false)}
-              maxNm={aisMaxNm}
-              setMaxNm={setAisMaxNm}
-              limit={aisLimit}
-              setLimit={setAisLimit}
-              variant="marine"
-            />
-          </div>
+          <button className="mp-btn" onClick={() => setFilterOpen((v) => !v)}>
+            Range · <span className="n">{aisMaxNm}</span> Nm
+          </button>
         </div>
       )}
     </div>

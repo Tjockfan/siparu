@@ -1218,8 +1218,12 @@ body {
    empty box; yellow != error). Two can stand at once - no fix and no tiles are independent -
    so the stack owns the corner and the chips sit in its flow rather than each claiming the
    same absolute inset and covering the other. */
+/* Under the coordinate strip, not down in the corner: the bottom left is where the chart puts
+   its zoom control (ZOOM_CORNER in MapMarine.tsx). Measured with a note raised, the chip
+   covered 40% of that control - the lower half of it, which is the zoom-out button, at the one
+   moment the note exists to describe. A boat with no fix is a boat you zoom out to look for. */
 .swiss .mp-notes {
-  position: absolute; left: 12px; bottom: 44px; z-index: 600;
+  position: absolute; left: 12px; top: 54px; z-index: 600;
   display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
 }
 .swiss .mp-chartnote {

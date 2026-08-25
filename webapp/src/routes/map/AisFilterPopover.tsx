@@ -56,8 +56,9 @@ export default function AisFilterPopover({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Close on outside click - but make an exception for the anchor (AIS
-  // button); the button's own onClick will handle the toggle.
+  // Close on outside click - but make an exception for the cluster of controls the panel
+  // stands in. The button that opens it lives there and does its own toggling; so does the AIS
+  // switch, which is why it can be thrown while the panel is open instead of closing it.
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent | TouchEvent) => {

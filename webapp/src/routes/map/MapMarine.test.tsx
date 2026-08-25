@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../lib/api";
+import { MAP_CSS, ZOOM_CORNER } from "./MapMarine";
 
 const engine: {
   aisOn: boolean;
@@ -139,5 +140,42 @@ describe("the AIS switch and what it found", () => {
     const html = await draw({ aisAvailable: true, aisCount: 0, latest: fix() });
     expect(html).toMatch(/AIS.*>0</s);
     expect(html).toContain("Range");
+  });
+});
+
+/**
+ * Where the things on top of the chart stand, which is a question about each other rather than
+ * about any one of them.
+ *
+ * The range panel used to be positioned above the button that opens it. That button is the
+ * bottom of a column which grows upward, so the panel opened over the switch above it: measured
+ * with the panel open, it covered the whole of the AIS switch, the control the tests above are
+ * about. Opening it to the left instead only moved the problem onto the zoom control on a
+ * phone. In the flow of the same column it covers nothing, because the column is anchored at
+ * the bottom of the chart and grows over open water.
+ */
+describe("where the chart's overlays stand", () => {
+  it("keeps the range panel in the control stack rather than over it", () => {
+    const rule = MAP_CSS.slice(MAP_CSS.indexOf(".mp .ais-filter {"));
+    const body = rule.slice(0, rule.indexOf("}"));
+    expect(body).not.toMatch(/position\s*:\s*absolute/);
+    expect(body).not.toMatch(/bottom\s*:\s*calc\(100%/);
+  });
+
+  it("gives no control a layer of its own to be boxed in", async () => {
+    // The wrapper that made the panel possible to position over its neighbour. A control that
+    // takes itself out of the column's flow is the shape this defect comes back in.
+    const html = await draw({ aisAvailable: true, aisOn: true, aisCount: 3, latest: fix() });
+    expect(html).not.toContain("position:relative");
+  });
+
+  /**
+   * The zoom control belongs to MapLibre and is placed by this corner, which the note stack in
+   * swiss.css has to keep clear of. That sheet is a package this app consumes, so it holds its
+   * own copy of this value and its own suite pins it; whichever is edited alone goes red naming
+   * the other.
+   */
+  it("puts the zoom control in the corner the note stack keeps clear of", () => {
+    expect(ZOOM_CORNER).toBe("bottom-left");
   });
 });
