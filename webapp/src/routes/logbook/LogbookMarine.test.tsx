@@ -14,8 +14,13 @@ import type { Snapshot } from "../../lib/api";
 
 const page: Snapshot[] = [];
 
-vi.mock("./useLogbookData", () => ({
-  ROWS_LIMIT: { "1m": 60, "1h": 48, "6h": 40, "1d": 30 },
+// The hooks are replaced; everything else in that module is kept. A mock that listed the
+// module's constants by hand held a second copy of each one, and the copy went stale the day
+// the screen started reading a new one: the suite failed on a missing export rather than on
+// anything about the table. What this file is here to stand in for is the fetching, and that
+// is all it stands in for.
+vi.mock("./useLogbookData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./useLogbookData")>()),
   useLogbookLive: () => ({
     granularity: "1h",
     changeGran: () => {},
@@ -36,6 +41,7 @@ vi.mock("./useLogbookData", () => ({
     nextDay: () => {},
     goToday: () => {},
   }),
+  useLogbookRange: () => ({ snaps: page, err: null, busy: false, truncated: false, loaded: true }),
 }));
 
 // The screen remembers the wind unit. There is no DOM in this suite, so the store is a map.

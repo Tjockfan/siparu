@@ -1,11 +1,13 @@
 /* Logbook - snapshot history (Swiss redesign).
  * Brutalist data table: Live|Day + granularity, UTC·SOG·HDG·TWS·BARO·DEP rows.
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
-import { useState, type CSSProperties } from "react";
-import { type Snapshot } from "../../lib/api";
-import { dateToInput } from "../../lib/format";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { api, type Snapshot } from "../../lib/api";
+import { downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
+import { dateInputToMs, dateToInput } from "../../lib/format";
 import { useElementWidth } from "../../lib/useElementWidth";
 import ColumnPicker from "./ColumnPicker";
+import ExportPanel, { type ExportRequest } from "./ExportPanel";
 import { logbookColumns, type LogColumn, type WindUnit } from "./columns";
 import { fittedColumns } from "./fitColumns";
 import {
@@ -17,6 +19,10 @@ import {
 import {
   useLogbookLive,
   useLogbookDay,
+  useLogbookRange,
+  GRANULARITY_MINUTES,
+  INTERVAL_NAME,
+  RANGE_LIMIT,
   ROWS_LIMIT,
   type Granularity,
   type Mode,
@@ -58,6 +64,64 @@ export default function LogbookMarine() {
   // once is the one thing that genuinely differs between them.
   const [tableRef, width] = useElementWidth<HTMLDivElement>();
 
+  // The window a reader asked for, the panel that asks for it, and whether one of them is on
+  // its way to the printer. The request outlives the panel: it is what the range view draws,
+  // and reopening the panel starts from what he chose last rather than from a week ago again.
+  const [exporting, setExporting] = useState(false);
+  const [request, setRequest] = useState<ExportRequest | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  const onView = (r: ExportRequest) => {
+    setRequest(r);
+    setMode("range");
+    setExporting(false);
+    setSaveErr(null);
+  };
+
+  /**
+   * Saving, which is two different acts behind one button.
+   *
+   * PDF goes through the range view: the page IS the document, so the rows have to be on the
+   * screen before the printer is called. The view fetches them and calls print itself once
+   * they are there (see RangeView), which is also why the reader sees what he is about to get.
+   *
+   * CSV does not need the screen and does not touch it. It asks for the window directly and
+   * hands the file over, so a reader can take a month of minutes away without waiting for a
+   * month of minutes to be drawn. What goes in it is every column he has turned on, not the
+   * ones this screen has room for: the narrow screen holds columns back (fitColumns), and a
+   * file that quietly did the same would be a different document on a phone.
+   */
+  const onSave = async (r: ExportRequest) => {
+    setExporting(false);
+    setSaveErr(null);
+    if (r.format === "pdf") {
+      setRequest(r);
+      setMode("range");
+      setPrinting(true);
+      return;
+    }
+    try {
+      const from = dateInputToMs(r.from);
+      const to = dateInputToMs(r.to) + 86400_000 - 1;
+      const rows = await api.logbook.snapshots({
+        from,
+        to,
+        bucket: GRANULARITY_MINUTES[r.gran],
+        limit: RANGE_LIMIT,
+        order: "desc",
+      });
+      const cols = visibleColumns(logbookColumns(rows, windUnit), selection);
+      downloadText(
+        exportFilename("logbook", from, "csv"),
+        "text/csv",
+        snapshotsCsv(rows, cols),
+      );
+    } catch (e) {
+      setSaveErr((e as Error).message);
+    }
+  };
+
   const shared = {
     mode,
     setMode,
@@ -68,10 +132,27 @@ export default function LogbookMarine() {
     setPicking,
     applySelection,
     width,
+    exporting,
+    setExporting,
+    request,
+    onView,
+    onSave,
+    saveErr,
   };
   return (
     <div className="lb" ref={tableRef}>
-      {mode === "live" ? <LiveView {...shared} /> : <DayView {...shared} />}
+      {mode === "live" ? (
+        <LiveView {...shared} />
+      ) : mode === "day" ? (
+        <DayView {...shared} />
+      ) : (
+        <RangeView
+          {...shared}
+          req={request}
+          printing={printing}
+          donePrinting={() => setPrinting(false)}
+        />
+      )}
     </div>
   );
 }
@@ -87,8 +168,24 @@ interface ViewProps {
   applySelection: (sel: ColumnSelection) => void;
   /** Width of the table, or null before it has been measured. */
   width: number | null;
+  exporting: boolean;
+  setExporting: (v: boolean) => void;
+  /** The window last asked for, so reopening the panel starts where the reader left off. */
+  request: ExportRequest | null;
+  onView: (r: ExportRequest) => void;
+  onSave: (r: ExportRequest) => void;
+  /** What went wrong writing a file out, which is not the same as what went wrong reading. */
+  saveErr: string | null;
 }
 
+/**
+ * Live, Day, and the window in between them.
+ *
+ * Range has no button of its own: it cannot be entered by pressing one, because a window needs
+ * two dates before it means anything, and they are chosen in the export panel. What the segment
+ * does in that mode is show neither of its two lit, which is honest - the reader is in neither
+ * - and offer the way back out.
+ */
 function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   return (
     <div className="seg">
@@ -123,6 +220,10 @@ function NoRows({ what }: { what: string }) {
  * It goes on the head, on the scroller holding the rows and on the band that captions them,
  * because all three are that same table and the stylesheet sizes all three from it. The rows
  * inherit it from the scroller rather than carrying a copy each.
+ *
+ * It also goes on the two windows the page is drawn in - the bar of controls and the frame the
+ * table sits in - because what decides how wide those windows are is the same thing: the lanes
+ * inside them. A bar wider than the table it belongs to reads as two separate pages.
  */
 function laneVar(cols: LogColumn[]): CSSProperties {
   return { "--lb-cols": cols.length - 1 } as CSSProperties;
@@ -156,6 +257,21 @@ function ColumnsButton({
   );
 }
 
+/**
+ * Opens the panel that decides which window leaves this screen and in what shape.
+ *
+ * It sits with the controls rather than off on its own because it belongs to them: what a
+ * reader takes away is a window of time at an interval, which is the same pair of questions
+ * the bar answers for the live view.
+ */
+function ExportButton({ open, onOpen }: { open: boolean; onOpen: () => void }) {
+  return (
+    <button className={`lb-colbtn${open ? " on" : ""}`} onClick={onOpen}>
+      Export · <b>{"\u2026"}</b>
+    </button>
+  );
+}
+
 function Cols({ cols, toggleWind }: { cols: LogColumn[]; toggleWind: () => void }) {
   return (
     <div className="lb-cols" style={laneVar(cols)}>
@@ -182,6 +298,12 @@ function LiveView({
   setPicking,
   applySelection,
   width,
+  exporting,
+  setExporting,
+  request,
+  onView,
+  onSave,
+  saveErr,
 }: ViewProps) {
   const { granularity, changeGran, snaps, err, busy, hasMore, loadMore } = useLogbookLive();
   const earned = logbookColumns(snaps, windUnit);
@@ -189,7 +311,7 @@ function LiveView({
   const drawn = fittedColumns(cols, width);
   return (
     <>
-      <div className="lb-ctrl">
+      <div className="lb-ctrl" style={laneVar(drawn)}>
         <ModeSeg mode={mode} setMode={setMode} />
         <div className="seg">
           {GRANS.map((g) => (
@@ -202,6 +324,7 @@ function LiveView({
           open={picking}
           onOpen={() => setPicking(!picking)}
         />
+        <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
       {picking && (
         <ColumnPicker
@@ -209,26 +332,40 @@ function LiveView({
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}
+          style={laneVar(drawn)}
         />
       )}
-      <Cols cols={drawn} toggleWind={toggleWind} />
-      <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
-      {err && <div className="lb-err">{err}</div>}
-      {!busy && !err && snaps.length === 0 ? (
-        <NoRows what={`Nothing was logged in this window (${GRAN_LABEL[granularity].toLowerCase()}).`} />
-      ) : (
-        <Rows
-          snaps={snaps}
-          cols={drawn}
-          footer={
-            hasMore ? (
-              <button className="lb-more" onClick={loadMore} disabled={busy}>
-                {busy ? "Loading…" : `Load ${ROWS_LIMIT[granularity]} more`}
-              </button>
-            ) : null
-          }
+      {exporting && (
+        <ExportPanel
+          initial={request ?? undefined}
+          onView={onView}
+          onSave={onSave}
+          onCancel={() => setExporting(false)}
+          style={laneVar(drawn)}
         />
       )}
+      {saveErr && <div className="lb-err">{saveErr}</div>}
+      <div className="lb-frame" style={laneVar(drawn)}>
+        <PrintHead window={GRAN_LABEL[granularity]} interval={INTERVAL_NAME[granularity]} />
+        <Cols cols={drawn} toggleWind={toggleWind} />
+        <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
+        {err && <div className="lb-err">{err}</div>}
+        {!busy && !err && snaps.length === 0 ? (
+          <NoRows what={`Nothing was logged in this window (${GRAN_LABEL[granularity].toLowerCase()}).`} />
+        ) : (
+          <Rows
+            snaps={snaps}
+            cols={drawn}
+            footer={
+              hasMore ? (
+                <button className="lb-more" onClick={loadMore} disabled={busy}>
+                  {busy ? "Loading…" : `Load ${ROWS_LIMIT[granularity]} more`}
+                </button>
+              ) : null
+            }
+          />
+        )}
+      </div>
     </>
   );
 }
@@ -243,6 +380,12 @@ function DayView({
   setPicking,
   applySelection,
   width,
+  exporting,
+  setExporting,
+  request,
+  onView,
+  onSave,
+  saveErr,
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
   const earned = logbookColumns(snaps, windUnit);
@@ -258,7 +401,7 @@ function DayView({
 
   return (
     <>
-      <div className="lb-ctrl">
+      <div className="lb-ctrl" style={laneVar(drawn)}>
         <ModeSeg mode={mode} setMode={setMode} />
         <div className="lb-date">
           <button onClick={prevDay} aria-label="Previous day">‹</button>
@@ -279,6 +422,7 @@ function DayView({
           open={picking}
           onOpen={() => setPicking(!picking)}
         />
+        <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
       {picking && (
         <ColumnPicker
@@ -286,16 +430,167 @@ function DayView({
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}
+          style={laneVar(drawn)}
         />
       )}
-      <Cols cols={drawn} toggleWind={toggleWind} />
-      <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
-      {err && <div className="lb-err">{err}</div>}
-      {!busy && snaps.length === 0 ? (
-        <NoRows what="No telemetry was logged for this day." />
-      ) : (
-        <Rows snaps={snaps} cols={drawn} footer={null} />
+      {exporting && (
+        <ExportPanel
+          initial={request ?? undefined}
+          onView={onView}
+          onSave={onSave}
+          onCancel={() => setExporting(false)}
+          style={laneVar(drawn)}
+        />
       )}
+      {saveErr && <div className="lb-err">{saveErr}</div>}
+      <div className="lb-frame" style={laneVar(drawn)}>
+        <PrintHead window={dayLabel} interval={INTERVAL_NAME["1h"]} />
+        <Cols cols={drawn} toggleWind={toggleWind} />
+        <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
+        {err && <div className="lb-err">{err}</div>}
+        {!busy && snaps.length === 0 ? (
+          <NoRows what="No telemetry was logged for this day." />
+        ) : (
+          <Rows snaps={snaps} cols={drawn} footer={null} />
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
+ * The heading a printed page carries and a screen does not.
+ *
+ * On screen the bar above says which window this is and can be pressed to change it. On paper
+ * there is no bar - it is one of the first things the print stylesheet takes away - and a table
+ * of figures with no window named on it is not a record of anything. Every mode draws one, so
+ * it does not matter which of them the reader happened to have open when he printed.
+ */
+function PrintHead({ window: w, interval }: { window: string; interval: string }) {
+  return (
+    <div className="lb-print-hd">
+      <span className="b">Logbook · {w}</span>
+      <span className="d">{interval} · UTC</span>
+    </div>
+  );
+}
+
+/** "3 Aug - 10 Aug 2026", and just the one date when both ends are the same day. */
+function windowLabel(from: string, to: string): string {
+  const fmt = (iso: string, withYear: boolean) =>
+    new Date(iso).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      ...(withYear ? { year: "numeric" } : {}),
+      timeZone: "UTC",
+    });
+  return from === to ? fmt(to, true) : `${fmt(from, false)} - ${fmt(to, true)}`;
+}
+
+/**
+ * A window with an end on it: the days a reader asked for, at the interval he asked for.
+ *
+ * It is the third mode rather than a variant of the day view, because what it answers is a
+ * different question. Live and Day both follow a boat that is still logging and refresh
+ * themselves; a closed window does not move, and rows that shifted under a reader mid-page
+ * would be a bug in a record.
+ *
+ * It is also the page that goes to paper. When the reader asked for a PDF, the printer is
+ * called from here and not from the button he pressed: the page IS the document, so the rows
+ * have to exist before the print dialog opens. `loaded` rather than `!busy` is what that waits
+ * on - before the first fetch is even issued nothing is busy either, and the dialog would open
+ * over an empty table.
+ */
+function RangeView({
+  req,
+  setMode,
+  windUnit,
+  toggleWind,
+  selection,
+  picking,
+  setPicking,
+  applySelection,
+  width,
+  exporting,
+  setExporting,
+  request,
+  onView,
+  onSave,
+  saveErr,
+  printing,
+  donePrinting,
+}: ViewProps & { req: ExportRequest | null; printing: boolean; donePrinting: () => void }) {
+  const fallback: ExportRequest = { from: dateToInput(), to: dateToInput(), gran: "1h", format: "csv" };
+  const r = req ?? fallback;
+  const { snaps, err, busy, truncated, loaded } = useLogbookRange(r.from, r.to, r.gran);
+  const earned = logbookColumns(snaps, windUnit);
+  const cols = visibleColumns(earned, selection);
+  const drawn = fittedColumns(cols, width);
+
+  const finish = useCallback(() => donePrinting(), [donePrinting]);
+  useEffect(() => {
+    if (!printing || !loaded || busy) return;
+    // Cleared before the call, not after: print() blocks until the dialog closes, and a reader
+    // who cancels it must not find the page trying again on the next render.
+    finish();
+    window.print();
+  }, [printing, loaded, busy, finish]);
+
+  const label = windowLabel(r.from, r.to);
+  const interval = INTERVAL_NAME[r.gran];
+  return (
+    <>
+      <div className="lb-ctrl" style={laneVar(drawn)}>
+        <ModeSeg mode="range" setMode={setMode} />
+        <button className="lb-colbtn on" onClick={() => setExporting(!exporting)}>
+          {label} · <b>{interval}</b>
+        </button>
+        <ColumnsButton
+          shown={drawn.length - 1}
+          chosen={cols.length - 1}
+          open={picking}
+          onOpen={() => setPicking(!picking)}
+        />
+      </div>
+      {picking && (
+        <ColumnPicker
+          cols={earned}
+          applied={selection}
+          onApply={applySelection}
+          onCancel={() => setPicking(false)}
+          style={laneVar(drawn)}
+        />
+      )}
+      {exporting && (
+        <ExportPanel
+          initial={request ?? undefined}
+          onView={onView}
+          onSave={onSave}
+          onCancel={() => setExporting(false)}
+          style={laneVar(drawn)}
+        />
+      )}
+      {saveErr && <div className="lb-err">{saveErr}</div>}
+      <div className="lb-frame" style={laneVar(drawn)}>
+        <PrintHead window={label} interval={interval} />
+        <Cols cols={drawn} toggleWind={toggleWind} />
+        <div className="lb-day" style={laneVar(drawn)}>
+          <span>{label} · {interval}</span>
+          <b>{truncated ? `${snaps.length} of more` : snaps.length}</b>
+        </div>
+        {err && <div className="lb-err">{err}</div>}
+        {truncated && (
+          <div className="lb-note">
+            This window holds more than {RANGE_LIMIT} rows. The most recent {RANGE_LIMIT} are
+            here; a longer interval covers the same days in fewer.
+          </div>
+        )}
+        {!busy && snaps.length === 0 ? (
+          <NoRows what={`Nothing was logged between these dates.`} />
+        ) : (
+          <Rows snaps={snaps} cols={drawn} footer={null} />
+        )}
+      </div>
     </>
   );
 }

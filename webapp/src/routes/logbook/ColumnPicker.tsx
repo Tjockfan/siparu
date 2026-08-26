@@ -9,7 +9,7 @@
  * the cursor while he makes up his mind, and a picker that applied on every tap would reflow
  * the rows he is reading. Cancel throws the draft away.
  */
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { LogBook, LogColumn } from "./columns";
 import {
   bookColumns,
@@ -39,11 +39,14 @@ export default function ColumnPicker({
   applied,
   onApply,
   onCancel,
+  style,
 }: {
   cols: LogColumn[];
   applied: ColumnSelection;
   onApply: (sel: ColumnSelection) => void;
   onCancel: () => void;
+  /** The lane count, so this panel is as wide as the windows it sits between. */
+  style?: CSSProperties;
 }) {
   const [draft, setDraft] = useState<ColumnSelection>(applied);
   const now = presetOf(draft, cols);
@@ -54,7 +57,7 @@ export default function ColumnPicker({
   const presets = books.length > 1 ? PRESETS : PRESETS.slice(0, 1);
 
   return (
-    <div className="lb-pick">
+    <div className="lb-pick" style={style}>
       {presets.length > 1 && (
         <div className="lbp-presets">
           <span className="lbp-k">Book</span>

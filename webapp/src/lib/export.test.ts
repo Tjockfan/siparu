@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TrackPoint, Voyage } from "./api";
-import { exportFilename, trackGpx, voyageTitle, voyagesCsv } from "./export";
+import { exportFilename, snapshotsCsv, trackGpx, voyageTitle, voyagesCsv } from "./export";
 
 const voyage = (over: Partial<Voyage> = {}): Voyage => ({
   id: 7,
@@ -75,6 +75,52 @@ describe("voyagesCsv", () => {
 
   it("ends the file with a newline", () => {
     expect(voyagesCsv([voyage()]).endsWith("\r\n")).toBe(true);
+  });
+});
+
+describe("snapshotsCsv", () => {
+  // What the logbook hands over: rows that are moments, and columns that print one.
+  const snap = (ts: number, sog: string) => ({ ts, sog }) as never;
+  const cols = [
+    { head: "UTC", cell: () => "never used" },
+    { head: "SOG", cell: (s: { sog: string }) => s.sog },
+    { head: "AWA", cell: () => "32°S" },
+  ] as never[];
+
+  it("writes the moment in full and the cells as the screen prints them", () => {
+    const csv = snapshotsCsv(
+      [snap(Date.UTC(2026, 6, 24, 10, 35), "6.3"), snap(Date.UTC(2026, 6, 24, 8, 21), "5.8")],
+      cols,
+    );
+    const lines = csv.trimEnd().split("\r\n");
+    // The time column's own cell is a clock face and is dropped: a file outlives the day.
+    expect(lines[0]).toBe("utc,SOG,AWA");
+    // Oldest first, as the voyages go out, because a spreadsheet is read downwards.
+    expect(lines[1]).toBe("2026-07-24T08:21:00.000Z,5.8,32°S");
+    expect(lines[2]).toBe("2026-07-24T10:35:00.000Z,6.3,32°S");
+  });
+
+  it("carries the columns the reader has open, and only those", () => {
+    // The set is the boat's and the reader's between them: a column she never earned is not
+    // in `cols` at all, and one he turned off was taken out before this was called.
+    const csv = snapshotsCsv([snap(Date.UTC(2026, 6, 24, 8, 21), "5.8")], cols.slice(0, 2));
+    expect(csv.trimEnd().split("\r\n")[0]).toBe("utc,SOG");
+    expect(csv).not.toContain("AWA");
+  });
+
+  it("quotes a cell that would otherwise start a new field", () => {
+    // Nothing on the bridge prints a comma today. The rule is here because the columns are
+    // built from what a boat sends, and the day one does the file must not silently shift.
+    const csv = snapshotsCsv([snap(Date.UTC(2026, 6, 24, 8, 21), "5.8")], [
+      { head: "UTC", cell: () => "" },
+      { head: "NOTE", cell: () => 'gust 24, veering' },
+    ] as never[]);
+    expect(csv.trimEnd().split("\r\n")[1]).toBe('2026-07-24T08:21:00.000Z,"gust 24, veering"');
+  });
+
+  it("writes a header and nothing else when the page is empty", () => {
+    // The button is disabled in this state; the function still has to be honest about it.
+    expect(snapshotsCsv([], cols)).toBe("utc,SOG,AWA\r\n");
   });
 });
 

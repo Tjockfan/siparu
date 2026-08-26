@@ -109,19 +109,26 @@ const GAP = declared("lb-gap");
 const SIDES = declared("lb-pad") * 2;
 
 /**
- * The head, the scroller the rows sit in and the caption band under them are one block, clamped
- * to the width their lanes add up to. Without that clamp each was drawn to the panel's edge
- * instead: measured at 1920, a rule ran under every row for 154px past the last lane with nine
- * columns on and 482px past it with seven, and the count in the band sat out there on its own.
- * Ruled emptiness reads as columns that failed to arrive; a plain margin reads as a margin.
+ * The two windows the page is drawn in are the same width, and it is the width their lanes add
+ * up to. That clamp is what keeps the page from drawing to the panel's edge over lanes that are
+ * not there: measured at 1920, a rule once ran under every row for 154px past the last lane with
+ * nine columns on and 482px past it with seven, and the count in the band sat out there on its
+ * own. Ruled emptiness reads as columns that failed to arrive; a margin reads as a margin.
+ *
+ * The bar of controls is held to it too, and for a reason that is about reading rather than
+ * about rules: a bar wider than the table beneath it reads as belonging to the page instead of
+ * to that table, and the window it names is the table's. The panels the bar opens - the column
+ * picker and the export window - are held to the same edge, so opening one does not move the
+ * page's left margin.
  */
-describe("the block the logbook table draws in", () => {
-  it("clamps the head, the rows and the band together", () => {
-    expect(blockSelector).toBe(".swiss .lb-cols, .swiss .lb-day, .swiss .lb-rows");
+describe("the windows the logbook is drawn in", () => {
+  it("clamps the bar, the panels it opens and the table's frame together", () => {
+    expect(blockSelector).toBe(".swiss .lb-ctrl, .swiss .lb-pick, .swiss .lb-frame");
   });
 
   it("is exactly as wide as the lanes it holds", () => {
-    // 1566px with nine columns on, which is where the rules and the count stop at 1920.
+    // 1566px with nine columns on, which is where both windows stop at 1920. What is left of
+    // the panel falls either side of them, because the page centres what it holds.
     expect(widthOf(9)).toBe(SIDES + TIME_LANE + 9 * (LANE + GAP));
     expect(widthOf(9)).toBe(1566);
     expect(widthOf(7)).toBe(SIDES + TIME_LANE + 7 * (LANE + GAP));

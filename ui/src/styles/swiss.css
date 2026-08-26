@@ -1036,21 +1036,41 @@ body {
 /* ============================================================
    LOGBOOK
    ============================================================ */
+/* The logbook is two windows on the screen's own ground, not one sheet edge to edge. The bar
+ * of controls is the first: what window of time, which columns, and the file that carries them
+ * off. The table is the second, and it is one window rather than three stacked strips - the
+ * head, the caption band and the rows were separate blocks that happened to line up, which is a
+ * thing a reader has to be told rather than shown. Both are centred on the width their lanes
+ * come to, so what is left over falls on both sides as margin instead of piling up on the right
+ * where it read as columns that failed to arrive.
+ *
+ * Transparent, like the bridge board: the ground the screen paints reaches the glass, which is
+ * the only thing there is to blur. */
 .swiss .lb {
-  flex: 1; display: flex; flex-direction: column; background: var(--cell); color: var(--text);
+  flex: 1; display: flex; flex-direction: column; background: transparent; color: var(--text);
   overflow: hidden; transition: background 0.25s; min-height: 0;
+  padding: var(--cluster-gap); gap: var(--cluster-gap); align-items: center;
   /* What the table is built out of, in one place. The head, the rows and the band under them
      are one block and have to agree on how wide that block is, and fitColumns.ts works out how
      many lanes a screen can draw from the same three numbers. A test reads them back out of
      this rule and fails if the two drift apart. */
   --lb-tm: 58px;
+  /* The ceiling on a data lane: a share of the screen instead lets a bare boat's two readings
+     sit at opposite edges of a desk monitor (see the note over .lb-cols). What the ceiling
+     leaves over is a margin on both sides of the window, which is what it looks like now that
+     the table is drawn in a centred frame. */
   --lb-lane: 160px;
   --lb-gap: 4px;
   --lb-pad: 16px;
 }
+/* The controls sit in the middle of their window rather than at its left edge. The window is
+ * as wide as the table below it, which is far wider than four small controls need: pinned left
+ * they left 1122px of empty glass to their right at 1920, and a bar that is one seventh full
+ * reads as a bar something has been taken out of. Centred, the window is symmetrical and what
+ * is in it is the whole of what is in it. */
 .swiss .lb-ctrl {
-  display: flex; align-items: center; gap: 9px; padding: 11px 16px;
-  border-bottom: 2px solid var(--rule); flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: center; gap: 9px; padding: 11px 16px;
+  flex-wrap: wrap;
 }
 .swiss .seg { display: flex; border: 1.5px solid var(--rule); }
 .swiss .seg button {
@@ -1081,9 +1101,42 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 14px 16px;
-  border-bottom: 2px solid var(--rule);
   background: var(--pane);
+  border: 1px solid var(--pane-edge);
+  backdrop-filter: blur(var(--pane-blur)) saturate(155%);
 }
+/* The two date fields of the export window, side by side where there is room and stacked where
+   there is not. The label sits over its field rather than beside it: "From" and "To" are two
+   words a reader has to tell apart at a glance, and a label to the left of a date input is read
+   after the date it belongs to. */
+.swiss .lbe-dates { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.swiss .lbe-dates label { display: flex; flex-direction: column; gap: 5px; }
+.swiss .lbe-dates label > span {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted);
+}
+.swiss .lbe-dates .dt {
+  font-family: var(--sp-font); font-size: 12px; color: var(--text);
+  background: var(--cell); border: 1.5px solid var(--rule); padding: 5px 7px;
+  font-variant-numeric: tabular-nums;
+}
+/* A window that ends before it begins. Red because it is the one state in this panel where
+   pressing on would give the reader a document he did not ask for, and both verbs are held
+   until he fixes it. */
+.swiss .lbe-warn {
+  font-family: var(--sp-font); font-size: 11px; color: var(--alarm);
+}
+/* The page did not fit its window. Not an error and not styled as one: the rows shown are real
+   and are the most recent ones, and the note says how to see the rest. */
+.swiss .lb-note {
+  padding: 9px var(--lb-pad);
+  font-family: var(--sp-font); font-size: 11px; line-height: 1.5; color: var(--muted);
+  border-bottom: 1px solid var(--hair);
+}
+/* The printed heading of a logbook window. Absent on screen, where the bar above says the same
+   thing and can be pressed; on paper there is no bar and a table of figures with no window
+   named on it is not a record of anything. */
+.swiss .lb-print-hd { display: none; }
 .swiss .lbp-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .swiss .lbp-k,
 .swiss .lbp-n,
@@ -1177,12 +1230,27 @@ body {
    a band, and clamped to the time column alone the band would spill its own date.
    A phone never reaches the ceiling, so this clamps nothing there - the lanes shrink first
    (the minmax floor is 0) and fitColumns holds back the ones that cannot be read. */
-.swiss .lb-cols,
-.swiss .lb-day,
-.swiss .lb-rows {
+.swiss .lb-ctrl,
+.swiss .lb-pick,
+.swiss .lb-frame {
+  width: 100%;
   max-width: calc(
     var(--lb-tm) + max(1, var(--lb-cols, 5)) * (var(--lb-lane) + var(--lb-gap)) + 2 * var(--lb-pad)
   );
+  background: var(--pane);
+  border: 1px solid var(--pane-edge);
+  backdrop-filter: blur(var(--pane-blur)) saturate(155%);
+}
+/* The table's own window: head, caption band and rows, with the scroll inside it rather than
+ * under it, so the frame stays put while the log runs past. min-height:0 is what lets the
+ * scroller be shorter than its rows; without it a flex child sizes to its content and the
+ * whole page scrolls instead, which puts the head off the top of the screen. */
+.swiss .lb-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 /* A narrow screen draws fewer lanes than the reader selected (fitColumns.ts), and that is what
    buys the head room to be read. 8.5px is a caption across a wide desk of figures; on a phone
@@ -1218,6 +1286,20 @@ body {
   font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--text);
 }
 .swiss .lb-row .v.dim { color: var(--muted); font-size: 13px; }
+/* A figure set for a phone, left at that size on a desk. A lane at its ceiling is 176px wide
+ * and was carrying a four-character number 31px across, so the eye crossed 145px of nothing
+ * between one reading and the next and the table read as a scatter rather than as columns. The
+ * larger figure is only offered where the lane is at its ceiling: a narrow screen shrinks its
+ * lanes to the 48px floor fitColumns measures against, and that floor was worked out for the
+ * smaller figure. The row keeps its height, so the same number of entries stays on screen: the
+ * padding gives back what the type takes. */
+@media (min-width: 1200px) {
+  .swiss .lb-row { padding-block: 9px; }
+  .swiss .lb-row .tm { font-size: 18px; }
+  .swiss .lb-row .v { font-size: 17px; }
+  .swiss .lb-row .v.dim { font-size: 16px; }
+  .swiss .lb-cols { font-size: 10px; }
+}
 .swiss .lb-more {
   display: block; width: 100%; padding: 13px; background: var(--cell); border: none;
   border-top: 1px solid var(--hair); color: var(--accent); cursor: pointer;
@@ -2344,6 +2426,17 @@ body {
     --ground-grid: transparent;
     background: #fff;
   }
+  /* The screen's own ground, which is painted on the element the app mounts and on the document
+     behind it, and which the rule above cannot reach: `.swiss` alone loses to `.swiss.sp-screen`
+     on specificity, and neither of them is html or body. Most browsers drop background paint on
+     the way to paper anyway, so this only shows when the reader has turned background graphics
+     on - and a reader who does that is asking for the page to look like the screen, not for a
+     logbook printed white on near-black. */
+  html,
+  body,
+  .swiss.sp-screen {
+    background: #fff !important;
+  }
   .swiss .grid,
   .swiss .sp-rail {
     backdrop-filter: none;
@@ -2357,11 +2450,50 @@ body {
   .swiss.sp-screen,
   .swiss.sp-screen main,
   .swiss .vy,
-  .swiss .lb {
+  .swiss .lb,
+  .swiss .lb-frame,
+  .swiss .lb-rows {
     overflow: visible !important;
     height: auto !important;
     min-height: 0 !important;
   }
+
+  /* The logbook on paper. The frame the table sits in is a window onto a page that scrolls;
+     paper does not scroll, so the frame stops being a frame and the rows simply run on. Its
+     glass and its edge go with it: a printed border around a table that breaks across three
+     sheets draws a box that never closes. */
+  .swiss .lb {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+  .swiss .lb-frame {
+    border: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    max-width: none !important;
+    flex: none !important;
+  }
+  /* The controls do not print, and neither does either panel: a sheet of paper has nothing to
+     press. What they were saying is said instead by the heading, which only exists here. */
+  .swiss .lb-ctrl,
+  .swiss .lb-pick,
+  .swiss .lb-more {
+    display: none !important;
+  }
+  .swiss .lb-print-hd {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 0 16px 10px; border-bottom: 1px solid var(--rule); margin-bottom: 10px;
+  }
+  .swiss .lb-print-hd .b {
+    font-family: var(--sp-font); font-size: 13px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+  }
+  .swiss .lb-print-hd .d { font-family: var(--sp-mono); font-size: 10px; color: var(--muted); }
+  /* An entry is one line of a record and is not split down the middle by a page break. The
+     column heads repeat on no page but the first: they are a grid rather than a table head,
+     and paper has no mechanism for repeating one. A window named in the heading and rows in
+     time order is what makes the later sheets readable without them. */
+  .swiss .lb-row { break-inside: avoid; }
 
   /* Anything that only exists to be tapped, and the row whose whole content was a
      download: a lone "Track" heading over nothing reads as a figure that failed to

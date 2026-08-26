@@ -12,7 +12,17 @@
  * is the watch a person keeps, but a file outlives the timezone it was made in,
  * and GPX has no other option.
  */
-import type { TrackPoint, Voyage } from "./api";
+import type { Snapshot, TrackPoint, Voyage } from "./api";
+
+/** What a row has to carry to be exported: a moment. The logbook's Snapshot is one. */
+type LogRow = Snapshot;
+
+/** What a column has to carry: a heading and a way to print one row. The logbook's LogColumn
+ *  is one, and is not imported here - lib/ is below the routes and stays that way. */
+interface ExportColumn {
+  head: string;
+  cell: (s: LogRow) => string;
+}
 
 /** RFC 4180: a field containing a comma, a quote or a newline is quoted, and its quotes doubled. */
 function csvField(v: string | number | null): string {
@@ -86,6 +96,34 @@ export function voyagesCsv(voyages: readonly Voyage[]): string {
     );
   }
   // Trailing newline: a file without one appends to the next thing that reads it.
+  return lines.join("\r\n") + "\r\n";
+}
+
+/**
+ * The rows on screen, as CSV, with the columns the reader has open.
+ *
+ * The table's own columns are what goes out, because the table's columns are the boat's: they
+ * are earned by a reading being present (columns.ts), so a boat with no barometer exports no
+ * barometer field rather than a column of blanks. The cells are printed the way the screen
+ * prints them, which is the one thing about this file that is not obvious and is deliberate:
+ * a logbook page is a record of what was read, and a reader who exports what he is looking at
+ * and finds different numbers in it has been given a second document.
+ *
+ * The time column is the exception. On screen it is a clock face, "14:20", which is what a
+ * person keeps a watch by and is useless in a file that outlives the day it was made: the
+ * first field is the full moment in ISO 8601 UTC instead, as in every other export here.
+ *
+ * Oldest first, as the voyages go out, because a spreadsheet is read downwards.
+ */
+export function snapshotsCsv(
+  snaps: readonly LogRow[],
+  cols: readonly ExportColumn[],
+): string {
+  const data = cols.slice(1);
+  const lines = [["utc", ...data.map((c) => c.head)].map(csvField).join(",")];
+  for (const s of [...snaps].sort((a, b) => a.ts - b.ts)) {
+    lines.push([iso(s.ts), ...data.map((c) => c.cell(s))].map(csvField).join(","));
+  }
   return lines.join("\r\n") + "\r\n";
 }
 
