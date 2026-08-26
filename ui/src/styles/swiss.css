@@ -617,18 +617,68 @@ body {
 .swiss .sp-board .grid .band,
 .swiss .sp-board .grid .matrix { flex: none; }
 .swiss .sp-board .sy-wrap { flex: 1 0 auto; }
+/* A panel fills the row it was given rather than stopping at its content and leaving the glass
+ * beneath it bare. The row has ended on one line since the panels were set to stretch, so the
+ * depth was already handed out; what was missing was anything inside willing to take it, and the
+ * surplus pooled at the floor of every panel that had less to say than the tallest one. Measured
+ * at 1920 on a boat sending three engines, two generators and eight tanks: 151px of dead glass
+ * under the machinery, 223px under the tanks. The trip computer never showed the hole, because
+ * its cells already grow, and that is the shape the other two are being given here.
+ *
+ * What stretches is the space between the rules, not the readings: the figures keep the size the
+ * dense-cell rules above set, so a panel with two rows in it does not swell them to fill a desk
+ * monitor. That was the reason the tiers were pinned to their content height in the first place,
+ * and it still holds; the rows carrying them are what open up. */
+.swiss .sp-board .sy-wrap { display: flex; flex-direction: column; }
+.swiss .sp-board .sy-wrap > .sm-summary,
+.swiss .sp-board .sy-wrap > .tk-list { flex: 1 1 auto; }
+.swiss .sp-board .tk { flex: 1 1 auto; }
 /* Dense cells: a moderate fixed height and number, so a mixed dashboard reads as many equal
  * readings rather than a few pane-filling heroes. The single bridge screen keeps its large type;
  * these overrides apply only inside the board. */
 .swiss .sp-board .c { min-height: 94px; }
-.swiss .sp-board .c-sog .n { font-size: 40px; }
 .swiss .sp-board .grid .matrix .n { font-size: 34px; }
-.swiss .sp-board .c-state .s { font-size: 22px; }
 .swiss .sp-board .sy-n { font-size: 34px; }
-/* At the board's section width the position cell is narrow enough that the 18px coordinate would
- * wrap its hemisphere letter onto a second line. A smaller figure on one line reads better than a
- * broken one; it stays right-aligned beside its label. */
-.swiss .sp-board .c-pos .coords { font-size: 14px; white-space: nowrap; }
+/* The band is the exception to the dense rule above, and it has to be: its three cells span the
+ * whole board between them, so at the matrix figure they read as three small numbers adrift in a
+ * strip. Measured at 1920 with the boat under way: the speed cell is 669px wide and held a 40px
+ * figure, the position cell the same width with its coordinates set at 14px, and 409px of the
+ * position cell lay empty between the label and the reading. The depth the cells take here is
+ * depth the systems row was leaving bare anyway (see the fill rules further down), so the strip
+ * grows into space that was already dead rather than at the panels' expense.
+ *
+ * The figures are set to the cell rather than to the window, the way the nav state already was:
+ * the band keeps its weights, and each reading takes the size its own share of them allows. A
+ * ceiling on every one of them, because a band cell is a reading, not a poster, and the strip
+ * still has to leave the systems row the depth it needs. */
+/* Depth taken from the window as well as in pixels, so a short screen is not asked for the whole
+ * strip. What this costs is worth stating plainly: at 1920x1078 the board holds everything with
+ * nothing to scroll, and lower down it was already scrolling before this change, so the deeper
+ * strip adds to that scroll. Measured: 1440x900 goes 123px to 215px (a 900px window is just over
+ * the cap, so it pays the full depth), 1024x800 goes 755px to 829px, where the cap holds the
+ * strip to 168px rather than 186px. The dead glass the panels below were leaving is separate and
+ * closes either way: it sat inside a row that already had its height. */
+.swiss .sp-board .grid .band > .c { min-height: min(186px, 21vh); container-type: inline-size; }
+/* The weights the phone needs are not the weights the board needs. On a handset the speed is the
+ * one reading worth two fifths of a strip; across a desk monitor those same two fifths are 669px
+ * carrying three characters, and the cell measured 21% full while the state beside it ran at 54%.
+ * Re-cut to what the three actually carry, widest to the coordinates, which are the longest
+ * reading in the band and were the cell with the hole in it. The phone weights above are
+ * untouched. */
+.swiss .sp-board .grid .band > .c-sog { flex-grow: 1.4; }
+.swiss .sp-board .grid .band > .c-state { flex-grow: 1.4; }
+.swiss .sp-board .grid .band > .c-pos { flex-grow: 2.2; }
+.swiss .sp-board .c-sog .n { font-size: clamp(40px, min(24cqi, 12vh), 110px); }
+.swiss .sp-board .c-state .s { font-size: clamp(22px, calc(100cqi / (var(--nav-w, 8) * 0.58)), 48px); }
+/* Position reads the way the two cells beside it do: the label a heading, the reading under it.
+ * It sat alone in a row layout, label at one edge and coordinates at the other, which is what
+ * put a 409px hole through the middle of the widest cell in the band. */
+.swiss .sp-board .c-pos { flex-direction: column; align-items: stretch; gap: 0; }
+.swiss .sp-board .c-pos .coords { margin-left: 0; text-align: left; margin-block: auto; }
+/* The floor is the size this cell used to be held at for good reason: at the board's narrowest,
+ * a coordinate set larger than its cell wraps the hemisphere letter onto a line of its own, and a
+ * broken figure reads worse than a small one. nowrap keeps that from ever happening silently. */
+.swiss .sp-board .c-pos .coords { font-size: clamp(14px, 7cqi, 46px); white-space: nowrap; }
 /* The phone panel is the container each cell reads its width from (container-type), NOT the
  * window: a tablet in portrait sits below the board threshold and shows this one pane, which must
  * lay out for its own width rather than a phone's. inline-size, not size: size would need a
