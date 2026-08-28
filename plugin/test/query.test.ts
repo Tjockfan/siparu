@@ -126,6 +126,55 @@ describe('bucket=60 (hourly rollups)', () => {
   })
 })
 
+/**
+ * What hour a summarised row is written at.
+ *
+ * A rollup row is not a moment, it is an hour: the readings on it are that hour's, and which
+ * of them - last, average, lowest, highest - is the reader's own choice. Stamping it with the
+ * instant the last sample arrived told the truth for one of those choices and misdated the
+ * other three, and it read as an hour ending at 22:59 rather than as the hour of 22:00. A log
+ * has been kept by the hour for as long as it has been kept, and the hour is what is written.
+ *
+ * The fixture above samples on the hour exactly, so it cannot tell the two apart. This one
+ * samples at 47 past, where the old stamp and the new one are 47 minutes and one reading of
+ * the page apart.
+ */
+describe('the hour a summarised row is written at', () => {
+  const LATE = Date.UTC(2026, 0, 15, 20, 47, 13) // yesterday 20:47:13
+
+  beforeEach(async () => {
+    await store.append(snap(LATE, 9, { [RPM]: 33 }))
+    await store.flush()
+    await engine.catchUp(NOW)
+  })
+
+  it('writes an hourly row at the top of its hour, not at its last reading', async () => {
+    const r = await query.snapshots({ bucket: 60, order: 'asc' }, NOW)
+    const row = r.rows.find((x) => x.sog === 9)
+    expect(row?.ts).toBe(Date.UTC(2026, 0, 15, 20, 0, 0))
+  })
+
+  it('writes a six-hour row at the top of its window', async () => {
+    const r = await query.snapshots({ bucket: 360, order: 'asc' }, NOW)
+    const row = r.rows.find((x) => x.sog === 9)
+    // 20:47 falls in the 18:00-24:00 window, and the row is written at 18:00.
+    expect(row?.ts).toBe(Date.UTC(2026, 0, 15, 18, 0, 0))
+  })
+
+  it('writes a daily row at the top of its day', async () => {
+    const r = await query.snapshots({ bucket: 1440, order: 'asc' }, NOW)
+    expect(r.rows[0]?.ts).toBe(Date.UTC(2026, 0, 15, 0, 0, 0))
+  })
+
+  it('graphs an hourly aggregate at the same hour the row is written at', async () => {
+    // The table and the graph read the same rollup; a point plotted 47 minutes off the row it
+    // belongs to is the two disagreeing about when the boat was doing something.
+    const r = await query.pathSeries(RPM, { bucket: 60, order: 'asc' }, NOW)
+    const pt = r.points.find((x) => x.last === 33)
+    expect(pt?.ts).toBe(Date.UTC(2026, 0, 15, 20, 0, 0))
+  })
+})
+
 describe('bucket=1 edge cases', () => {
   it('flags a range older than the window as clamped instead of silently empty', async () => {
     const old = NOW - 30 * 86_400_000

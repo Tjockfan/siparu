@@ -23,7 +23,7 @@ import {
 } from './contract'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
-import { dayKey, hourKey } from './time'
+import { dayKey, dayStartOf, hourKey, hourStartOf } from './time'
 import { coreSeriesFor } from './units'
 
 /**
@@ -81,8 +81,17 @@ function aggToPoint(ts: number, agg: MetricAgg | undefined): PathSeriesPoint[] {
   return [{ ts, min: agg.min, max: agg.max, avg: agg.avg, last: agg.last }]
 }
 
-function rollupToRow(r: RollupHour | RollupDay): Snapshot {
-  const row = { ts: r.last_ts } as Snapshot
+/**
+ * A summarised period as a logbook row, written at the period rather than at its last reading.
+ *
+ * `ts` is handed in because it belongs to the period and not to the line: an hourly line is its
+ * own hour, but six of them make one six-hour row and that row is the window, not the last hour
+ * in it. What the row carries is still the period's `last` - a log records what she was doing
+ * at the end of the hour - and the reader can ask for the average or the extremes instead
+ * without the row's hour changing under him.
+ */
+function rollupToRow(r: RollupHour | RollupDay, ts: number): Snapshot {
+  const row = { ts } as Snapshot
   for (const field of ROLLUP_FIELDS) {
     ;(row as unknown as Record<string, unknown>)[field] = r.metrics[field]?.last ?? null
   }
@@ -124,19 +133,19 @@ export class QueryService {
       rows = await this.readRawWindow(from, to)
     } else if (q.bucket === 60) {
       const from = q.from ?? 0
-      rows = (await this.rollups.readHourly(from, to)).map(rollupToRow)
+      rows = (await this.rollups.readHourly(from, to)).map((h) => rollupToRow(h, hourStartOf(h.hour)))
     } else if (q.bucket === 360) {
       const from = q.from ?? 0
       const hours = await this.rollups.readHourly(from, to)
       const byWindow = new Map<number, RollupHour>()
       for (const h of hours) {
-        const win = Math.floor(h.last_ts / (6 * 3_600_000))
+        const win = Math.floor(hourStartOf(h.hour) / (6 * 3_600_000))
         byWindow.set(win, h) // hours arrive ascending; the latest wins
       }
-      rows = [...byWindow.values()].map(rollupToRow)
+      rows = [...byWindow.entries()].map(([win, h]) => rollupToRow(h, win * 6 * 3_600_000))
     } else if (q.bucket === 1440) {
       const from = q.from ?? 0
-      rows = (await this.rollups.readDaily(from, to)).map(rollupToRow)
+      rows = (await this.rollups.readDaily(from, to)).map((d) => rollupToRow(d, dayStartOf(d.date)))
     } else {
       throw new QueryError('BAD_BUCKET', 'bucket must be one of 1, 60, 360, 1440')
     }
@@ -183,19 +192,23 @@ export class QueryService {
     } else if (q.bucket === 60) {
       const from = q.from ?? 0
       points = (await this.rollups.readHourly(from, to)).flatMap((h) =>
-        aggToPoint(h.last_ts, aggFor(h, coreField, pathName))
+        aggToPoint(hourStartOf(h.hour), aggFor(h, coreField, pathName))
       )
     } else if (q.bucket === 360) {
       const from = q.from ?? 0
       const byWindow = new Map<number, RollupHour>()
       for (const h of await this.rollups.readHourly(from, to)) {
-        byWindow.set(Math.floor(h.last_ts / (6 * 3_600_000)), h) // hours ascending; latest wins
+        byWindow.set(Math.floor(hourStartOf(h.hour) / (6 * 3_600_000)), h) // ascending; latest wins
       }
-      points = [...byWindow.values()].flatMap((h) => aggToPoint(h.last_ts, aggFor(h, coreField, pathName)))
+      // The point is the window, like the row: plotted at the last hour in it, a six-hour
+      // reading would sit five hours right of the window it summarises.
+      points = [...byWindow.entries()].flatMap(([win, h]) =>
+        aggToPoint(win * 6 * 3_600_000, aggFor(h, coreField, pathName))
+      )
     } else if (q.bucket === 1440) {
       const from = q.from ?? 0
       points = (await this.rollups.readDaily(from, to)).flatMap((d) =>
-        aggToPoint(d.last_ts, aggFor(d, coreField, pathName))
+        aggToPoint(dayStartOf(d.date), aggFor(d, coreField, pathName))
       )
     } else {
       throw new QueryError('BAD_BUCKET', 'bucket must be one of 1, 60, 360, 1440')
