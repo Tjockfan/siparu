@@ -1,24 +1,24 @@
 /**
- * What the picker remembers, and what it deliberately does not.
+ * What one book's page remembers, and what it deliberately does not.
  *
- * The selection is stored as two differences from the deck log rather than as a list of the
- * columns that are on, and that choice is what these mostly pin. A stored list would be right
- * until the day a gauge is fitted: the new column would be missing from the list, and so
- * missing from the log, and nothing on screen would say why. A stored difference lets the
- * default speak for anything nobody has ruled on.
+ * The selection is stored as the columns turned off rather than as a list of the ones on, and
+ * that choice is what these mostly pin. A stored list would be right until the day a gauge is
+ * fitted: the new column would be missing from the list, and so missing from the log, and
+ * nothing on screen would say why. A set of refusals lets the boat speak for anything nobody
+ * has ruled on.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  DECK_LOG,
+  ALL_ON,
   loadSelection,
-  preset,
-  presetOf,
+  offerable,
+  same,
   saveSelection,
   visibleColumns,
-  withBook,
+  withAll,
   withToggled,
 } from "./columnSelection";
-import type { LogColumn } from "./columns";
+import { columnsFor, type LogColumn } from "./columns";
 
 const col = (key: string, book: "bridge" | "engine"): LogColumn => ({
   key,
@@ -27,7 +27,7 @@ const col = (key: string, book: "bridge" | "engine"): LogColumn => ({
   cell: () => "·",
 });
 
-const COLS: LogColumn[] = [
+const EARNED: LogColumn[] = [
   col("ts", "bridge"),
   col("sog", "bridge"),
   col("dep", "bridge"),
@@ -35,69 +35,35 @@ const COLS: LogColumn[] = [
   col("p:oil", "engine"),
 ];
 
-const heads = (sel = DECK_LOG) => visibleColumns(COLS, sel).map((c) => c.key);
+const BRIDGE = columnsFor(EARNED, "bridge");
+const ENGINE = columnsFor(EARNED, "engine");
 
-describe("what a boat shows before anybody chooses", () => {
-  it("keeps the deck log: every bridge column, no engine ones", () => {
-    expect(heads()).toEqual(["ts", "sog", "dep"]);
+const heads = (cols: LogColumn[], sel = ALL_ON) => visibleColumns(cols, sel).map((c) => c.key);
+
+describe("one page, one book", () => {
+  it("draws its own book and the hour, and none of the other book", () => {
+    expect(heads(BRIDGE)).toEqual(["ts", "sog", "dep"]);
+    expect(heads(ENGINE)).toEqual(["ts", "p:rpm", "p:oil"]);
   });
 
-  /**
-   * The reason for storing differences rather than a list. Both cases are an instrument fitted
-   * after somebody last opened the picker.
-   */
-  it("draws a bridge column nobody has ruled on, and leaves a new engine one out", () => {
-    const chosen = withToggled(DECK_LOG, col("sog", "bridge")); // she turned SOG off
-    const later = [...COLS, col("sea", "bridge"), col("p:temp", "engine")];
-    const shown = visibleColumns(later, chosen).map((c) => c.key);
-    expect(shown).toContain("sea"); // the new bridge gauge appears
-    expect(shown).not.toContain("p:temp"); // the new engine gauge waits to be asked for
-    expect(shown).not.toContain("sog"); // and her own decision survives
-  });
-});
-
-describe("the three books on the bar", () => {
-  it("means what it says for the columns this boat happens to earn", () => {
-    expect(visibleColumns(COLS, preset("deck", COLS)).map((c) => c.key)).toEqual([
-      "ts",
-      "sog",
-      "dep",
-    ]);
-    expect(visibleColumns(COLS, preset("engine", COLS)).map((c) => c.key)).toEqual([
-      "ts",
-      "p:rpm",
-      "p:oil",
-    ]);
-    expect(visibleColumns(COLS, preset("both", COLS)).map((c) => c.key)).toEqual([
-      "ts",
-      "sog",
-      "dep",
-      "p:rpm",
-      "p:oil",
-    ]);
-  });
-
-  /** The preset is a description of the selection, never a thing the selection remembers. */
-  it("stops describing itself as a preset once she edits one column", () => {
-    const both = preset("both", COLS);
-    expect(presetOf(both, COLS)).toBe("both");
-    expect(presetOf(withToggled(both, col("dep", "bridge")), COLS)).toBeNull();
-  });
-
-  it("turns a whole book on or off without touching the other", () => {
-    const allOn = withBook(preset("deck", COLS), COLS, "engine", true);
-    expect(presetOf(allOn, COLS)).toBe("both");
-    const noBridge = withBook(allOn, COLS, "bridge", false);
-    expect(presetOf(noBridge, COLS)).toBe("engine");
+  /** The reason for storing refusals rather than a list: an instrument fitted since. */
+  it("draws a column nobody has ruled on, and keeps the one she refused", () => {
+    const chosen = withToggled(ALL_ON, col("p:rpm", "engine"));
+    const later = columnsFor([...EARNED, col("p:temp", "engine")], "engine");
+    expect(heads(later, chosen)).toEqual(["ts", "p:oil", "p:temp"]);
   });
 
   /** A row without its moment is not a log entry; the time column is not on offer. */
   it("cannot be talked out of the time column", () => {
-    const stripped = withBook(withBook(DECK_LOG, COLS, "bridge", false), COLS, "engine", false);
-    expect(visibleColumns(COLS, stripped).map((c) => c.key)).toEqual(["ts"]);
-    expect(visibleColumns(COLS, withToggled(stripped, col("ts", "bridge"))).map((c) => c.key)).toEqual(
-      ["ts"]
-    );
+    const none = withAll(BRIDGE, false);
+    expect(heads(BRIDGE, none)).toEqual(["ts"]);
+    expect(offerable(BRIDGE).map((c) => c.key)).toEqual(["sog", "dep"]);
+    expect(heads(BRIDGE, withToggled(none, col("ts", "bridge")))).toEqual(["ts"]);
+  });
+
+  it("turns them all on and all off", () => {
+    expect(same(withAll(ENGINE, true), ALL_ON)).toBe(true);
+    expect(heads(ENGINE, withAll(ENGINE, false))).toEqual(["ts"]);
   });
 });
 
@@ -118,15 +84,26 @@ describe("remembering it", () => {
   });
 
   it("reads back what was written", () => {
-    const sel = preset("both", COLS);
-    saveSelection(sel);
-    expect(loadSelection()).toEqual(sel);
+    const sel = withToggled(ALL_ON, col("dep", "bridge"));
+    saveSelection("bridge", sel);
+    expect(loadSelection("bridge")).toEqual(sel);
   });
 
-  it("falls back to the deck log on a torn value rather than an empty table", () => {
-    globalThis.localStorage.setItem("lb:columns", "{ not json");
-    expect(loadSelection()).toEqual(DECK_LOG);
-    globalThis.localStorage.setItem("lb:columns", JSON.stringify({ off: "all of them" }));
-    expect(loadSelection()).toEqual(DECK_LOG);
+  /**
+   * The two books are two decisions. Refusing a column in the deck log said nothing about the
+   * engineer's, and one store would have made a reader say it twice - or worse, would have
+   * emptied a page he never opened.
+   */
+  it("keeps each book's choice to itself", () => {
+    saveSelection("bridge", withAll(BRIDGE, false));
+    expect(loadSelection("engine")).toEqual(ALL_ON);
+    expect(heads(ENGINE, loadSelection("engine"))).toEqual(["ts", "p:rpm", "p:oil"]);
+  });
+
+  it("falls back to every column on a torn value rather than an empty table", () => {
+    globalThis.localStorage.setItem("lb:columns:bridge", "{ not json");
+    expect(loadSelection("bridge")).toEqual(ALL_ON);
+    globalThis.localStorage.setItem("lb:columns:bridge", JSON.stringify({ off: "all of them" }));
+    expect(loadSelection("bridge")).toEqual(ALL_ON);
   });
 });

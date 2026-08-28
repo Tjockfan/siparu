@@ -441,6 +441,36 @@ body {
   width: 3px;
   background: var(--accent);
 }
+/* The two logs, opened under Logbook while the reader is in it. Indented to the width of the
+   parent's icon, so the names line up under the parent's name rather than under its mark, and
+   quieter than it: a child that shouts as loud as its parent stops reading as a child. */
+.swiss .sp-rail .rnav-sub { display: flex; flex-direction: column; padding-bottom: 4px; }
+.swiss .sp-rail .rsub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px 8px 51px;
+  color: #6a716f;
+  text-decoration: none;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  position: relative;
+  transition: color 0.15s;
+}
+.swiss .sp-rail .rsub svg { width: 16px; height: 16px; flex: none; margin-left: -26px; }
+.swiss .sp-rail .rsub:hover { color: var(--chrome-text); }
+.swiss .sp-rail .rsub.on { color: var(--chrome-text); }
+.swiss .sp-rail .rsub.on::before {
+  content: "";
+  position: absolute;
+  left: 25px; top: 50%;
+  width: 4px; height: 4px;
+  margin-top: -2px;
+  background: var(--accent);
+}
 /* Footer, pushed to the bottom: the chrome that lives in the header on a phone. */
 .swiss .sp-rail .rfoot {
   margin-top: auto;
@@ -1205,24 +1235,19 @@ body {
    thing and can be pressed; on paper there is no bar and a table of figures with no window
    named on it is not a record of anything. */
 .swiss .lb-print-hd { display: none; }
-.swiss .lbp-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.swiss .lbp-k,
 .swiss .lbp-n,
 .swiss .lbp-s {
   font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase;
 }
-.swiss .lbp-k { color: var(--muted); }
 .swiss .lbp-n { color: var(--text); }
 .swiss .lbp-s { color: var(--muted); font-weight: 600; letter-spacing: 0.06em; }
-.swiss .lbp-presets button,
 .swiss .lbp-all button {
   font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; padding: 5px 9px; background: var(--cell); color: var(--text);
   border: 1.5px solid var(--rule); cursor: pointer;
 }
-.swiss .lbp-presets button.on { background: var(--text); color: var(--cell); }
-/* Two books side by side where there is room, one under the other on a phone. */
+/* Two blocks side by side where there is room, one under the other on a phone. */
 .swiss .lbp-books { display: flex; flex-wrap: wrap; gap: 12px 26px; }
 .swiss .lbp-book { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .swiss .lbp-h { display: flex; align-items: baseline; gap: 8px; }
@@ -1412,6 +1437,69 @@ body {
 .swiss .lb-err {
   margin: 12px 16px; padding: 10px 12px; border: 1.5px solid var(--alarm);
   font-family: var(--sp-font); font-size: 12px; color: var(--alarm);
+}
+
+/* ============================================================
+   LOGBOOK - the door: which of the two books to open
+   ============================================================ */
+/* Centred rather than filling the screen: this is a question with two answers, and a pair of
+   cards stretched to the height of a desk monitor reads as a page that failed to load its
+   table. It keeps the room the log itself gets, and stops growing at the width two cards can
+   be read side by side in. */
+.swiss .lb-door {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--lb-pad);
+}
+.swiss .lbd-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  width: 100%;
+  max-width: 1000px;
+}
+.swiss .lbd-card {
+  flex: 1 1 340px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 46px 34px 34px;
+  background: var(--pane);
+  border: 1px solid var(--pane-edge);
+  backdrop-filter: blur(var(--pane-blur)) saturate(155%);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.swiss .lbd-card svg { color: var(--accent); }
+.swiss .lbd-n {
+  font-family: var(--sp-font); font-size: 25px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+}
+.swiss .lbd-k {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  margin-top: -8px;
+}
+.swiss .lbd-h {
+  font-family: var(--sp-font); font-size: 13.5px; line-height: 1.6; color: var(--muted);
+  max-width: 34ch;
+}
+/* The verb, kept to the foot of the card. The whole card is the link; this says so. */
+.swiss .lbd-go {
+  margin-top: 10px;
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
+}
+@media (hover: hover) {
+  .swiss .lbd-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 
 /* ============================================================

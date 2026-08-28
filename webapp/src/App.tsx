@@ -31,7 +31,12 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Bridge />} />
+            {/* The door and the two books it opens. Each book is its own route with its own
+                element rather than one route reading a param: the page then depends on nothing
+                but the element the router matched. */}
             <Route path="/logbook" element={<Logbook />} />
+            <Route path="/logbook/bridge" element={<Logbook book="bridge" />} />
+            <Route path="/logbook/engine" element={<Logbook book="engine" />} />
             <Route path="/voyage" element={<Voyage />} />
             <Route path="/map" element={<MapView />} />
             <Route path="/remote" element={<Remote />} />

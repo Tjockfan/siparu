@@ -270,3 +270,14 @@ export function logbookColumns(snaps: Snapshot[], windUnit: WindUnit): LogColumn
   );
   return [UTC, ...earned.map((c) => c.col)];
 }
+
+/**
+ * One book's columns out of everything these rows earned.
+ *
+ * The time column belongs to both and is kept whichever book is asked for: it is the moment
+ * every other reading on the row is a reading AT, and an engineer's page whose rows carry no
+ * hour is a list of numbers rather than a log.
+ */
+export function columnsFor(cols: LogColumn[], book: LogBook): LogColumn[] {
+  return cols.filter((c) => c.key === "ts" || c.book === book);
+}

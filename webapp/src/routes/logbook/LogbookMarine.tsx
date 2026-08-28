@@ -10,7 +10,7 @@ import { useElementWidth } from "../../lib/useElementWidth";
 import ColumnPicker from "./ColumnPicker";
 import ExportPanel, { type ExportRequest } from "./ExportPanel";
 import Reveal from "./Reveal";
-import { logbookColumns, type LogColumn, type WindUnit } from "./columns";
+import { columnsFor, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
 import { fittedColumns, lanesThatFit } from "./fitColumns";
 import {
   loadSelection,
@@ -37,7 +37,15 @@ const GRAN_LABEL: Record<Granularity, string> = {
   "1d": "Last month",
 };
 
-export default function LogbookMarine() {
+/**
+ * One book's log: the bridge's or the engineer's, told apart by the page it is on.
+ *
+ * A ship keeps two logs and this screen used to try to be both at once, with a picker moving
+ * between them; a three-engine boat put thirty columns behind one button. The two are separate
+ * pages now, and everything below reads the book it was opened as - the columns it draws, the
+ * ones its picker offers, the file it writes out and the choice it remembers.
+ */
+export default function LogbookMarine({ book }: { book: LogBook }) {
   const [mode, setMode] = useState<Mode>("live");
   // Wind unit: knots <-> Beaufort. Toggles on header tap, the selection persists.
   const [windUnit, setWindUnit] = useState<WindUnit>(
@@ -51,12 +59,18 @@ export default function LogbookMarine() {
     });
 
   // Which columns are drawn, and the panel that changes them. Held here rather than in each
-  // view so switching Live/Day does not reopen the picker or forget the choice.
-  const [selection, setSelection] = useState<ColumnSelection>(loadSelection);
+  // view so switching Live/Day does not reopen the picker or forget the choice. Per book, and
+  // re-read when the book changes: the two pages are two decisions.
+  const [selection, setSelection] = useState<ColumnSelection>(() => loadSelection(book));
+  const [pageBook, setPageBook] = useState<LogBook>(book);
+  if (pageBook !== book) {
+    setPageBook(book);
+    setSelection(loadSelection(book));
+  }
   const [picking, setPicking] = useState(false);
   const applySelection = (sel: ColumnSelection) => {
     setSelection(sel);
-    saveSelection(sel);
+    saveSelection(book, sel);
     setPicking(false);
   };
 
@@ -118,8 +132,8 @@ export default function LogbookMarine() {
           limit: RANGE_LIMIT,
           order: "desc",
         });
-        const cols = visibleColumns(logbookColumns(rows, windUnit), selection);
-        downloadText(exportFilename("logbook", from, "csv"), "text/csv", snapshotsCsv(rows, cols));
+        const cols = visibleColumns(columnsFor(logbookColumns(rows, windUnit), book), selection);
+        downloadText(exportFilename(`logbook-${book}`, from, "csv"), "text/csv", snapshotsCsv(rows, cols));
         return;
       }
       // The boat's own summaries, one block of columns per figure asked for. Each block
@@ -130,11 +144,14 @@ export default function LogbookMarine() {
       const blocks = r.stats
         .map((stat) => ({
           stat,
-          cols: visibleColumns(logbookColumns(buckets.map((b) => bucketRow(b, stat)), windUnit), selection),
+          cols: visibleColumns(
+            columnsFor(logbookColumns(buckets.map((b) => bucketRow(b, stat)), windUnit), book),
+            selection
+          ),
         }))
         .filter((b) => b.cols.length > 1);
       downloadText(
-        exportFilename("logbook", from, "csv"),
+        exportFilename(`logbook-${book}`, from, "csv"),
         "text/csv",
         bucketsCsv(buckets, blocks, { distance: r.distance, samples: r.samples }),
       );
@@ -144,6 +161,7 @@ export default function LogbookMarine() {
   };
 
   const shared = {
+    book,
     mode,
     setMode,
     windUnit,
@@ -179,6 +197,7 @@ export default function LogbookMarine() {
 }
 
 interface ViewProps {
+  book: LogBook;
   mode: Mode;
   setMode: (m: Mode) => void;
   windUnit: WindUnit;
@@ -372,6 +391,7 @@ function Cols({ cols, toggleWind }: { cols: LogColumn[]; toggleWind: () => void 
 }
 
 function LiveView({
+  book,
   mode,
   setMode,
   windUnit,
@@ -389,7 +409,7 @@ function LiveView({
   saveErr,
 }: ViewProps) {
   const { granularity, changeGran, snaps, err, busy, hasMore, loadMore } = useLogbookLive();
-  const earned = logbookColumns(snaps, windUnit);
+  const earned = columnsFor(logbookColumns(snaps, windUnit), book);
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
   const block = blockVar(drawn, width);
@@ -453,6 +473,7 @@ function LiveView({
 }
 
 function DayView({
+  book,
   mode,
   setMode,
   windUnit,
@@ -470,7 +491,7 @@ function DayView({
   saveErr,
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
-  const earned = logbookColumns(snaps, windUnit);
+  const earned = columnsFor(logbookColumns(snaps, windUnit), book);
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
   const block = blockVar(drawn, width);
@@ -583,6 +604,7 @@ function windowLabel(from: string, to: string): string {
  * over an empty table.
  */
 function RangeView({
+  book,
   req,
   setMode,
   windUnit,
@@ -612,7 +634,7 @@ function RangeView({
   };
   const r = req ?? fallback;
   const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
-  const earned = logbookColumns(snaps, windUnit);
+  const earned = columnsFor(logbookColumns(snaps, windUnit), book);
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
   const block = blockVar(drawn, width);

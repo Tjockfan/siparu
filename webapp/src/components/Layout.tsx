@@ -1,5 +1,5 @@
 import { useState, useEffect, Suspense } from "react";
-import { useLocation, useOutlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import BoatLoader from "./BoatLoader";
 import SwissTopBar from "./swiss/SwissTopBar";
@@ -27,6 +27,13 @@ const RAIL_QUERY = "(min-width: 1000px)";
 const TAB_ORDER = ["/", "/logbook", "/voyage", "/map", "/remote"];
 const MAP_IDX = 3;
 
+/** Which tab a path belongs to, so the two logbook pages slide like the one tab they are. */
+function tabIndex(pathname: string): number {
+  const i = TAB_ORDER.indexOf(pathname);
+  if (i !== -1) return i;
+  return TAB_ORDER.findIndex((t) => t !== "/" && pathname.startsWith(`${t}/`));
+}
+
 const pageVars = {
   enter: (off: number) => ({ opacity: 0, x: off }),
   center: (off: number) => ({
@@ -43,7 +50,6 @@ const pageVars = {
 
 export default function Layout() {
   const location = useLocation();
-  const outlet = useOutlet();
   const isLive = location.pathname === "/" || location.pathname === "/map";
 
   // Warm up the heavy sibling tab chunks in the background (Map -> MapLibre).
@@ -63,7 +69,7 @@ export default function Layout() {
   // Direction calc: the previous tab index is kept in state during render
   // (React's "storing information from previous renders" pattern - touching a
   // ref during render would violate react-hooks/refs).
-  const idx = TAB_ORDER.indexOf(location.pathname);
+  const idx = tabIndex(location.pathname);
   const [nav, setNav] = useState({ prev: idx, curr: idx });
   if (nav.curr !== idx) setNav({ prev: nav.curr, curr: idx });
   const prevIdx = nav.curr !== idx ? nav.curr : nav.prev;
@@ -108,7 +114,13 @@ export default function Layout() {
               animate="center"
               exit="exit"
             >
-              {outlet}
+              {/* The element, not a captured node. `useOutlet()` handed the page down as a value
+                  read where this component rendered, and in wait mode the presence layer holds
+                  the child it was given until the one before it has finished leaving - so the
+                  screen was one navigation behind its own address: the engineer's table under
+                  the officer's heading. Rendered as an element it reads the route where and
+                  when it is drawn, which is inside the layer that is being shown. */}
+              <Outlet />
             </motion.div>
           </AnimatePresence>
         </Suspense>

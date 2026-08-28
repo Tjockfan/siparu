@@ -7,11 +7,23 @@
  * (drawn vertically from the shared TABS list), and a footer holding the live/stale state, the
  * boat-local clock and the theme toggle - the chrome that lives in the header on a phone. */
 import { useState } from "react";
-import { Link, NavLink } from "react-router-dom";
-import { BrandMark, MoonIcon, SunIcon } from "siparu-ui";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { BridgeLogIcon, BrandMark, EngineLogIcon, MoonIcon, SunIcon } from "siparu-ui";
 import { getTheme, toggleTheme, type ThemeName } from "../../lib/theme";
 import { TABS } from "./BridgeTabBar";
 import { TopBarClock } from "./SwissTopBar";
+
+/**
+ * The two books, drawn under Logbook while the reader is in it.
+ *
+ * They open only there. A rail carrying every destination's children at all times is a site
+ * map rather than a place to steer from, and these two are the only ones with children: the
+ * ship keeps two logs and one of everything else.
+ */
+const BOOKS = [
+  { to: "/logbook/bridge", label: "Bridge", Icon: BridgeLogIcon },
+  { to: "/logbook/engine", label: "Engine", Icon: EngineLogIcon },
+] as const;
 
 type Props = {
   live?: boolean;
@@ -20,6 +32,7 @@ type Props = {
 
 export default function SideNav({ live, stale }: Props) {
   const [theme, setTheme] = useState<ThemeName>(() => getTheme());
+  const inLogbook = useLocation().pathname.startsWith("/logbook");
 
   return (
     <nav className="sp-rail" aria-label="Bridge navigation">
@@ -32,16 +45,32 @@ export default function SideNav({ live, stale }: Props) {
 
       <div className="rnav-list">
         {TABS.map(({ to, end, label, Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            replace
-            className={({ isActive }) => `rnav${isActive ? " on" : ""}`}
-          >
-            <Icon size={20} />
-            <span className="rl">{label}</span>
-          </NavLink>
+          <div key={to} className="rnav-item">
+            <NavLink
+              to={to}
+              end={end}
+              replace
+              className={({ isActive }) => `rnav${isActive ? " on" : ""}`}
+            >
+              <Icon size={20} />
+              <span className="rl">{label}</span>
+            </NavLink>
+            {to === "/logbook" && inLogbook && (
+              <div className="rnav-sub">
+                {BOOKS.map((b) => (
+                  <NavLink
+                    key={b.to}
+                    to={b.to}
+                    replace
+                    className={({ isActive }) => `rsub${isActive ? " on" : ""}`}
+                  >
+                    <b.Icon size={16} />
+                    <span className="rl">{b.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
         ))}
       </div>
 

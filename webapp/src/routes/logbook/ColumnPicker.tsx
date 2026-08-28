@@ -1,8 +1,12 @@
 /**
- * The two books, and which of their columns this table draws.
+ * Which of this book's columns the table draws.
  *
  * A panel rather than a popover: on a phone the choice is the whole screen's business for a
  * moment, and a floating layer over a table that scrolls sideways is a fight nobody wins.
+ *
+ * It used to hold both books and the presets that moved between them. The page is one book
+ * now, so the choice inside it is one list: a reader on the engineer's page is not choosing
+ * between logs, he is already in one.
  *
  * Nothing here touches the table until "Show these columns" is pressed. That is the point of
  * the draft: the reader filling in a watch does not want columns appearing and vanishing under
@@ -10,29 +14,15 @@
  * the rows he is reading. Cancel throws the draft away.
  */
 import { useState } from "react";
-import type { LogBook, LogColumn } from "./columns";
+import type { LogColumn } from "./columns";
 import {
-  bookColumns,
   isOn,
-  preset,
-  presetOf,
+  offerable,
   same,
-  withBook,
+  withAll,
   withToggled,
   type ColumnSelection,
-  type Preset,
 } from "./columnSelection";
-
-const BOOKS: { key: LogBook; name: string; keeper: string }[] = [
-  { key: "bridge", name: "Bridge", keeper: "Chief officer" },
-  { key: "engine", name: "Engine", keeper: "Chief engineer" },
-];
-
-const PRESETS: { key: Preset; name: string }[] = [
-  { key: "deck", name: "Deck log" },
-  { key: "engine", name: "Engine log" },
-  { key: "both", name: "Both" },
-];
 
 export default function ColumnPicker({
   cols,
@@ -46,61 +36,35 @@ export default function ColumnPicker({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<ColumnSelection>(applied);
-  const now = presetOf(draft, cols);
   const unchanged = same(draft, applied);
-  // A boat with no engine gauges has no engineer's book, and the presets that name one are not
-  // offered either: the same rule as everywhere else, one level up.
-  const books = BOOKS.filter((b) => bookColumns(cols, b.key).length > 0);
-  const presets = books.length > 1 ? PRESETS : PRESETS.slice(0, 1);
+  const mine = offerable(cols);
+  const on = mine.filter((c) => isOn(c, draft)).length;
 
   return (
     <div className="lb-pick">
-      {presets.length > 1 && (
-        <div className="lbp-presets">
-          <span className="lbp-k">Book</span>
-          {presets.map((p) => (
+      <div className="lbp-book">
+        <div className="lbp-h">
+          <span className="lbp-n">Columns</span>
+          <span className="lbp-s">
+            {on} of {mine.length}
+          </span>
+          <span className="lbp-all">
+            <button onClick={() => setDraft(withAll(cols, true))}>All</button>
+            <button onClick={() => setDraft(withAll(cols, false))}>None</button>
+          </span>
+        </div>
+        <div className="lbp-chips">
+          {mine.map((c) => (
             <button
-              key={p.key}
-              className={now === p.key ? "on" : ""}
-              onClick={() => setDraft(preset(p.key, cols))}
+              key={c.key}
+              className={`lbp-c${isOn(c, draft) ? " on" : ""}`}
+              aria-pressed={isOn(c, draft)}
+              onClick={() => setDraft(withToggled(draft, c))}
             >
-              {p.name}
+              {c.head}
             </button>
           ))}
         </div>
-      )}
-
-      <div className="lbp-books">
-        {books.map((b) => {
-          const mine = bookColumns(cols, b.key);
-          const on = mine.filter((c) => isOn(c, draft)).length;
-          return (
-            <div className="lbp-book" key={b.key}>
-              <div className="lbp-h">
-                <span className="lbp-n">{b.name}</span>
-                <span className="lbp-s">
-                  {b.keeper} · {on} of {mine.length}
-                </span>
-                <span className="lbp-all">
-                  <button onClick={() => setDraft(withBook(draft, cols, b.key, true))}>All</button>
-                  <button onClick={() => setDraft(withBook(draft, cols, b.key, false))}>None</button>
-                </span>
-              </div>
-              <div className="lbp-chips">
-                {mine.map((c) => (
-                  <button
-                    key={c.key}
-                    className={`lbp-c${isOn(c, draft) ? " on" : ""}`}
-                    aria-pressed={isOn(c, draft)}
-                    onClick={() => setDraft(withToggled(draft, c))}
-                  >
-                    {c.head}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })}
       </div>
 
       <div className="lbp-act">

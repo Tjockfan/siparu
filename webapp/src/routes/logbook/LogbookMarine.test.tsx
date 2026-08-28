@@ -67,11 +67,11 @@ function snap(over: Partial<Snapshot>): Snapshot {
   } as Snapshot;
 }
 
-async function draw(rows: Snapshot[]): Promise<string> {
+async function draw(rows: Snapshot[], book: "bridge" | "engine" = "bridge"): Promise<string> {
   page.length = 0;
   page.push(...rows);
   const { default: LogbookMarine } = await import("./LogbookMarine");
-  return renderToStaticMarkup(<LogbookMarine />);
+  return renderToStaticMarkup(<LogbookMarine book={book} />);
 }
 
 describe("the logbook table over a boat's own instruments", () => {
@@ -113,6 +113,32 @@ describe("the logbook table over a boat's own instruments", () => {
     const html = await draw([]);
     expect(html).toContain("No snapshots");
     expect(html).toMatch(/Nothing was logged in this window/i);
+  });
+
+  /**
+   * The page is one book, and the wiring is what decides which. The column model has told the
+   * two apart since it was written and the screen showed them together anyway, so the thing
+   * worth pinning here is not the split but that this screen performs it: the engineer's page
+   * draws his gauges and none of the officer's, over the very same rows.
+   */
+  it("draws the engineer's book on his page, and none of the officer's", async () => {
+    // Revolutions come off the wire in hertz, as Signal K sends them: 25.5 Hz is 1530 rpm.
+    const rows = [
+      snap({ sog: 4.1, depth: 18.2, path_values: { "propulsion.port.revolutions": 25.5 } }),
+      snap({ sog: 4.2, depth: 18.0, path_values: { "propulsion.port.revolutions": 26 } }),
+    ];
+    const bridge = await draw(rows, "bridge");
+    expect(bridge).toContain("SOG");
+    expect(bridge).toContain("DEP");
+    expect(bridge).not.toContain("P RPM");
+
+    const engine = await draw(rows, "engine");
+    expect(engine).toContain("P RPM");
+    expect(engine).toContain("1530");
+    expect(engine).not.toContain("SOG");
+    expect(engine).not.toContain("DEP");
+    // The hour belongs to both: an engineer's page of bare numbers is not a log.
+    expect(engine).toContain("UTC");
   });
 
   /**

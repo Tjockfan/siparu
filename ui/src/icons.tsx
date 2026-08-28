@@ -49,6 +49,52 @@ export const LogbookIcon = (p: IconProps) => (
   </Svg>
 );
 
+/**
+ * The chief officer's book: a ship's wheel.
+ *
+ * Rim, hub, spokes and the handles standing out past the rim. The handles are what makes it a
+ * wheel rather than a target - without them a ring with a dot in it is the crosshair it was
+ * first drawn as.
+ */
+export const BridgeLogIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx={12} cy={12} r={6} stroke="currentColor" strokeWidth={1.7} />
+    <circle cx={12} cy={12} r={1.7} stroke="currentColor" strokeWidth={1.7} />
+    <path
+      d="M13.2 10.8l2.6-2.6M10.8 10.8L8.2 8.2M13.2 13.2l2.6 2.6M10.8 13.2l-2.6 2.6"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+    />
+    <path
+      d="M12 6V3.2M12 18v2.8M6 12H3.2M18 12h2.8"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+/**
+ * The chief engineer's book: a piston in its cylinder, on the rod, over the crank.
+ *
+ * The cylinder is open at the bottom, which is the whole of the drawing's argument: closed it
+ * became a box with a lid and a knob, and read as a camera.
+ */
+export const EngineLogIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path
+      d="M7.4 16V5.4a1.4 1.4 0 0 1 1.4-1.4h6.4a1.4 1.4 0 0 1 1.4 1.4V16"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+    />
+    <path d="M8.6 8.9h6.8" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" />
+    <path d="M12 10.4v6.2" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" />
+    <circle cx={12} cy={18.9} r={2.4} stroke="currentColor" strokeWidth={1.7} />
+  </Svg>
+);
+
 export const MapIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 21s6.5-6 6.5-11A6.5 6.5 0 1 0 5.5 10c0 5 6.5 11 6.5 11Z" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round" />
