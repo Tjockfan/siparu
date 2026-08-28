@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UplinkStatus } from "../../lib/api";
-import { uplinkLine } from "./PairBand";
+import { uplinkLine } from "./RemotePanel";
 
 /**
  * The one line on the helm screen that says whether her frames are landing.

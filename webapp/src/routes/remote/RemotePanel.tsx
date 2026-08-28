@@ -1,13 +1,19 @@
-/* Pairing - the boat's half, on the Bridge screen.
+/* Remote - the boat's half of the link ashore, and its own screen.
  *
- * Deliberately not a tab. Pairing happens once in a vessel's life; a tab for it
- * would sit there dead for the rest of that life, in the way. So it lives under the
- * grid and takes up room only when it has something to say - a code to show, or a
- * stranger to refuse.
+ * This used to live under the instruments, on the argument that pairing happens once in a
+ * vessel's life and a tab for it would sit there dead afterwards. What actually sat there was
+ * the pairing band itself, under every reading on the busiest screen in the product, carrying
+ * an account's address and a list of key fingerprints below the fold. The link is not a
+ * reading and it is not glanced at; it is looked up, on the day somebody changes a phone or
+ * wonders who can see the boat. So it has a page, and the instruments got their room back.
  *
- * The approval state is the one that matters and it gets the loudest treatment on
- * the panel. Anyone can photograph a code off a screen at a boat show or through an
- * open saloon door; nobody can tap Approve without standing at this screen. That tap
+ * What did NOT move is the noticing. A condition an owner must act on is announced on the
+ * screen he is already looking at (see bridge/PairAlerts), and the detail waits here. A page
+ * nobody visits is a fine place for a list of fingerprints and a poor one for an alarm.
+ *
+ * The approval state is the one that matters and it gets the loudest treatment on the panel.
+ * Anyone can photograph a code off a screen at a boat show or through an open saloon door;
+ * nobody can tap Approve without standing at this screen, on the boat's own network. That tap
  * is the whole security model, so it is not allowed to look like a notification.
  */
 import { useEffect, useState } from "react";
@@ -15,6 +21,7 @@ import { api, type PairScreen, type SealingStatus, type UplinkStatus } from "../
 import { ageOf } from "../../lib/age";
 import { screenRefusals, sealingNotice } from "../../lib/sealing";
 import { usePolling } from "../../lib/usePolling";
+import SecurityWarning from "../../components/SecurityWarning";
 
 /*
  * The address a person reads off this screen and types into a phone or a laptop, so it has
@@ -68,7 +75,7 @@ export function uplinkLine(up: UplinkStatus | undefined): string {
   return "Waiting to send the first frame.";
 }
 
-export default function PairBand({ sealing }: { sealing?: SealingStatus | null }) {
+export default function RemotePanel({ sealing }: { sealing?: SealingStatus | null }) {
   const [fast, setFast] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmOff, setConfirmOff] = useState(false);
@@ -241,26 +248,10 @@ export default function PairBand({ sealing }: { sealing?: SealingStatus | null }
   // server's door, not about where in the pairing flow she happens to be. When the
   // door is open AND unanswered-for, the plugin refuses the writes (pairing_locked),
   // and the buttons below disappear rather than fail: a locked button the screen
-  // cannot explain is worse than no button.
+  // cannot explain is worse than no button, which is why the same warning the
+  // instruments carry is repeated here rather than left one tab away.
   const locked = data.pairing_locked === true;
-  const warning = data.security_off ? (
-    <div className="pair warn">
-      <div className="pl">
-        <div className="t">
-          {locked ? "Signal K security is off · pairing is locked" : "Signal K security is off"}
-        </div>
-        <div className="s">
-          {locked
-            ? "Anyone on this network could link this boat to another account or cut her " +
-              "loose, so pairing, unpairing and log edits stay locked. Add an admin user " +
-              "in Signal K - or, on a network you trust, accept the risk in the plugin settings."
-            : "Anyone who can reach this network can link this boat to their account, and " +
-              "the only sign here would be a linked account you do not recognise. Add an " +
-              "admin user in Signal K."}
-        </div>
-      </div>
-    </div>
-  ) : null;
+  const warning = <SecurityWarning on={data.security_off} locked={locked} />;
 
   // "Off on this boat, still revoking ashore" is a different truth from plain "off".
   // The plugin retries by itself; this only keeps the screen from flattening it.

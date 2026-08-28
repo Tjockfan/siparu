@@ -24,7 +24,7 @@ const RAIL_QUERY = "(min-width: 1000px)";
  *  navigating left does the reverse. When Map is involved there is NO
  *  transform, only a fade - MapLibre rendering is expensive and the transform
  *  layer is not worth the risk. Exit (140ms) is shorter than enter (220ms). */
-const TAB_ORDER = ["/", "/logbook", "/voyage", "/map"];
+const TAB_ORDER = ["/", "/logbook", "/voyage", "/map", "/remote"];
 const MAP_IDX = 3;
 
 const pageVars = {
@@ -55,6 +55,7 @@ export default function Layout() {
       import("../routes/Logbook").catch(() => {});
       import("../routes/Voyage").catch(() => {});
       import("../routes/Map").catch(() => {});
+      import("../routes/Remote").catch(() => {});
     }, 250);
     return () => clearTimeout(id);
   }, []);

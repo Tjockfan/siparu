@@ -64,6 +64,13 @@ export const VoyageIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const RemoteIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10.5 13.5a3.6 3.6 0 0 0 5.1 0l2.3-2.3a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" />
+    <path d="M13.5 10.5a3.6 3.6 0 0 0-5.1 0l-2.3 2.3a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" />
+  </Svg>
+);
+
 export const Plus = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />

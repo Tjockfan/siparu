@@ -36,7 +36,7 @@ import type { MetricField } from "../../lib/api";
 import { useBridgeData, bridgeHasReading, type BridgeData, type GustHours } from "./useBridgeData";
 import { useMediaQuery } from "../../lib/useMediaQuery";
 import BaroPopup from "./BaroPopup";
-import PairBand from "./PairBand";
+import PairAlerts from "./PairAlerts";
 import TripComputer from "./TripComputer";
 import { usePolling } from "../../lib/usePolling";
 import { api, type Voyage } from "../../lib/api";
@@ -433,6 +433,10 @@ export default function BridgeMarine() {
   if (wide) {
     return (
       <>
+        {/* Above the readings rather than under them. What is left of the pairing band is the
+            part an owner has to act on, and the foot of a screen he reads from the top is
+            where a warning goes to be missed. */}
+        <PairAlerts sealing={d.sealing} />
         <div className="sp-dash sp-board">
           {showBridge && (
             <section className="sp-sec sp-sec-bridge">
@@ -458,7 +462,6 @@ export default function BridgeMarine() {
             </div>
           )}
         </div>
-        <PairBand sealing={d.sealing} />
         {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
       </>
     );
@@ -482,6 +485,7 @@ export default function BridgeMarine() {
 
   return (
     <>
+      <PairAlerts sealing={d.sealing} />
       <div className="sp-dash">
         <DashPanel
           tab={a}
@@ -493,7 +497,6 @@ export default function BridgeMarine() {
           onBaro={openBaro}
         />
       </div>
-      <PairBand sealing={d.sealing} />
       {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
     </>
   );

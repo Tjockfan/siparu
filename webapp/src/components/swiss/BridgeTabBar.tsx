@@ -8,7 +8,7 @@
  * the engines, generator and tanks she reports - and it leaves the other three their own words. */
 import { NavLink } from "react-router-dom";
 import { motion } from "motion/react";
-import { ease, InstrumentsIcon, LogbookIcon, MapIcon, VoyageIcon } from "siparu-ui";
+import { ease, InstrumentsIcon, LogbookIcon, MapIcon, RemoteIcon, VoyageIcon } from "siparu-ui";
 
 // The bridge destinations, in order. Exported so the desktop side rail draws the same list
 // vertically instead of keeping its own copy that could drift out of step with this one.
@@ -17,6 +17,10 @@ export const TABS = [
   { to: "/logbook", end: false, label: "Logbook", Icon: LogbookIcon },
   { to: "/voyage", end: false, label: "Voyage", Icon: VoyageIcon },
   { to: "/map", end: false, label: "Map", Icon: MapIcon },
+  // Last, and it earns the place by being the one tab nobody opens twice in a season: the
+  // account, the pairing codes and the screens she seals to. What must be noticed instead of
+  // looked up stays on the instruments (bridge/PairAlerts).
+  { to: "/remote", end: false, label: "Remote", Icon: RemoteIcon },
 ] as const;
 
 export default function BridgeTabBar() {

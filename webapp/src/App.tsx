@@ -12,6 +12,7 @@ import { AUTH_REQUIRED_EVENT } from "./lib/api";
 const Logbook = lazy(() => import("./routes/Logbook"));
 const Voyage = lazy(() => import("./routes/Voyage"));
 const MapView = lazy(() => import("./routes/Map"));
+const Remote = lazy(() => import("./routes/Remote"));
 
 export default function App() {
   // On a Signal K security 401, the whole tree is swapped out for AuthGate - as the
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/logbook" element={<Logbook />} />
             <Route path="/voyage" element={<Voyage />} />
             <Route path="/map" element={<MapView />} />
+            <Route path="/remote" element={<Remote />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
