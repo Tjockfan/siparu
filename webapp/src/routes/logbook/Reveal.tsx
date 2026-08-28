@@ -20,11 +20,15 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 export default function Reveal({
   open,
   style,
+  cls,
   children,
 }: {
   open: boolean;
   /** The lane count, so what opens is as wide as the windows it sits between. */
   style?: CSSProperties;
+  /** The table's shape, for the same reason: two lanes lead the engineer's, and a panel sized
+   *  for one ends short of the table it belongs to. */
+  cls?: string;
   children: ReactNode;
 }) {
   const [drawn, setDrawn] = useState(open);
@@ -35,7 +39,7 @@ export default function Reveal({
   if (!drawn) return null;
   return (
     <div
-      className={open ? "lb-open" : "lb-open shut"}
+      className={`lb-open${open ? "" : " shut"}${cls ?? ""}`}
       style={style}
       onAnimationEnd={(e) => {
         // This container's own motion only: something inside it that animates one day must

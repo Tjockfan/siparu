@@ -1112,6 +1112,11 @@ body {
      sit at opposite edges of a desk monitor (see the note over .lb-cols). What the ceiling
      leaves over is a margin on both sides of the window, which is what it looks like now that
      the table is drawn in a centred frame. */
+  /* The engineer's table names a machine on every line. The names are the boat's own words -
+     "Starboard", "Generator 1" - and the longest of them sets this: 84px held the sides and
+     broke "GENERATOR 0" over two lines, which took the row's baseline with it. Fixed rather
+     than measured per boat, so a table does not change width when a generator is switched on. */
+  --lb-unit: 104px;
   --lb-lane: 160px;
   --lb-gap: 4px;
   --lb-pad: 16px;
@@ -1347,6 +1352,8 @@ body {
   text-transform: uppercase; color: var(--muted);
 }
 .swiss .lb-cols span:not(:first-child) { text-align: right; }
+/* The machine is named, not measured: its head reads from the left like the hour beside it. */
+.swiss .lb-cols.u span.un { text-align: left; }
 /* The table is as wide as its lanes, and the desk it leaves over is desk.
    A lane has a ceiling so a figure sits the same distance from its neighbour on every boat
    (see the note above), and on a wide screen that ceiling leaves room over: measured at 1920,
@@ -1406,6 +1413,45 @@ body {
   gap: var(--lb-gap); padding: 11px var(--lb-pad);
   border-bottom: 1px solid var(--hair); align-items: baseline;
 }
+/* The engineer's table, turned on its side: the hour, the machine, then a lane per reading.
+   Three engines reporting twelve gauges each filled thirty-six lanes and the two figures an
+   engineer compares - port against starboard - sat at opposite ends of them. As rows it is
+   twelve lanes and the comparison is a glance down a column.
+   The machine's lane is fixed rather than shared: a name is read, not measured against its
+   neighbours, and letting it flex put "PORT" in a lane the width of "STARBOARD" on one boat
+   and half that on the next. */
+.swiss .lb-cols.u,
+.swiss .lb-row.u {
+  grid-template-columns:
+    var(--lb-tm) var(--lb-unit) repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane)));
+}
+/* Two lanes lead this table where the column table has one, so the window it is drawn in has
+   to know: the bar and the frame are sized from the lanes inside them (see the note over
+   .lb-frame), and a frame short by a machine's lane clips its last reading. */
+.swiss .lb-ctrl.u,
+.swiss .lb-pick.u,
+.swiss .lb-open.u,
+.swiss .lb-frame.u {
+  max-width: calc(
+    var(--lb-tm) + var(--lb-unit) + var(--lb-gap)
+      + max(1, var(--lb-cols, 5)) * (var(--lb-lane) + var(--lb-gap)) + 2 * var(--lb-pad)
+  );
+}
+/* The machine's name: set like a head rather than like a figure, because it is what the line
+   is about and not a reading taken off it. */
+.swiss .lb-row.u .un {
+  font-family: var(--sp-font); font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--muted);
+  /* One line: a name that wraps is a row twice as tall as its neighbours, with its figures on
+     the baseline of the second half. A name longer than the lane is cut rather than folded. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* The hour is written once and the machines run under it, which is how the book is kept in
+   ink. Repeating it on every line would print the same four digits three times and leave the
+   reader working out which of them are one reading. */
+.swiss .lb-row.u.cont { border-top: 0; }
+.swiss .lb-row.u:not(.cont) { border-top: 1px solid var(--rule); }
+.swiss .lb-row.u.cont .tm { visibility: hidden; }
 .swiss .lb-row .tm {
   font-family: var(--sp-font); font-weight: 500; font-size: 15px; font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;

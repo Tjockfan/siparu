@@ -142,6 +142,59 @@ describe("the logbook table over a boat's own instruments", () => {
   });
 
   /**
+   * The shape of the engineer's page is the boat's, and the boat decides it by how many
+   * machines she has. One engine is twelve columns and fits; three are thirty-six and do not,
+   * so the machines come down the side and the readings go across - the table the reading is
+   * actually taken from, and the only arrangement where port sits above starboard.
+   */
+  it("turns the engineer's table on its side when the boat has more than one engine", async () => {
+    const three = (rpm: number) => ({
+      "propulsion.port.revolutions": rpm,
+      "propulsion.center.revolutions": rpm + 1,
+      "propulsion.starboard.revolutions": rpm + 2,
+    });
+    const html = await draw([snap({ path_values: three(25) })], "engine");
+    // A lane apiece would head these "P RPM", "C RPM", "S RPM". As rows the reading is headed
+    // once and the machines are named down the side.
+    expect(html).not.toContain("P RPM");
+    expect(html).toContain("PORT");
+    expect(html).toContain("STARBOARD");
+    expect(html).toContain("1500");
+    expect(html).toContain("1620");
+    // The hour is written once over the machines, not repeated on each of their lines.
+    expect(html.match(/class="tm"/g)).toHaveLength(3);
+    expect(html.match(/lb-row u cont/g)).toHaveLength(2);
+  });
+
+  /**
+   * The tabs divide the table, not just the one that is turned on its side.
+   *
+   * A single-engine boat with two generators draws her engine as columns, because one machine
+   * has no width to save. The generators are a different family with different readings, and a
+   * page showing both at once heads a column for a gauge half its lines cannot have.
+   */
+  it("shows one family at a time even when the table is drawn a column per reading", async () => {
+    const html = await draw(
+      [
+        snap({
+          path_values: {
+            "propulsion.port.revolutions": 25,
+            "propulsion.port.oilPressure": 400_000,
+            "electrical.generators.0.voltage": 230,
+            "electrical.generators.1.voltage": 229,
+          },
+        }),
+      ],
+      "engine",
+    );
+    expect(html).toContain("P RPM");
+    expect(html).toContain("P OIL");
+    // The generators have their own tab, and their readings wait behind it.
+    expect(html).not.toContain("VOLT");
+    expect(html).toContain("GENERATORS");
+  });
+
+  /**
    * A drawn column still shows its holes. This is the dot that means something - the boat
    * measured depth on this page, and did not measure it in this row.
    */

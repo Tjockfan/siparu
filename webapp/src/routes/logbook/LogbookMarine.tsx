@@ -5,13 +5,14 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { api, type Snapshot } from "../../lib/api";
 import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
 import { bucketHours, bucketRow, type BucketGran } from "../../lib/buckets";
+import { unitCell, unitGroups, type UnitGroup } from "./unitRows";
 import { dateInputToMs, dateToInput } from "../../lib/format";
 import { useElementWidth } from "../../lib/useElementWidth";
 import ColumnPicker from "./ColumnPicker";
 import ExportPanel, { type ExportRequest } from "./ExportPanel";
 import Reveal from "./Reveal";
-import { columnsFor, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
-import { fittedColumns, lanesThatFit } from "./fitColumns";
+import { columnsFor, hhmm, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
+import { fittedColumns, lanesThatFit, fittedMetrics } from "./fitColumns";
 import {
   loadSelection,
   saveSelection,
@@ -67,6 +68,10 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     setPageBook(book);
     setSelection(loadSelection(book));
   }
+  // Which family of machines the engineer's page is showing. Held here so switching Live/Day
+  // does not send him back to the engines, and null until he picks one - the page then shows
+  // the first family the boat reports, which on every boat that has engines is the engines.
+  const [family, setFamily] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const applySelection = (sel: ColumnSelection) => {
     setSelection(sel);
@@ -164,6 +169,8 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     book,
     mode,
     setMode,
+    family,
+    setFamily,
     windUnit,
     toggleWind,
     selection,
@@ -200,6 +207,9 @@ interface ViewProps {
   book: LogBook;
   mode: Mode;
   setMode: (m: Mode) => void;
+  /** The family of machines on screen, or null for the first one the boat reports. */
+  family: string | null;
+  setFamily: (t: string) => void;
   windUnit: WindUnit;
   toggleWind: () => void;
   selection: ColumnSelection;
@@ -231,6 +241,40 @@ function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) 
     <div className="seg">
       <button className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}>Live</button>
       <button className={mode === "day" ? "on" : ""} onClick={() => setMode("day")}>Day</button>
+    </div>
+  );
+}
+
+/**
+ * Which of the boat's machines the page is showing.
+ *
+ * Offered only when there is a choice: a boat with engines and no generator gets no tabs, and
+ * the space they would take goes to the table. What is on them is hers too - the families come
+ * out of the paths she sends, so a boat that fits a generator next season grows the tab the
+ * hour it first reports.
+ */
+function FamilySeg({
+  groups,
+  family,
+  setFamily,
+}: {
+  groups: UnitGroup[];
+  family: string | null;
+  setFamily: (t: string) => void;
+}) {
+  if (groups.length < 2) return null;
+  const on = groups.find((g) => g.tab === family) ?? groups[0]!;
+  return (
+    <div className="seg">
+      {groups.map((g) => (
+        <button
+          key={g.tab}
+          className={g.tab === on.tab ? "on" : ""}
+          onClick={() => setFamily(g.tab)}
+        >
+          {g.head}
+        </button>
+      ))}
     </div>
   );
 }
@@ -315,6 +359,67 @@ function NoRows({ what }: { what: string }) {
 }
 
 /**
+ * What this view is drawing: a column per reading, or a row per machine.
+ *
+ * The bridge's book is column-major and always was - a boat has one log line at a time and the
+ * readings on it are her own. The engineer's is not: her machines are three of a kind, and the
+ * question he asks the page is what the starboard one is doing that the port one is not.
+ *
+ * The families are the boat's, so the tabs are too. A single-engine boat is offered no choice
+ * and shown no tab, because there is nothing to choose between.
+ */
+interface TableShape {
+  /** The families this book offers, empty on the bridge's. */
+  groups: UnitGroup[];
+  /** The family on screen, or null when the table is drawn a column per reading. */
+  group: UnitGroup | null;
+  /** Column-major only: everything earned, what the reader kept, and what fits. */
+  earned: LogColumn[];
+  cols: LogColumn[];
+  drawn: LogColumn[];
+  /** The lane count, for the head, the rows and the two windows they sit in. */
+  block: CSSProperties;
+  /** What the bar and the frame carry so their width matches the table inside them. */
+  cls: string;
+}
+
+function tableShape(
+  snaps: Snapshot[],
+  book: LogBook,
+  windUnit: WindUnit,
+  selection: ColumnSelection,
+  width: number | null,
+  family: string | null,
+): TableShape {
+  const groups = book === "engine" ? unitGroups(snaps) : [];
+  const chosen = groups.find((g) => g.tab === family) ?? groups[0];
+  // Turning a family on its side is what buys a wide table back, and a family of one machine
+  // has no width to buy: her twelve gauges fit as twelve columns, headed with her name the way
+  // they always were. Rows there would print that name on every line and head the readings
+  // with nothing.
+  if (chosen && chosen.units.length > 1) {
+    const metrics = fittedMetrics(chosen.metrics, width, true);
+    const group = { ...chosen, metrics };
+    return {
+      groups,
+      group,
+      earned: [],
+      cols: [],
+      drawn: [],
+      block: { "--lb-cols": Math.max(1, metrics.length) } as CSSProperties,
+      cls: " u",
+    };
+  }
+  const all = columnsFor(logbookColumns(snaps, windUnit), book);
+  // On the engineer's page the tabs still divide the table, so a column table shows the family
+  // he is on rather than every machine aboard at once.
+  const earned = chosen ? all.filter((c) => c.key === "ts" || c.tab === chosen.tab) : all;
+  const cols = visibleColumns(earned, selection);
+  const drawn = fittedColumns(cols, width);
+  return { groups, group: null, earned, cols, drawn, block: blockVar(drawn, width), cls: "" };
+}
+
+/**
  * The width of the table, handed to CSS as a variable rather than baked into the stylesheet.
  * The count is the boat's now, and a fixed `repeat(5, 1fr)` would keep laying out five tracks
  * for a bare boat that fills two.
@@ -327,6 +432,11 @@ function NoRows({ what }: { what: string }) {
  * table sits in - because what decides how wide those windows are is the same thing: the lanes
  * inside them. A bar wider than the table it belongs to reads as two separate pages.
  */
+/** The lane count for the engineer's table, which is a lane per reading and none for the hour. */
+function metricVar(group: UnitGroup): CSSProperties {
+  return { "--lb-cols": Math.max(1, group.metrics.length) } as CSSProperties;
+}
+
 function laneVar(cols: LogColumn[]): CSSProperties {
   return { "--lb-cols": cols.length - 1 } as CSSProperties;
 }
@@ -374,7 +484,33 @@ function ExportButton({ open, onOpen }: { open: boolean; onOpen: () => void }) {
   );
 }
 
-function Cols({ cols, toggleWind }: { cols: LogColumn[]; toggleWind: () => void }) {
+/**
+ * The heads over the table, in whichever of its two shapes is on screen.
+ *
+ * The engineer's leads with two: the hour and the machine. Neither is a reading, and neither is
+ * set like one - the machine's name is a label on the line, not a figure taken off it.
+ */
+function Cols({
+  cols,
+  group,
+  toggleWind,
+}: {
+  cols: LogColumn[];
+  group: UnitGroup | null;
+  toggleWind: () => void;
+}) {
+  if (group) {
+    const named = group.units.length > 1;
+    return (
+      <div className={`lb-cols${named ? " u" : ""}`} style={metricVar(group)}>
+        <span>UTC</span>
+        {named && <span className="un">Unit</span>}
+        {group.metrics.map((m) => (
+          <span key={m.key}>{m.head}</span>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="lb-cols" style={laneVar(cols)}>
       {cols.map((c) =>
@@ -394,6 +530,8 @@ function LiveView({
   book,
   mode,
   setMode,
+  family,
+  setFamily,
   windUnit,
   toggleWind,
   selection,
@@ -409,28 +547,33 @@ function LiveView({
   saveErr,
 }: ViewProps) {
   const { granularity, changeGran, snaps, err, busy, hasMore, loadMore } = useLogbookLive();
-  const earned = columnsFor(logbookColumns(snaps, windUnit), book);
-  const cols = visibleColumns(earned, selection);
-  const drawn = fittedColumns(cols, width);
-  const block = blockVar(drawn, width);
+  const { groups, group, earned, cols, drawn, block, cls } = tableShape(
+    snaps, book, windUnit, selection, width, family,
+  );
   return (
     <>
-      <div className="lb-ctrl" style={block}>
+      <div className={`lb-ctrl${cls}`} style={block}>
         <ModeSeg mode={mode} setMode={setMode} />
         <div className="seg">
           {GRANS.map((g) => (
             <button key={g} className={granularity === g ? "on" : ""} onClick={() => changeGran(g)}>{g}</button>
           ))}
         </div>
-        <ColumnsButton
-          shown={drawn.length - 1}
-          chosen={cols.length - 1}
-          open={picking}
-          onOpen={() => setPicking(!picking)}
-        />
+        <FamilySeg groups={groups} family={family} setFamily={setFamily} />
+        {group === null && (
+          <ColumnsButton
+            shown={drawn.length - 1}
+            chosen={cols.length - 1}
+            open={picking}
+            onOpen={() => setPicking(!picking)}
+          />
+        )}
         <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
-      <Reveal open={picking} style={block}>
+      {/* The picker belongs to a table drawn a column per reading. On the engineer's unit-major
+          page there is nothing to pick - the readings are the columns and they all fit - so a
+          panel left open on the way in from the other book closes rather than opening empty. */}
+      <Reveal open={picking && group === null} style={block} cls={cls}>
         <ColumnPicker
           cols={earned}
           applied={selection}
@@ -438,7 +581,7 @@ function LiveView({
           onCancel={() => setPicking(false)}
         />
       </Reveal>
-      <Reveal open={exporting} style={block}>
+      <Reveal open={exporting} style={block} cls={cls}>
         <ExportPanel
           initial={request ?? undefined}
           onView={onView}
@@ -447,9 +590,9 @@ function LiveView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className="lb-frame" style={block}>
+      <div className={`lb-frame${cls}`} style={block}>
         <PrintHead window={GRAN_LABEL[granularity]} interval={INTERVAL_NAME[granularity]} />
-        <Cols cols={drawn} toggleWind={toggleWind} />
+        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
         {err && <div className="lb-err">{err}</div>}
         {!busy && !err && snaps.length === 0 ? (
@@ -458,6 +601,7 @@ function LiveView({
           <Rows
             snaps={snaps}
             cols={drawn}
+            group={group}
             footer={
               hasMore ? (
                 <button className="lb-more" onClick={loadMore} disabled={busy}>
@@ -476,6 +620,8 @@ function DayView({
   book,
   mode,
   setMode,
+  family,
+  setFamily,
   windUnit,
   toggleWind,
   selection,
@@ -491,10 +637,9 @@ function DayView({
   saveErr,
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
-  const earned = columnsFor(logbookColumns(snaps, windUnit), book);
-  const cols = visibleColumns(earned, selection);
-  const drawn = fittedColumns(cols, width);
-  const block = blockVar(drawn, width);
+  const { groups, group, earned, cols, drawn, block, cls } = tableShape(
+    snaps, book, windUnit, selection, width, family,
+  );
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
   const dayLabel = isToday
@@ -505,7 +650,7 @@ function DayView({
 
   return (
     <>
-      <div className="lb-ctrl" style={block}>
+      <div className={`lb-ctrl${cls}`} style={block}>
         <ModeSeg mode={mode} setMode={setMode} />
         <div className="lb-date">
           <button onClick={prevDay} aria-label="Previous day">‹</button>
@@ -520,15 +665,21 @@ function DayView({
           <button onClick={nextDay} disabled={isToday} aria-label="Next day">›</button>
           <button onClick={goToday} disabled={isToday}>Now</button>
         </div>
-        <ColumnsButton
-          shown={drawn.length - 1}
-          chosen={cols.length - 1}
-          open={picking}
-          onOpen={() => setPicking(!picking)}
-        />
+        <FamilySeg groups={groups} family={family} setFamily={setFamily} />
+        {group === null && (
+          <ColumnsButton
+            shown={drawn.length - 1}
+            chosen={cols.length - 1}
+            open={picking}
+            onOpen={() => setPicking(!picking)}
+          />
+        )}
         <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
-      <Reveal open={picking} style={block}>
+      {/* The picker belongs to a table drawn a column per reading. On the engineer's unit-major
+          page there is nothing to pick - the readings are the columns and they all fit - so a
+          panel left open on the way in from the other book closes rather than opening empty. */}
+      <Reveal open={picking && group === null} style={block} cls={cls}>
         <ColumnPicker
           cols={earned}
           applied={selection}
@@ -536,7 +687,7 @@ function DayView({
           onCancel={() => setPicking(false)}
         />
       </Reveal>
-      <Reveal open={exporting} style={block}>
+      <Reveal open={exporting} style={block} cls={cls}>
         <ExportPanel
           initial={request ?? undefined}
           onView={onView}
@@ -545,15 +696,15 @@ function DayView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className="lb-frame" style={block}>
+      <div className={`lb-frame${cls}`} style={block}>
         <PrintHead window={dayLabel} interval={INTERVAL_NAME["1h"]} />
-        <Cols cols={drawn} toggleWind={toggleWind} />
+        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
         {err && <div className="lb-err">{err}</div>}
         {!busy && snaps.length === 0 ? (
           <NoRows what="No telemetry was logged for this day." />
         ) : (
-          <Rows snaps={snaps} cols={drawn} footer={null} />
+          <Rows snaps={snaps} cols={drawn} group={group} footer={null} />
         )}
       </div>
     </>
@@ -607,6 +758,8 @@ function RangeView({
   book,
   req,
   setMode,
+  family,
+  setFamily,
   windUnit,
   toggleWind,
   selection,
@@ -634,10 +787,9 @@ function RangeView({
   };
   const r = req ?? fallback;
   const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
-  const earned = columnsFor(logbookColumns(snaps, windUnit), book);
-  const cols = visibleColumns(earned, selection);
-  const drawn = fittedColumns(cols, width);
-  const block = blockVar(drawn, width);
+  const { groups, group, earned, cols, drawn, block, cls } = tableShape(
+    snaps, book, windUnit, selection, width, family,
+  );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
   useEffect(() => {
@@ -652,19 +804,25 @@ function RangeView({
   const interval = INTERVAL_NAME[r.gran];
   return (
     <>
-      <div className="lb-ctrl" style={block}>
+      <div className={`lb-ctrl${cls}`} style={block}>
         <ModeSeg mode="range" setMode={setMode} />
         <button className="lb-colbtn on" onClick={() => setExporting(!exporting)}>
           {label} · <b>{interval}</b>
         </button>
-        <ColumnsButton
-          shown={drawn.length - 1}
-          chosen={cols.length - 1}
-          open={picking}
-          onOpen={() => setPicking(!picking)}
-        />
+        <FamilySeg groups={groups} family={family} setFamily={setFamily} />
+        {group === null && (
+          <ColumnsButton
+            shown={drawn.length - 1}
+            chosen={cols.length - 1}
+            open={picking}
+            onOpen={() => setPicking(!picking)}
+          />
+        )}
       </div>
-      <Reveal open={picking} style={block}>
+      {/* The picker belongs to a table drawn a column per reading. On the engineer's unit-major
+          page there is nothing to pick - the readings are the columns and they all fit - so a
+          panel left open on the way in from the other book closes rather than opening empty. */}
+      <Reveal open={picking && group === null} style={block} cls={cls}>
         <ColumnPicker
           cols={earned}
           applied={selection}
@@ -672,7 +830,7 @@ function RangeView({
           onCancel={() => setPicking(false)}
         />
       </Reveal>
-      <Reveal open={exporting} style={block}>
+      <Reveal open={exporting} style={block} cls={cls}>
         <ExportPanel
           initial={request ?? undefined}
           onView={onView}
@@ -681,9 +839,9 @@ function RangeView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className="lb-frame" style={block}>
+      <div className={`lb-frame${cls}`} style={block}>
         <PrintHead window={label} interval={interval} />
-        <Cols cols={drawn} toggleWind={toggleWind} />
+        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}>
           <span>{label} · {interval}</span>
           <b>{truncated ? `${snaps.length} of more` : snaps.length}</b>
@@ -701,19 +859,68 @@ function RangeView({
         {!busy && snaps.length === 0 ? (
           <NoRows what={emptyRangeNote(r)} />
         ) : (
-          <Rows snaps={snaps} cols={drawn} footer={null} />
+          <Rows snaps={snaps} cols={drawn} group={group} footer={null} />
         )}
       </div>
     </>
   );
 }
 
-function Rows({ snaps, cols, footer }: { snaps: Snapshot[]; cols: LogColumn[]; footer: React.ReactNode }) {
+function Rows({
+  snaps,
+  cols,
+  group,
+  footer,
+}: {
+  snaps: Snapshot[];
+  cols: LogColumn[];
+  group: UnitGroup | null;
+  footer: React.ReactNode;
+}) {
+  if (group) {
+    return (
+      <div className="lb-rows" style={metricVar(group)}>
+        {snaps.map((s) => (
+          <UnitBlock key={s.ts} s={s} group={group} />
+        ))}
+        {footer}
+      </div>
+    );
+  }
   return (
     <div className="lb-rows" style={laneVar(cols)}>
       {snaps.map((s) => <Row key={s.ts} s={s} cols={cols} />)}
       {footer}
     </div>
+  );
+}
+
+/**
+ * One moment, and the machines under it.
+ *
+ * The hour is written on the first line and left off the rest, which is how it is written in
+ * ink: three lines carrying the same four digits read as three readings until you notice they
+ * are one. The lines are held together by the rule above the block rather than by repetition.
+ */
+function UnitBlock({ s, group }: { s: Snapshot; group: UnitGroup }) {
+  const named = group.units.length > 1;
+  return (
+    <>
+      {group.units.map((u, i) => (
+        <div
+          key={u.key}
+          className={`lb-row${named ? " u" : ""}${i > 0 ? " cont" : ""}`}
+        >
+          <span className="tm">{hhmm(s.ts)}</span>
+          {named && <span className="un">{u.head}</span>}
+          {group.metrics.map((m) => (
+            <span key={m.key} className="v">
+              {unitCell(s, u, m)}
+            </span>
+          ))}
+        </div>
+      ))}
+    </>
   );
 }
 

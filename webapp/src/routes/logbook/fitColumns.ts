@@ -11,6 +11,7 @@
  * count that says so. Nothing is hidden silently.
  */
 import type { LogColumn } from "./columns";
+import type { UnitMetric } from "./unitRows";
 
 /** These match `.lb-cols` / `.lb-row` in swiss.css: the time lane, the gap between lanes, and
  *  the row's side padding. Changing one there without the other here shows up as a lane drawn
@@ -23,6 +24,9 @@ export const SIDE_PAD = 32;
  *  31px wide, and a four-letter head at 11px is 30px. Below this the figures touch their
  *  neighbours and two columns read as one. */
 export const MIN_LANE = 48;
+
+/** The engineer's table leads with a machine's name as well as an hour. Matches --lb-unit. */
+export const UNIT_LANE = 104;
 
 /** How many data lanes fit beside the time lane. At least one: a table with a time column and
  *  nothing beside it is not a log. */
@@ -41,4 +45,20 @@ export function lanesThatFit(width: number): number {
 export function fittedColumns(cols: LogColumn[], width: number | null): LogColumn[] {
   if (width === null || cols.length === 0) return cols;
   return cols.slice(0, 1 + lanesThatFit(width));
+}
+
+/**
+ * The readings actually drawn beside a machine's name.
+ *
+ * Held back the same way and for the same reason as a column: the unit-major table leads with
+ * two lanes rather than one, so a narrow screen has that much less room for readings and gets
+ * the first of them rather than a row of lanes too thin to read.
+ */
+export function fittedMetrics(
+  metrics: UnitMetric[],
+  width: number | null,
+  unitLane: boolean,
+): UnitMetric[] {
+  if (width === null) return metrics;
+  return metrics.slice(0, lanesThatFit(width - (unitLane ? UNIT_LANE + LANE_GAP : 0)));
 }

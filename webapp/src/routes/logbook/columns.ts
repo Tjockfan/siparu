@@ -42,6 +42,9 @@ export interface LogColumn {
   key: string;
   head: string;
   book: LogBook;
+  /** Which family of machines this reading belongs to, for the engineer's tabs. Absent on the
+   *  bridge's columns, which are the boat herself and not a machine aboard her. */
+  tab?: string;
   /** What this column prints for one row. Never null: an absent reading inside a drawn column
    *  is a gap in a real series, and reads as one. */
   cell: (s: Snapshot) => string;
@@ -51,16 +54,24 @@ export interface LogColumn {
   tappable?: boolean;
 }
 
+/**
+ * The hour a reading was taken, as the log prints it.
+ *
+ * Shared with the engineer's unit-major table, which stamps its rows the same way: a second
+ * copy of this would be the two books disagreeing about what time it is.
+ */
+export function hhmm(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
 /** The time column, which every row has by construction - a snapshot is a moment. */
 const UTC: LogColumn = {
   key: "ts",
   head: "UTC",
   book: "bridge",
-  cell: (s) => {
-    const d = new Date(s.ts);
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
-  },
+  cell: (s) => hhmm(s.ts),
 };
 
 /**
@@ -206,6 +217,16 @@ const METRIC_HEAD: Record<string, string> = {
 };
 
 /**
+ * A reading's column head, spelled from the parameter's own name.
+ *
+ * Shared with the engineer's unit-major table, which heads the same readings: two copies of
+ * this mapping would drift the first time a gauge was renamed in one of them.
+ */
+export function metricHead(sub: string): string {
+  return METRIC_HEAD[sub] ?? sub.split(" ")[0]!.toUpperCase();
+}
+
+/**
  * How a unit is headed: the initial of a side, the number of a numbered one.
  *
  * "Port" and "Starboard" share no initial with each other and none with "Center", so a letter
@@ -238,12 +259,13 @@ function engineCandidates(snaps: Snapshot[]): { col: LogColumn; has: (s: Snapsho
     const d = describePath(path);
     // A path no reading describes gets no column: a header would be a guess at what it is.
     if (!d || d.sub === null) continue;
-    const metric = METRIC_HEAD[d.sub] ?? d.sub.split(" ")[0]!.toUpperCase();
+    const metric = metricHead(d.sub);
     out.push({
       col: {
         key: `p:${path}`,
         head: `${unitHead(d.label)} ${metric}`,
         book: "engine",
+        tab: d.tab,
         cell: (s) => {
           const v = s.path_values?.[path];
           if (typeof v !== "number") return "·";

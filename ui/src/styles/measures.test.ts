@@ -67,6 +67,21 @@ describe("the measurements the logbook table is laid out from", () => {
     expect(declared("lb-tm")).toBe(58); // fitColumns.ts: TIME_LANE
     expect(declared("lb-gap")).toBe(4); // fitColumns.ts: LANE_GAP
     expect(declared("lb-pad") * 2).toBe(32); // fitColumns.ts: SIDE_PAD, both sides
+    expect(declared("lb-unit")).toBe(104); // fitColumns.ts: UNIT_LANE
+  });
+
+  /**
+   * The engineer's table leads with a machine's name as well as an hour, and its head and its
+   * rows have to lead with the same two: a head one lane short of its rows puts every reading
+   * under the wrong word, which is worse than a table that is too wide.
+   */
+  it("leads the unit-major head and rows with the same two lanes", () => {
+    for (const selector of [".swiss .lb-cols.u, .swiss .lb-row.u"]) {
+      const body = rules().find(([sel]) => sel === selector)?.[1] ?? "";
+      expect(body, selector).toContain(
+        "var(--lb-tm) var(--lb-unit) repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane)))",
+      );
+    }
   });
 
   /** Both grids read the declarations, so neither can drift from the width below. */
@@ -82,8 +97,39 @@ describe("the measurements the logbook table is laid out from", () => {
   });
 });
 
-const [blockSelector, blockBody] = ruleDeclaring("max-width", "--lb-cols");
-const expression = (/max-width:\s*([\s\S]*?);/.exec(blockBody) as RegExpExecArray)[1] as string;
+/**
+ * The two width expressions the table has.
+ *
+ * The engineer's table leads with a machine's name as well as an hour, so the windows it is
+ * drawn in are that much wider - one expression each, and both of them are arithmetic over the
+ * same declarations. A second copy of the sum is exactly the drift this file exists to catch,
+ * so both are evaluated below rather than one being taken on trust.
+ */
+function widthRules(): [string, string][] {
+  const found = rules().filter(
+    ([, body]) => /(^|[;{\s])max-width\s*:/.test(body) && body.includes("--lb-cols"),
+  );
+  expect(found, "max-width --lb-cols").toHaveLength(2);
+  return found as [string, string][];
+}
+
+/** The one of the two that leads with a machine's name, or does not. */
+function widthRule(withUnit: boolean): [string, string] {
+  const found = widthRules().filter(([, b]) => b.includes("--lb-unit") === withUnit);
+  expect(
+    found,
+    withUnit
+      ? "one of the two width rules adds the machine's lane"
+      : "one of the two width rules is the column table's",
+  ).toHaveLength(1);
+  return found[0] as [string, string];
+}
+
+const [blockSelector, blockBody] = widthRule(false);
+const [unitSelector, unitBody] = widthRule(true);
+const expressionOf = (body: string): string =>
+  (/max-width:\s*([\s\S]*?);/.exec(body) as RegExpExecArray)[1] as string;
+const expression = expressionOf(blockBody);
 
 /**
  * What that expression comes to, in px, for a table with this many data lanes.
@@ -92,8 +138,8 @@ const expression = (/max-width:\s*([\s\S]*?);/.exec(blockBody) as RegExpExecArra
  * a browser will compute and not about how the rule happens to be typed. What is evaluated is
  * this repo's own stylesheet, read from the file beside this one.
  */
-function widthOf(lanes: number): number {
-  const arithmetic = expression
+function widthOf(lanes: number, expr: string = expression): number {
+  const arithmetic = expr
     .replace(/var\(--lb-cols(?:,[^)]*)?\)/g, String(lanes))
     .replace(/var\((--[a-z-]+)\)/g, (_, name: string) => String(declared(name.slice(2))))
     .replace(/px/g, "")
@@ -141,6 +187,23 @@ describe("the windows the logbook is drawn in", () => {
    */
   it("keeps a lane's width for the day there is nothing to show", () => {
     expect(widthOf(0)).toBe(SIDES + TIME_LANE + (LANE + GAP));
+  });
+
+  /**
+   * The engineer's windows are the same sum with the machine's lane in it. Written out rather
+   * than derived from the one above, so this is where the two are held together: a table whose
+   * frame is short by that lane clips the last reading on every line.
+   */
+  it("adds the machine's lane to the windows the engineer's table is drawn in", () => {
+    expect(unitSelector).toBe(
+      ".swiss .lb-ctrl.u, .swiss .lb-pick.u, .swiss .lb-open.u, .swiss .lb-frame.u",
+    );
+    const UNIT = declared("lb-unit");
+    const unit = (lanes: number) => widthOf(lanes, expressionOf(unitBody));
+    expect(unit(12)).toBe(SIDES + TIME_LANE + UNIT + GAP + 12 * (LANE + GAP));
+    expect(unit(4)).toBe(SIDES + TIME_LANE + UNIT + GAP + 4 * (LANE + GAP));
+    // Exactly the machine's lane wider than the table without one, at every lane count.
+    expect(unit(12) - widthOf(12)).toBe(UNIT + GAP);
   });
 });
 
