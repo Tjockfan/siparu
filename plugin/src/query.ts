@@ -1,7 +1,7 @@
 /**
  * Snapshot queries behind GET /snapshots (and, in Phase 2, the history RPC).
  *
- * bucket=1   -> raw NDJSON, clamped to today (UTC). Never scans history.
+ * bucket=1   -> raw NDJSON over the last RAW_WINDOW_DAYS, clamped and flagged past that.
  * bucket=60  -> hourly rollup lines, one row per hour (last values).
  * bucket=360 -> hourly rollups grouped into 6h windows, latest hour wins.
  * bucket=1440-> daily rollup lines, one row per day (last values).
@@ -23,7 +23,7 @@ import {
 } from './contract'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
-import { dayKey, startOfUtcDay } from './time'
+import { dayKey, hourKey } from './time'
 import { coreSeriesFor } from './units'
 
 /**
@@ -38,6 +38,21 @@ const ROLLUP_FIELDS: readonly MetricField[] = metricFields('linear', 'angular', 
 
 export const LIMIT_DEFAULT = 200
 export const LIMIT_MAX = 5000
+
+/**
+ * How far back the raw record can be read at minute resolution.
+ *
+ * It used to be the current UTC day and nothing earlier, which was a reading cost decided as
+ * if it were a retention rule: a boat holding a month of minutes on her own disk answered
+ * "nothing" for yesterday at that resolution, and the data was there the whole time. A week
+ * costs 168 files and about 30 MB to walk, a fifth of a second on a laptop and a second or so
+ * on the small computers this runs on - a price worth paying once, when a reader asks for it,
+ * and not one to pay on a month.
+ *
+ * Beyond the window the answer is still complete, only coarser: the same hours arrive from the
+ * rollup, one row each. The window is where minutes stop, never where history does.
+ */
+export const RAW_WINDOW_DAYS = 7
 
 /** The aggregate for a series in one rollup: a core metric is in `metrics`, a dynamic gauge in `path_metrics`. */
 function aggFor(
@@ -98,14 +113,15 @@ export class QueryService {
     const order = q.order ?? 'desc'
     const to = q.to ?? now
     let clamped = false
+    let floor: number | undefined
 
     let rows: Snapshot[]
     if (q.bucket === 1) {
-      // Raw is today-only by design; clamp and flag it.
-      const todayStart = startOfUtcDay(now)
-      const from = Math.max(q.from ?? todayStart, todayStart)
-      if ((q.from ?? todayStart) < todayStart || to < todayStart) clamped = true
-      rows = await this.readRawToday(now, from, to)
+      // Raw reaches a week back and no further; clamp and flag it.
+      floor = await this.minutesFrom(now)
+      const from = Math.max(q.from ?? floor, floor)
+      if ((q.from ?? floor) < floor || to < floor) clamped = true
+      rows = await this.readRawWindow(from, to)
     } else if (q.bucket === 60) {
       const from = q.from ?? 0
       rows = (await this.rollups.readHourly(from, to)).map(rollupToRow)
@@ -130,12 +146,12 @@ export class QueryService {
     const total = rows.length
     rows = rows.slice(offset, offset + limit)
     if (offset + rows.length < total) clamped = true
-    return { rows, clamped }
+    return { rows, clamped, ...(floor === undefined ? {} : { minutesFrom: floor }) }
   }
 
   /**
    * One gauge's history, shaped for a graph. Same bucketing as snapshots():
-   * bucket=1 reads raw (today only, clamped), the rest read rollups. A raw sample
+   * bucket=1 reads raw (the last week, clamped), the rest read rollups. A raw sample
    * becomes a point with min = max = avg = last; a rollup carries its real aggregate,
    * so a chart can draw a band. A path a rollup does not carry simply yields no point.
    *
@@ -152,14 +168,15 @@ export class QueryService {
     const to = q.to ?? now
     const coreField = coreSeriesFor(pathName)?.field
     let clamped = false
+    let floor: number | undefined
 
     let points: PathSeriesPoint[]
     if (q.bucket === 1) {
-      const todayStart = startOfUtcDay(now)
-      const from = Math.max(q.from ?? todayStart, todayStart)
-      if ((q.from ?? todayStart) < todayStart || to < todayStart) clamped = true
+      floor = await this.minutesFrom(now)
+      const from = Math.max(q.from ?? floor, floor)
+      if ((q.from ?? floor) < floor || to < floor) clamped = true
       points = []
-      for (const r of await this.readRawToday(now, from, to)) {
+      for (const r of await this.readRawWindow(from, to)) {
         const v = coreField ? r[coreField] : r.path_values?.[pathName]
         if (typeof v === 'number') points.push({ ts: r.ts, min: v, max: v, avg: v, last: v })
       }
@@ -189,12 +206,33 @@ export class QueryService {
     const total = points.length
     points = points.slice(offset, offset + limit)
     if (offset + points.length < total) clamped = true
-    return { path: pathName, points, clamped }
+    return { path: pathName, points, clamped, ...(floor === undefined ? {} : { minutesFrom: floor }) }
   }
 
-  private async readRawToday(now: number, fromTs: number, toTs: number): Promise<Snapshot[]> {
-    const today = dayKey(now)
-    const keys = (await this.store.listRawKeys()).filter((k) => k.startsWith(today))
+  /**
+   * The earliest instant this boat will answer for at minute resolution: the window, or the
+   * oldest hour she still holds when that is younger.
+   *
+   * The disk decides the second half. Raw hours are pruned under the storage cap, so a boat
+   * switched on yesterday, or one whose cap is small, cannot serve the whole week - and a page
+   * that was told she could draws the gap as lost data rather than as a boat that was off.
+   */
+  private async minutesFrom(now: number): Promise<number> {
+    const window = now - RAW_WINDOW_DAYS * 86_400_000
+    const oldest = (await this.store.rawUsage()).oldest
+    return oldest ? Math.max(window, Date.parse(`${oldest}:00:00Z`)) : window
+  }
+
+  /**
+   * Raw rows between two instants, reading only the hour files that intersect them.
+   *
+   * Hour keys sort as their instants do ("2026-01-15T12"), so the range is a string comparison
+   * and a reader asking for the last six hours still touches six files, not the week's worth.
+   */
+  private async readRawWindow(fromTs: number, toTs: number): Promise<Snapshot[]> {
+    const first = hourKey(fromTs)
+    const last = hourKey(toTs)
+    const keys = (await this.store.listRawKeys()).filter((k) => k >= first && k <= last)
     const out: Snapshot[] = []
     for (const key of keys) {
       for (const row of await this.store.readRaw(key)) {

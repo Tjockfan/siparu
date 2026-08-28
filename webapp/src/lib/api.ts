@@ -3,11 +3,13 @@
  * everything is same-origin under /plugins/siparu - no auth headers here;
  * if Signal K security is enabled its session cookie applies automatically.
  *
- * The surface intentionally mirrors what the screens consume. History
- * queries are transparently split: raw rows exist for today (UTC) only, so
- * ranges reaching further back are served from hourly rollup lines mapped to
+ * The surface intentionally mirrors what the screens consume. History queries
+ * are transparently split, in two different places. `snapshots` takes the cheap
+ * split: today raw, every earlier day from the hourly rollup mapped to
  * snapshot-shaped rows (gust = the hour's peak, everything else = the hour's
- * last value). Screens never notice.
+ * last value). `minutes` takes the deep one, for a reader who asked for every
+ * minute: raw as far back as the boat still serves it, and the rollup only for
+ * what lies before that. Screens never notice either.
  */
 
 // The wire shapes come from the plugin that serves this app, rather than being
@@ -17,7 +19,7 @@
 // away and threw them out twice a second. A type-only import costs nothing at
 // runtime (contract.ts declares no values, so the bundler drops the import) and
 // makes the next such addition arrive here on its own.
-import type { LiveResult, MetricField, RollupHour, Snapshot } from '../../../plugin/src/contract'
+import type { LiveResult, MetricField, RollupHour, Snapshot, SnapshotsResult } from '../../../plugin/src/contract'
 
 export type { MetricField, Snapshot }
 
@@ -118,7 +120,7 @@ type SnapshotsQuery = {
   bucket?: number
 }
 
-async function fetchSnapshots(q: SnapshotsQuery & { bucket: number }): Promise<Snapshot[]> {
+async function fetchSnapshotsResult(q: SnapshotsQuery & { bucket: number }): Promise<SnapshotsResult> {
   const p = new URLSearchParams()
   if (q.from !== undefined) p.set('from', String(q.from))
   if (q.to !== undefined) p.set('to', String(q.to))
@@ -126,8 +128,11 @@ async function fetchSnapshots(q: SnapshotsQuery & { bucket: number }): Promise<S
   if (q.offset !== undefined) p.set('offset', String(q.offset))
   if (q.order) p.set('order', q.order)
   p.set('bucket', String(q.bucket))
-  const res = await http<{ rows: Snapshot[] }>(`/snapshots?${p}`)
-  return res.rows
+  return http<SnapshotsResult>(`/snapshots?${p}`)
+}
+
+async function fetchSnapshots(q: SnapshotsQuery & { bucket: number }): Promise<Snapshot[]> {
+  return (await fetchSnapshotsResult(q)).rows
 }
 
 async function fetchRollupHours(from: number, to: number): Promise<RollupHour[]> {
@@ -161,6 +166,42 @@ async function smartSnapshots(q: SnapshotsQuery): Promise<Snapshot[]> {
   if (q.offset) rows = rows.slice(q.offset)
   if (q.limit !== undefined) rows = rows.slice(0, q.limit)
   return rows
+}
+
+/** Minute rows over a window, and the instant the boat stops having them. */
+export type MinutesResult = { rows: Snapshot[]; minutesFrom: number }
+
+/**
+ * The boat's minutes over a window, with the hourly rollup filling whatever lies before them.
+ *
+ * This is the deep read, and it is deliberately not what `smartSnapshots` does. A minute row
+ * costs a few kilobytes and a boat reporting engines and tanks sends thousands of them for a
+ * day; a screen that wants a track or a barometer wants rows, not minutes, and pays for the
+ * summaries instead. Only a reader who asked for "every minute" comes through here.
+ *
+ * Where the minutes stop is the boat's answer, not a calendar's: she keeps a window of raw
+ * hours, shortened by whatever her disk actually still holds, and says where it begins. So
+ * the request goes out for the whole window and the fill is decided by what came back - one
+ * extra round trip, on the one screen that asked for it.
+ */
+async function minuteSnapshots(q: SnapshotsQuery): Promise<MinutesResult> {
+  const now = Date.now()
+  const to = q.to ?? now
+  const order = q.order ?? 'desc'
+  const res = await fetchSnapshotsResult({ from: q.from, to, bucket: 1, limit: q.limit ?? 5000, order })
+  const floor = res.minutesFrom ?? startOfUtcDay(now)
+  const from = q.from ?? floor
+
+  let rows = res.rows
+  if (from < floor) {
+    const hours = await fetchRollupHours(from, Math.min(to, floor - 1))
+    rows = hours.map(rollupToSnapshot).concat(rows)
+  }
+  rows = rows.filter((r) => r.ts >= from && r.ts <= to)
+  rows.sort((a, b) => (order === 'desc' ? b.ts - a.ts : a.ts - b.ts))
+  if (q.offset) rows = rows.slice(q.offset)
+  if (q.limit !== undefined) rows = rows.slice(0, q.limit)
+  return { rows, minutesFrom: floor }
 }
 
 // ===== Barometer (computed client-side from snapshots/rollups) =====
@@ -439,6 +480,12 @@ export const api = {
 
   logbook: {
     snapshots: (q: SnapshotsQuery = {}) => smartSnapshots(q),
+    /**
+     * Rows at the resolution the boat recorded them, for a reader who asked for every minute.
+     * Everything else on the screens reads `snapshots`, which answers the same windows far
+     * more cheaply by taking the hourly summary for any day but today.
+     */
+    minutes: (q: SnapshotsQuery = {}) => minuteSnapshots(q),
     snapshotLatest: () => http<LiveSnapshot>('/live'),
     /**
      * The boat's own hourly summaries, unflattened.

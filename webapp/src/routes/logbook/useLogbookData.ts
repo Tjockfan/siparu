@@ -70,7 +70,13 @@ export function useLogbookLive(): LogbookLive {
     setErr(null);
     try {
       const fetchLimit = limit + 1;
-      const rows = await api.logbook.snapshots({ bucket, limit: fetchLimit, order: "desc" });
+      // At minute resolution this is the deep read: the boat keeps a window of raw hours that
+      // reaches past midnight, and the cheap path would answer the small hours of a new day
+      // with a nearly empty page while she still held the night.
+      const rows =
+        bucket === 1
+          ? (await api.logbook.minutes({ limit: fetchLimit, order: "desc" })).rows
+          : await api.logbook.snapshots({ bucket, limit: fetchLimit, order: "desc" });
       setHasMore(rows.length > limit);
       setSnaps(rows.slice(0, limit));
     } catch (e) {
@@ -203,6 +209,10 @@ export interface LogbookRange {
    *  before the first fetch has even been issued nothing is busy either, and a caller waiting
    *  for rows to exist (the print path does) would fire against an empty table. */
   loaded: boolean;
+  /** At minute resolution, the instant the boat's own minutes begin - null at every other
+   *  interval, where the question does not arise. Anything in the window before it arrived as
+   *  one row per hour, and the page says so rather than letting it read as a fault. */
+  minutesFrom: number | null;
 }
 
 /**
@@ -224,6 +234,7 @@ export function useLogbookRange(fromStr: string, toStr: string, gran: Granularit
   const [busy, setBusy] = useState(false);
   const [truncated, setTruncated] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [minutesFrom, setMinutesFrom] = useState<number | null>(null);
 
   const from = useMemo(() => dateInputToMs(fromStr), [fromStr]);
   const to = useMemo(() => dateInputToMs(toStr) + 86400_000 - 1, [toStr]);
@@ -242,13 +253,17 @@ export function useLogbookRange(fromStr: string, toStr: string, gran: Granularit
     setErr(null);
     try {
       // One more than the ceiling, so the count itself says whether anything was left behind.
-      const rows = await api.logbook.snapshots({
-        from,
-        to,
-        bucket,
-        limit: RANGE_LIMIT + 1,
-        order: "desc",
-      });
+      const q = { from, to, limit: RANGE_LIMIT + 1, order: "desc" as const };
+      const rows =
+        bucket === 1
+          ? await api.logbook.minutes(q).then((r) => {
+              setMinutesFrom(r.minutesFrom);
+              return r.rows;
+            })
+          : await api.logbook.snapshots({ ...q, bucket }).then((r) => {
+              setMinutesFrom(null);
+              return r;
+            });
       setTruncated(rows.length > RANGE_LIMIT);
       setSnaps(rows.slice(0, RANGE_LIMIT));
     } catch (e) {
@@ -264,5 +279,5 @@ export function useLogbookRange(fromStr: string, toStr: string, gran: Granularit
     load();
   }, [load]);
 
-  return { snaps, err, busy, truncated, loaded };
+  return { snaps, err, busy, truncated, loaded, minutesFrom };
 }

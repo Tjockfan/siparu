@@ -2,7 +2,7 @@
  * Brutalist data table: Live|Day + granularity, UTC·SOG·HDG·TWS·BARO·DEP rows.
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { api, startOfUtcDay, type Snapshot } from "../../lib/api";
+import { api, type Snapshot } from "../../lib/api";
 import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
 import { bucketHours, bucketRow, type BucketGran } from "../../lib/buckets";
 import { dateInputToMs, dateToInput } from "../../lib/format";
@@ -22,7 +22,6 @@ import {
   useLogbookLive,
   useLogbookDay,
   useLogbookRange,
-  GRANULARITY_MINUTES,
   INTERVAL_NAME,
   RANGE_LIMIT,
   ROWS_LIMIT,
@@ -111,12 +110,11 @@ export default function LogbookMarine() {
       const to = dateInputToMs(r.to) + 86400_000 - 1;
       if (r.gran === "1m") {
         // A minute is the sample itself. There is nothing to summarise and no window to carry
-        // a distance, so this is the page as it stands - which is also all the boat can give:
-        // raw rows exist for today only.
-        const rows = await api.logbook.snapshots({
+        // a distance, so this is the page as it stands - the boat's own record, as far back as
+        // she still keeps it, and her hourly summary for whatever lies before that.
+        const { rows } = await api.logbook.minutes({
           from,
           to,
-          bucket: GRANULARITY_MINUTES[r.gran],
           limit: RANGE_LIMIT,
           order: "desc",
         });
@@ -240,18 +238,31 @@ function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) 
  * column alone; the blocks around them stay the size they were.
  */
 /**
- * Whether the rows on the screen are the interval the reader asked for, all the way back.
+ * Where the minutes on the screen stop being minutes, said in the reader's own dates.
  *
- * The boat keeps raw minutes for today and nothing more: a query at bucket=1 is clamped to the
- * current UTC day in the plugin itself ("raw is today-only by design"), and everything earlier
- * survives as one rollup row per hour. Asked for a window that starts yesterday at minute
- * resolution, the page draws today's minutes above yesterday's hours - which is the best
- * answer there is, and looks like a fault while the bar overhead still says EVERY MINUTE.
+ * The boat keeps her raw record for a window of days and summarises everything older into one
+ * row per hour. Asked for a window that begins before it, the page draws minutes above hours -
+ * which is the best answer there is, and looks like a fault while the bar overhead still says
+ * EVERY MINUTE.
  *
- * So the page says it. Nothing here changes what is fetched; it names what arrived.
+ * It used to be worked out here, from the calendar: minutes were today's and nothing else, so
+ * midnight was the line. The line is the boat's to draw - a window of days, shortened by
+ * whatever her disk still holds - and she reports it with the rows. Nothing here changes what
+ * is fetched; it names what arrived.
+ *
+ * It is two facts, and only the first is about the boat. Where her minutes begin is worth
+ * saying whenever the reader asked for more than them. What lies before that reads hourly is
+ * only worth saying if such a row is actually on the page: a window long enough to reach past
+ * the minutes is usually long enough to hit the row ceiling as well, the ceiling takes the
+ * oldest rows away first, and those are exactly the hourly ones. Promising them over a page
+ * that carries none sends a reader to the bottom of it to look for what is not there.
  */
-function readsHourlyBeforeToday(r: ExportRequest): boolean {
-  return r.gran === "1m" && dateInputToMs(r.from) < startOfUtcDay(Date.now());
+function minutesNote(minutesFrom: number | null, r: ExportRequest, snaps: Snapshot[]): string | null {
+  if (minutesFrom === null || dateInputToMs(r.from) >= minutesFrom) return null;
+  const day = new Date(minutesFrom).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const oldest = snaps[snaps.length - 1];
+  const hourly = oldest !== undefined && oldest.ts < minutesFrom;
+  return `Minutes reach back to ${day}.${hourly ? " Earlier days in this window read one row per hour." : ""}`;
 }
 
 /**
@@ -600,7 +611,7 @@ function RangeView({
     samples: false,
   };
   const r = req ?? fallback;
-  const { snaps, err, busy, truncated, loaded } = useLogbookRange(r.from, r.to, r.gran);
+  const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
   const earned = logbookColumns(snaps, windUnit);
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
@@ -662,10 +673,8 @@ function RangeView({
             here; a longer interval covers the same days in fewer.
           </div>
         )}
-        {readsHourlyBeforeToday(r) && (
-          <div className="lb-note">
-            Minutes are kept for today only. Earlier days in this window read one row per hour.
-          </div>
+        {minutesNote(minutesFrom, r, snaps) && (
+          <div className="lb-note">{minutesNote(minutesFrom, r, snaps)}</div>
         )}
         {!busy && snaps.length === 0 ? (
           <NoRows what={emptyRangeNote(r)} />

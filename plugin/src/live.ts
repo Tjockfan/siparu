@@ -634,8 +634,9 @@ export class LiveUplink {
    * message, and act only if it is a history request. A command, a PUT, a malformed line -
    * anything else - is dropped in silence, because there is no other thing the shore is
    * allowed to ask and answering would be a reply to make of a surface. The query goes to the
-   * store, never to Signal K, and the store read is already clamped (today-only for raw, a
-   * hard row cap for rollups), so a request cannot ask the boat for more than she will give.
+   * store, never to Signal K, and the store read is already clamped (a window of days for
+   * raw, a hard row cap for rollups), so a request cannot ask the boat for more than she
+   * will give.
    */
   private handleHistory(gen: number, data: string): void {
     const handler = this.deps.onHistoryQuery
@@ -669,8 +670,8 @@ export class LiveUplink {
   /**
    * A snapshots request from the shore, answered from the boat's own store - the mirror of
    * handleHistory, and just as narrow. Parse, act only if it is a snapshots request, and read
-   * the store, never Signal K. The store read is already clamped (today-only for raw, a hard
-   * row cap for rollups), so a request cannot ask the boat for more than she will give.
+   * the store, never Signal K. The store read is already clamped (a window of days for raw, a
+   * hard row cap for rollups), so a request cannot ask the boat for more than she will give.
    */
   private handleSnapshots(gen: number, data: string): void {
     const handler = this.deps.onSnapshotsQuery

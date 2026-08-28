@@ -180,8 +180,14 @@ export interface SnapshotsQuery {
 
 export interface SnapshotsResult {
   rows: Snapshot[]
-  /** True when the range was narrowed (bucket=1 clamped to today, or limit hit). */
+  /** True when the range was narrowed (bucket=1 clamped to its window, or limit hit). */
   clamped: boolean
+  /**
+   * On bucket=1 only: the earliest instant this boat serves minutes from, so a reader can
+   * fill what lies before it from the hourly rollup instead of assuming where minutes stop.
+   * `clamped` cannot answer that on its own - a page cut short by `limit` sets it too.
+   */
+  minutesFrom?: number
 }
 
 /** One point in a single gauge's history. A raw sample has min = max = avg = last. */
@@ -197,8 +203,10 @@ export interface PathSeriesPoint {
 export interface PathSeriesResult {
   path: string
   points: PathSeriesPoint[]
-  /** True when the range was narrowed (bucket=1 clamped to today, or limit hit). */
+  /** True when the range was narrowed (bucket=1 clamped to its window, or limit hit). */
   clamped: boolean
+  /** On bucket=1 only: the earliest instant minutes are served from. See SnapshotsResult. */
+  minutesFrom?: number
 }
 
 /**

@@ -59,16 +59,16 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
-describe('bucket=1 (raw, today only)', () => {
-  it('serves today rows', async () => {
+describe('bucket=1 (raw, the last week)', () => {
+  it('serves every raw row in the window, not only today', async () => {
     const r = await query.snapshots({ bucket: 1, order: 'asc' }, NOW)
-    expect(r.rows.map((x) => x.sog)).toEqual([6, 7])
+    expect(r.rows.map((x) => x.sog)).toEqual([4, 5, 6, 7])
     expect(r.clamped).toBe(false)
   })
 
-  it('clamps a range reaching into history and flags it', async () => {
-    const r = await query.snapshots({ bucket: 1, from: YESTERDAY_NOON, order: 'asc' }, NOW)
-    expect(r.rows.map((x) => x.sog)).toEqual([6, 7]) // yesterday never leaves raw
+  it('clamps a range reaching past the window and flags it', async () => {
+    const r = await query.snapshots({ bucket: 1, from: NOW - 30 * 86_400_000, order: 'asc' }, NOW)
+    expect(r.rows.map((x) => x.sog)).toEqual([4, 5, 6, 7])
     expect(r.clamped).toBe(true)
   })
 })
@@ -127,8 +127,9 @@ describe('bucket=60 (hourly rollups)', () => {
 })
 
 describe('bucket=1 edge cases', () => {
-  it('flags a fully-historical range as clamped instead of silently empty', async () => {
-    const r = await query.snapshots({ bucket: 1, from: YESTERDAY_NOON, to: YESTERDAY_NOON + 3_600_000 }, NOW)
+  it('flags a range older than the window as clamped instead of silently empty', async () => {
+    const old = NOW - 30 * 86_400_000
+    const r = await query.snapshots({ bucket: 1, from: old, to: old + 3_600_000 }, NOW)
     expect(r.rows).toEqual([])
     expect(r.clamped).toBe(true)
   })
@@ -169,9 +170,9 @@ describe('pathSeries (dynamic gauge history)', () => {
   it('serves today raw points for one gauge', async () => {
     const r = await query.pathSeries(RPM, { bucket: 1, order: 'asc' }, NOW)
     expect(r.path).toBe(RPM)
-    expect(r.points.map((p) => p.last)).toEqual([25, 26]) // today only, raw
+    expect(r.points.map((p) => p.last)).toEqual([20, 30, 25, 26]) // the window, raw
     // A raw point is a single sample: min = max = avg = last.
-    expect(r.points[0]).toMatchObject({ ts: TODAY_START + 9 * 3_600_000, min: 25, max: 25, avg: 25, last: 25 })
+    expect(r.points[3]).toMatchObject({ ts: NOW - 60_000, min: 26, max: 26, avg: 26, last: 26 })
   })
 
   it('serves hourly rollup points for one gauge, carrying the aggregate', async () => {
@@ -197,11 +198,11 @@ describe('pathSeries (dynamic gauge history)', () => {
 describe('pathSeries (core bridge gauge history)', () => {
   // Wind and barometer are core Snapshot fields, not dynamic path_values. The shore asks
   // for them by their plain SK path; the series is read from the fixed field / rollup metric.
-  it('graphs true wind from the core field, today raw', async () => {
+  it('graphs true wind from the core field, raw over the window', async () => {
     const r = await query.pathSeries('environment.wind.speedTrue', { bucket: 1, order: 'asc' }, NOW)
     expect(r.path).toBe('environment.wind.speedTrue')
-    expect(r.points.map((p) => p.last)).toEqual([6, 8]) // today only
-    expect(r.points[0]).toMatchObject({ ts: TODAY_START + 9 * 3_600_000, min: 6, max: 6, avg: 6, last: 6 })
+    expect(r.points.map((p) => p.last)).toEqual([5, 7, 6, 8])
+    expect(r.points[2]).toMatchObject({ ts: TODAY_START + 9 * 3_600_000, min: 6, max: 6, avg: 6, last: 6 })
   })
 
   it('graphs the barometer from hourly rollups, carrying its aggregate', async () => {
@@ -216,5 +217,56 @@ describe('pathSeries (core bridge gauge history)', () => {
     // Jan 15: 101300 then 101000 -> min 101000, max 101300, last 101000
     expect(r.points).toHaveLength(1)
     expect(r.points[0]).toMatchObject({ min: 101000, max: 101300, last: 101000 })
+  })
+})
+
+/**
+ * Minutes reach back a week, not to midnight.
+ *
+ * The raw record was readable for the current UTC day and no further, so a boat holding a
+ * month of minutes on her own disk answered "nothing" for yesterday at that resolution - the
+ * data was never deleted, only unreachable. The window now runs a week back, and the answer
+ * says where it starts so nobody has to assume it.
+ */
+describe('bucket=1 window', () => {
+  const THREE_DAYS_AGO_NOON = Date.UTC(2026, 0, 13, 12, 0, 0)
+
+  it('serves minutes from earlier days, not only today', async () => {
+    await store.append(snap(THREE_DAYS_AGO_NOON, 3))
+    await store.flush()
+
+    const r = await query.snapshots({ bucket: 1, from: THREE_DAYS_AGO_NOON, order: 'asc' }, NOW)
+    expect(r.rows.map((x) => x.sog)).toEqual([3, 4, 5, 6, 7])
+    expect(r.clamped).toBe(false)
+  })
+
+  it('clamps a window reaching past the week and says where the minutes start', async () => {
+    const monthAgo = NOW - 30 * 86_400_000
+    await store.append(snap(monthAgo, 1)) // the disk reaches further back than the window does
+    await store.flush()
+
+    const r = await query.snapshots({ bucket: 1, from: monthAgo, order: 'asc' }, NOW)
+    expect(r.rows.map((x) => x.sog)).toEqual([4, 5, 6, 7]) // the month-old row stays out
+    expect(r.clamped).toBe(true)
+    expect(r.minutesFrom).toBe(NOW - 7 * 86_400_000)
+  })
+
+  /**
+   * The cap is a promise the disk has to keep. A boat whose oldest raw file is younger than
+   * the window cannot serve the whole week, and saying she can puts a hole in the page that
+   * reads as lost data rather than as a boat that was switched off.
+   */
+  it('names the oldest hour on disk when it is younger than the window', async () => {
+    const r = await query.snapshots({ bucket: 1, order: 'asc' }, NOW)
+    expect(r.minutesFrom).toBe(Date.UTC(2026, 0, 15, 12, 0, 0))
+  })
+
+  it('carries one gauge back through the same window', async () => {
+    await store.append(snap(THREE_DAYS_AGO_NOON, 3, { [RPM]: 11 }))
+    await store.flush()
+
+    const r = await query.pathSeries(RPM, { bucket: 1, from: THREE_DAYS_AGO_NOON, order: 'asc' }, NOW)
+    expect(r.points.map((p) => p.last)).toEqual([11, 20, 30, 25, 26])
+    expect(r.minutesFrom).toBe(THREE_DAYS_AGO_NOON)
   })
 })
