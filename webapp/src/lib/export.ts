@@ -13,6 +13,7 @@
  * and GPX has no other option.
  */
 import type { Snapshot, TrackPoint, Voyage } from "./api";
+import { bucketRow, STAT_NAME, type Bucket, type Stat } from "./buckets";
 
 /** What a row has to carry to be exported: a moment. The logbook's Snapshot is one. */
 type LogRow = Snapshot;
@@ -123,6 +124,48 @@ export function snapshotsCsv(
   const lines = [["utc", ...data.map((c) => c.head)].map(csvField).join(",")];
   for (const s of [...snaps].sort((a, b) => a.ts - b.ts)) {
     lines.push([iso(s.ts), ...data.map((c) => c.cell(s))].map(csvField).join(","));
+  }
+  return lines.join("\r\n") + "\r\n";
+}
+
+/**
+ * A season, as the boat summarised it.
+ *
+ * The file snapshotsCsv writes is a logbook page: one reading per row, the value that stood
+ * when the bucket closed. This one is a data set. Every window carries the figures the boat
+ * computed over it - the mean of its samples, the extremes it reached, how far it ran and how
+ * many readings are behind each number - and the reader chooses which of them he wants.
+ *
+ * Which columns can print which figure is not decided here and is not a list anybody keeps: a
+ * heading has no mean, so bucketRow hands back nothing for it, and the caller derives that
+ * block's columns from its own rows the same way the screen derives the table's. A blank
+ * column never reaches this function.
+ *
+ * The suffix appears only when there is more than one figure to tell apart. A file of means
+ * has a column called SOG, because that is what every cell in it is.
+ */
+export function bucketsCsv(
+  buckets: readonly Bucket[],
+  blocks: readonly { stat: Stat; cols: readonly ExportColumn[] }[],
+  extras: { distance: boolean; samples: boolean } = { distance: false, samples: false },
+): string {
+  const label = (head: string, stat: Stat) =>
+    blocks.length > 1 ? `${head} (${STAT_NAME[stat]})` : head;
+  const head = ["utc"];
+  for (const b of blocks) for (const c of b.cols.slice(1)) head.push(label(c.head, b.stat));
+  if (extras.distance) head.push("distance_nm");
+  if (extras.samples) head.push("samples");
+
+  const lines = [head.map(csvField).join(",")];
+  for (const bucket of [...buckets].sort((a, b) => a.last_ts - b.last_ts)) {
+    const cells: (string | number | null)[] = [iso(bucket.last_ts)];
+    for (const block of blocks) {
+      const row = bucketRow(bucket, block.stat);
+      for (const c of block.cols.slice(1)) cells.push(c.cell(row));
+    }
+    if (extras.distance) cells.push(bucket.distance_nm);
+    if (extras.samples) cells.push(bucket.count);
+    lines.push(cells.map(csvField).join(","));
   }
   return lines.join("\r\n") + "\r\n";
 }

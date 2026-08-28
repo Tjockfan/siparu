@@ -65,6 +65,14 @@
   --pane-edge: rgba(255, 255, 255, 0.15);
   --pane-lit: rgba(255, 255, 255, 0.3); /* light falls from above, so the top edge is brighter */
   --cell-hover: rgba(255, 255, 255, 0.1);
+  /* A field is a control's own surface lying ON a sheet: a date box, a chip, a button in a
+     panel. Lighter than the pane so it reads as a thing to press or type in, and translucent
+     for the same reason the pane is - the ground has to come through both or the panel is a
+     glass sheet with opaque tiles on it. No blur of its own: the sheet under it already
+     carries one, and a second compositing layer per control is what turns a phone's panel
+     into a slideshow. */
+  --field: rgba(255, 255, 255, 0.085);
+  --field-hover: rgba(255, 255, 255, 0.15);
   --pane-blur: 34px;
   --cluster-gap: 14px;   /* ground between clusters; the glass is only glass where this shows */
   --ground-lift: rgba(126, 163, 192, 0.3);  /* sea light, upper left */
@@ -125,6 +133,10 @@
      lifted further - what a real edge does there is shade, so this one darkens. */
   --pane-lit: rgba(0, 0, 0, 0.1);
   --cell-hover: rgba(0, 0, 0, 0.05);
+  /* Lifted the other way up: in daylight a field is BRIGHTER than the sheet it sits on, which
+     is the same relation as night read against a bright ground rather than a dark one. */
+  --field: rgba(255, 255, 255, 0.85);
+  --field-hover: rgba(255, 255, 255, 0.96);
   --pane-blur: 20px;
   --cluster-gap: 14px;
   /* Daylight rather than sea light: cooler and weaker, because a bright ground shows a tint
@@ -340,12 +352,23 @@ body {
 }
 .swiss .tab + .tab { border-left: 1px solid rgba(255, 255, 255, 0.09); }
 .swiss .tab svg { width: 21px; height: 21px; }
+/* The tracking is set by the longest word against the narrowest phone, not by taste. Five
+   destinations divide a 360px screen into 75px for the first tab, and INSTRUMENTS at 0.13em
+   wants 80 of them - it ran into its neighbour the day the fifth tab arrived. Measured on that
+   screen: 0.08em still overruns by half a pixel, 0.06em lands at 73.5 and leaves a margin, and
+   it is still wide enough to read as a label rather than as a word. */
 .swiss .tab .tl {
   font-family: var(--sp-font);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  /* At 360px the longest label fills its tab exactly, and a font that renders a hair wide on
+     some device would put a letter over the rule between two tabs. Clipped rather than
+     overrun: a label one letter short still reads, a label lying across its neighbour does
+     not. */
+  white-space: nowrap;
+  overflow: hidden;
 }
 .swiss .tab.on { color: var(--chrome-text); }
 /* Active-tab line: a layoutId-driven .tind instead of a static ::before -
@@ -1096,6 +1119,51 @@ body {
 .swiss .lb-colbtn b { color: var(--accent); font-weight: 700; }
 .swiss .lb-colbtn.on { background: var(--text); color: var(--cell); }
 .swiss .lb-colbtn.on b { color: var(--cell); }
+/* A panel opens the way a drawer slides out: the sheet is uncovered from its top edge down,
+   and the table under it is carried to its new place by the same motion instead of jumping
+   there. 0fr to 1fr is what animates the height of content nobody has measured - a panel's
+   height depends on how many chips wrapped, and no number written here would survive that.
+   The curve is slow to leave and quick to settle, which is what reads as weight rather than
+   as a transition; 360ms because a reader watches this one open rather than glancing past it,
+   and at half that the motion is over before the eye has followed it down. */
+.swiss .lb-open {
+  width: 100%;
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  animation: lb-open 360ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+/* The row's own box, which carries no padding so that a row of zero is honestly zero, and
+   which holds the panel to the centre the page keeps everything else on. The clipping is the
+   container's rather than this box's: a row of 1fr is measured from what its item contributes,
+   and an item that clips contributes nothing, which closes the panel and never opens it. */
+.swiss .lb-open-in { min-height: 0; display: grid; justify-items: center; }
+/* The gap travels with the panel. A flex gap is spent on a child the moment it exists, so a
+   panel whose row has closed still holds the 14px between the bar and the table, and the table
+   jumps that far when it finally goes. Ending the motion one gap short means the last frame of
+   the drawer and the document without it are the same picture. */
+@keyframes lb-open {
+  from { grid-template-rows: 0fr; opacity: 0; margin-bottom: calc(-1 * var(--cluster-gap)); }
+  to { grid-template-rows: 1fr; opacity: 1; margin-bottom: 0; }
+}
+/* Shutting is the same drawer travelling the other way, over the same distance, in the same
+   time and on the same curve: a panel that leaves faster than it arrived reads as one that was
+   dismissed. The curve is NOT mirrored, though mirroring is what running a motion backwards
+   means on paper. Measured, the reflection (1, 0, 0.68, 0.28) holds the table still for a
+   quarter of a second and then drops it 135px in the last 90ms, which is the jump this was
+   meant to remove, arriving by another door. Slow to settle is what reads as weight in both
+   directions. */
+.swiss .lb-open.shut { animation-name: lb-shut; pointer-events: none; }
+@keyframes lb-shut {
+  from { grid-template-rows: 1fr; opacity: 1; margin-bottom: 0; }
+  to { grid-template-rows: 0fr; opacity: 0; margin-bottom: calc(-1 * var(--cluster-gap)); }
+}
+/* Somebody who has asked for less motion gets the panel, not the drawer. The motion is cut to
+   nothing rather than removed: the end of it is what takes a shut panel out of the document,
+   and an animation that never runs never ends. */
+@media (prefers-reduced-motion: reduce) {
+  .swiss .lb-open { animation-duration: 1ms; }
+}
 .swiss .lb-pick {
   display: flex;
   flex-direction: column;
@@ -1183,6 +1251,42 @@ body {
 .swiss .lbp-act .lbp-go { background: var(--accent-block); color: var(--on-block); border-color: var(--accent-block); }
 /* Nothing to apply: the draft is what the table is already showing. */
 .swiss .lbp-act .lbp-go:disabled { background: var(--cell); color: var(--muted); border-color: var(--rule); cursor: default; }
+/* The export window is read and filled in rather than scanned, and it is the one panel in the
+   app that asks for typing. Its type is set a step up from the column picker's for that
+   reason: the picker is a wall of names a reader recognises at a glance and ticks, this is
+   four decisions and two dates that decide what a document contains. The fields are glass
+   over the sheet rather than the solid grey a card uses, so the panel reads as one lit
+   surface with things resting on it. */
+.swiss .lb-exp { padding: 18px 20px; gap: 16px; }
+.swiss .lb-exp .lbp-n,
+.swiss .lb-exp .lbp-s { font-size: 11px; }
+.swiss .lb-exp .lbe-dates { gap: 10px 18px; }
+.swiss .lb-exp .lbe-dates label > span { font-size: 10.5px; }
+.swiss .lb-exp .lbe-dates .dt {
+  font-size: 15px; padding: 9px 11px;
+  background: var(--field); border-color: var(--pane-edge);
+}
+/* The figures lie across the panel rather than beside the three books above them, and a book
+   is declared `flex: 1 1 300px` - which is a width in that row and became a 300px floor on the
+   height down here, leaving the panel with a hand's breadth of nothing under the chips. */
+.swiss .lb-exp .lbp-figs { flex: none; }
+.swiss .lb-exp .lbp-chips { gap: 8px; }
+.swiss .lb-exp .lbp-c {
+  font-size: 12.5px; gap: 8px; padding: 8px 12px;
+  background: var(--field); border-color: var(--pane-edge);
+}
+.swiss .lb-exp .lbp-c::before { width: 9px; height: 9px; }
+.swiss .lb-exp .lbp-act { gap: 10px; }
+.swiss .lb-exp .lbp-act button { font-size: 11.5px; padding: 9px 18px; }
+.swiss .lb-exp .lbp-act button:not(.lbp-go),
+.swiss .lb-exp .lbp-act .lbp-go:disabled {
+  background: var(--field); border-color: var(--pane-edge);
+}
+@media (hover: hover) {
+  .swiss .lb-exp .lbp-c:hover,
+  .swiss .lb-exp .lbp-act button:not(.lbp-go):hover { background: var(--field-hover); }
+  .swiss .lb-exp .lbp-act .lbp-go:disabled:hover { background: var(--field); }
+}
 @media (hover: hover) {
   .swiss .lbp-c:hover,
   .swiss .lbp-presets button:hover,
@@ -1916,6 +2020,15 @@ body {
 }
 .swiss .pair.warn .t { color: var(--accent); }
 
+/* An alarm on the instruments is also the door to the page that answers it, so the band is a
+   link rather than a band with a link in it: the whole row is the target, which is what a
+   thumb at a helm needs, and the word at its right says where pressing it goes. */
+.swiss .pair.go { text-decoration: none; color: inherit; cursor: pointer; }
+.swiss .pair.go .pbtn { flex: none; }
+@media (hover: hover) {
+  .swiss .pair.go.warn:hover { background: var(--cell-hover); }
+}
+
 .swiss .pbtn {
   font-family: var(--sp-font);
   font-size: 10px;
@@ -1935,6 +2048,25 @@ body {
 .swiss .pbtn.ghost { color: var(--muted); }
 .swiss .pair.asking .pbtn { border-color: rgba(255, 255, 255, 0.4); color: #fff; }
 .swiss .pair.asking .pbtn.accent { background: #fff; border-color: #fff; color: var(--accent-block); }
+
+/* ============================================================
+   REMOTE (.sp-remote) - the link ashore, on its own page
+   ============================================================
+   The bands were built to run the full width of the bridge, under a grid that is as wide as the
+   screen. On a page of their own they are the only thing there, and a line of text drawn across
+   a desk monitor is not read - it is scanned twice. So the page holds them to a column and puts
+   them on the centre line the rest of the app keeps to. */
+.swiss .sp-remote {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cluster-gap);
+  padding: var(--cluster-gap);
+}
+.swiss .sp-remote > * { width: 100%; max-width: 760px; }
 
 /* Same reason as .sp-auth-wait: --muted drops to ~4:1 on the day background, and
    12px body text needs 4.5:1 to pass AA. */
@@ -2476,6 +2608,7 @@ body {
   /* The controls do not print, and neither does either panel: a sheet of paper has nothing to
      press. What they were saying is said instead by the heading, which only exists here. */
   .swiss .lb-ctrl,
+  .swiss .lb-open,
   .swiss .lb-pick,
   .swiss .lb-more {
     display: none !important;

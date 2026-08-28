@@ -18,8 +18,9 @@
  * to do the same job a second time is a quarter of a megabyte for a page printed twice a
  * season, and it would be a second layout to keep in step with the table.
  */
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { dateToInput } from "../../lib/format";
+import type { Stat } from "../../lib/buckets";
 import { INTERVAL_NAME, type Granularity } from "./useLogbookData";
 
 export type ExportFormat = "csv" | "pdf";
@@ -29,6 +30,26 @@ const GRANS: Granularity[] = ["1m", "1h", "6h", "1d"];
 const FORMATS: { v: ExportFormat; name: string; note: string }[] = [
   { v: "csv", name: "CSV", note: "a file for a spreadsheet" },
   { v: "pdf", name: "PDF", note: "the page, through your printer" },
+];
+
+/**
+ * What each row of the file carries.
+ *
+ * A logbook page holds the reading that stood when the hour closed, and for a hundred years
+ * that was the record because a mate wrote it down once an hour. The boat does better: she
+ * summarises every hour she keeps - the mean of its samples, the extremes it reached, how far
+ * she ran - and until this panel offered them, none of it left her. A reader working out a
+ * season's fuel curve or the sea state she actually met needs the summary, not one reading in
+ * sixty.
+ *
+ * Last stays the default, because it is what the file has always held and what the table
+ * beside it shows.
+ */
+const FIGURES: { v: Stat; name: string }[] = [
+  { v: "last", name: "Last" },
+  { v: "avg", name: "Average" },
+  { v: "min", name: "Minimum" },
+  { v: "max", name: "Maximum" },
 ];
 
 /** A week back, which is the window somebody opens this to look at without saying so. */
@@ -41,6 +62,11 @@ export interface ExportRequest {
   to: string;
   gran: Granularity;
   format: ExportFormat;
+  /** Which figures of each window go in the file. Empty is refused, not silently defaulted. */
+  stats: Stat[];
+  /** The window's own numbers rather than a reading: how far she ran, how many samples. */
+  distance: boolean;
+  samples: boolean;
 }
 
 export default function ExportPanel({
@@ -48,28 +74,37 @@ export default function ExportPanel({
   onView,
   onSave,
   onCancel,
-  style,
 }: {
   initial?: Partial<ExportRequest>;
   onView: (r: ExportRequest) => void;
   onSave: (r: ExportRequest) => void;
   onCancel: () => void;
-  /** The lane count, so this panel is as wide as the windows it sits between. */
-  style?: CSSProperties;
 }) {
   const [from, setFrom] = useState(initial?.from ?? weekAgo());
   const [to, setTo] = useState(initial?.to ?? dateToInput());
   const [gran, setGran] = useState<Granularity>(initial?.gran ?? "1h");
   const [format, setFormat] = useState<ExportFormat>(initial?.format ?? "csv");
+  const [stats, setStats] = useState<Stat[]>(initial?.stats ?? ["last"]);
+  const [distance, setDistance] = useState(initial?.distance ?? false);
+  const [samples, setSamples] = useState(initial?.samples ?? false);
 
   // A window that ends before it begins is the one mistake two date fields make on their own,
   // and it is worth catching here rather than as an empty table: an empty table is what a quiet
   // week looks like too, and the reader cannot tell the two apart.
   const backwards = to < from;
-  const req: ExportRequest = { from, to, gran, format };
+  const req: ExportRequest = { from, to, gran, format, stats, distance, samples };
+
+  // A minute is a sample, not a window: it has no mean and no extremes, so there is nothing to
+  // choose and the choice is not shown. A PDF is the page itself, and the page is the table.
+  const summarised = gran !== "1m" && format === "csv";
+  // Nothing to put in the rows. Held rather than written, for the same reason a backwards
+  // window is: a file of timestamps and nothing else is not what anybody pressed this for.
+  const empty = summarised && stats.length === 0 && !distance && !samples;
+  const toggle = (v: Stat) =>
+    setStats((cur) => (cur.includes(v) ? cur.filter((s) => s !== v) : [...cur, v]));
 
   return (
-    <div className="lb-pick lb-exp" style={style}>
+    <div className="lb-pick lb-exp">
       <div className="lbp-books">
         <div className="lbp-book">
           <div className="lbp-h">
@@ -134,13 +169,45 @@ export default function ExportPanel({
           </div>
         </div>
       </div>
+      {summarised && (
+        <div className="lbp-book lbp-figs">
+          <div className="lbp-h">
+            <span className="lbp-n">Figures</span>
+            <span className="lbp-s">what each row carries</span>
+          </div>
+          <div className="lbp-chips">
+            {FIGURES.map((f) => (
+              <button
+                key={f.v}
+                className={`lbp-c${stats.includes(f.v) ? " on" : ""}`}
+                onClick={() => toggle(f.v)}
+              >
+                {f.name}
+              </button>
+            ))}
+            <button
+              className={`lbp-c${distance ? " on" : ""}`}
+              onClick={() => setDistance(!distance)}
+            >
+              Distance
+            </button>
+            <button
+              className={`lbp-c${samples ? " on" : ""}`}
+              onClick={() => setSamples(!samples)}
+            >
+              Samples
+            </button>
+          </div>
+        </div>
+      )}
       {backwards && <div className="lbe-warn">That window ends before it begins.</div>}
+      {empty && <div className="lbe-warn">Choose at least one figure to put in the file.</div>}
       <div className="lbp-act">
         <button onClick={onCancel}>Cancel</button>
         <button disabled={backwards} onClick={() => onView(req)}>
           View
         </button>
-        <button className="lbp-go" disabled={backwards} onClick={() => onSave(req)}>
+        <button className="lbp-go" disabled={backwards || empty} onClick={() => onSave(req)}>
           Save {format.toUpperCase()}
         </button>
       </div>

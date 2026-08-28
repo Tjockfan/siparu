@@ -60,3 +60,43 @@ describe("the export window", () => {
     expect([...html.matchAll(/<button[^>]*disabled/g)]).toHaveLength(0);
   });
 });
+
+/**
+ * The figures, which are the difference between a logbook page and a data set.
+ *
+ * Two states have to be right or the panel offers something it cannot deliver: a minute has no
+ * summary to choose from (it is the sample), and a PDF is the page itself, which shows one
+ * reading per row whatever is ticked here.
+ */
+describe("the figures a window can be exported with", () => {
+  const base = { from: "2026-06-01", to: "2026-08-31" } as const;
+
+  it("offers them for a summarised window in a file", () => {
+    const html = render({ ...base, gran: "1h", format: "csv" });
+    expect(html).toContain("Figures");
+    expect(html).toContain("Average");
+    expect(html).toContain("Distance");
+  });
+
+  it("does not offer them for minutes, which are samples rather than windows", () => {
+    expect(render({ ...base, gran: "1m", format: "csv" })).not.toContain("Figures");
+  });
+
+  it("does not offer them for the printed page, which is the table as it stands", () => {
+    expect(render({ ...base, gran: "1h", format: "pdf" })).not.toContain("Figures");
+  });
+
+  it("opens on the last reading, which is what the file has always held", () => {
+    const html = render({ ...base, gran: "1h", format: "csv" });
+    // The chip carries its state in its class; "Last" is on and "Average" is not.
+    expect(html).toMatch(/class="lbp-c on"[^>]*>Last</);
+    expect(html).toMatch(/class="lbp-c"[^>]*>Average</);
+  });
+
+  it("refuses to write a file with nothing in the rows", () => {
+    const html = render({ ...base, gran: "1h", format: "csv", stats: [] });
+    expect(html).toContain("at least one figure");
+    // Save is held; View is not, because the screen has its own answer to show.
+    expect([...html.matchAll(/<button[^>]*disabled/g)]).toHaveLength(1);
+  });
+});

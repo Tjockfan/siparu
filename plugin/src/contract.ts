@@ -117,6 +117,14 @@ export interface MetricAgg {
   min?: number
   max?: number
   avg?: number
+  /**
+   * How many samples went into this aggregate. Written by the rollup engine since the first
+   * one and left out of this declaration until an export needed it: merging two buckets into
+   * a wider one is a mean weighted by the samples behind each, and without the count the only
+   * average anybody can compute from two hours is the average of two averages - which is the
+   * right answer only when both hours held the same number of readings.
+   */
+  n?: number
   last: number | string | null
 }
 

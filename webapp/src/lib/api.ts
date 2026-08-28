@@ -70,7 +70,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   return r.json() as Promise<T>
 }
 
-function startOfUtcDay(ts: number): number {
+export function startOfUtcDay(ts: number): number {
   const d = new Date(ts)
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
 }
@@ -439,7 +439,15 @@ export const api = {
 
   logbook: {
     snapshots: (q: SnapshotsQuery = {}) => smartSnapshots(q),
-    snapshotLatest: () => http<LiveSnapshot>('/live')
+    snapshotLatest: () => http<LiveSnapshot>('/live'),
+    /**
+     * The boat's own hourly summaries, unflattened.
+     *
+     * `/snapshots` hands back one value per bucket - the last one - which is a logbook page.
+     * These are what the page is a page OF: min, max, mean and sample count for every reading,
+     * plus the distance run. An export that offers figures reads these; nothing else does.
+     */
+    rollupHours: (from: number, to: number) => fetchRollupHours(from, to)
   },
 
   voyage: {

@@ -2,14 +2,16 @@
  * Brutalist data table: Live|Day + granularity, UTC·SOG·HDG·TWS·BARO·DEP rows.
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { api, type Snapshot } from "../../lib/api";
-import { downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
+import { api, startOfUtcDay, type Snapshot } from "../../lib/api";
+import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
+import { bucketHours, bucketRow, type BucketGran } from "../../lib/buckets";
 import { dateInputToMs, dateToInput } from "../../lib/format";
 import { useElementWidth } from "../../lib/useElementWidth";
 import ColumnPicker from "./ColumnPicker";
 import ExportPanel, { type ExportRequest } from "./ExportPanel";
+import Reveal from "./Reveal";
 import { logbookColumns, type LogColumn, type WindUnit } from "./columns";
-import { fittedColumns } from "./fitColumns";
+import { fittedColumns, lanesThatFit } from "./fitColumns";
 import {
   loadSelection,
   saveSelection,
@@ -72,10 +74,13 @@ export default function LogbookMarine() {
   const [printing, setPrinting] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
 
+  // The panel stays open. View is the verb a reader presses more than once - a week at six
+  // hours, then the same week daily, then a narrower window - and closing the panel each time
+  // made him reopen it and re-enter what he had just chosen. Save closes it, because saving is
+  // the end of the errand.
   const onView = (r: ExportRequest) => {
     setRequest(r);
     setMode("range");
-    setExporting(false);
     setSaveErr(null);
   };
 
@@ -104,18 +109,36 @@ export default function LogbookMarine() {
     try {
       const from = dateInputToMs(r.from);
       const to = dateInputToMs(r.to) + 86400_000 - 1;
-      const rows = await api.logbook.snapshots({
-        from,
-        to,
-        bucket: GRANULARITY_MINUTES[r.gran],
-        limit: RANGE_LIMIT,
-        order: "desc",
-      });
-      const cols = visibleColumns(logbookColumns(rows, windUnit), selection);
+      if (r.gran === "1m") {
+        // A minute is the sample itself. There is nothing to summarise and no window to carry
+        // a distance, so this is the page as it stands - which is also all the boat can give:
+        // raw rows exist for today only.
+        const rows = await api.logbook.snapshots({
+          from,
+          to,
+          bucket: GRANULARITY_MINUTES[r.gran],
+          limit: RANGE_LIMIT,
+          order: "desc",
+        });
+        const cols = visibleColumns(logbookColumns(rows, windUnit), selection);
+        downloadText(exportFilename("logbook", from, "csv"), "text/csv", snapshotsCsv(rows, cols));
+        return;
+      }
+      // The boat's own summaries, one block of columns per figure asked for. Each block
+      // derives its columns from its own rows, which is what drops the ones that cannot carry
+      // that figure - there is no mean of a heading, so no HDG column in the block of means.
+      const hours = await api.logbook.rollupHours(from, to);
+      const buckets = bucketHours(hours, r.gran as BucketGran);
+      const blocks = r.stats
+        .map((stat) => ({
+          stat,
+          cols: visibleColumns(logbookColumns(buckets.map((b) => bucketRow(b, stat)), windUnit), selection),
+        }))
+        .filter((b) => b.cols.length > 1);
       downloadText(
         exportFilename("logbook", from, "csv"),
         "text/csv",
-        snapshotsCsv(rows, cols),
+        bucketsCsv(buckets, blocks, { distance: r.distance, samples: r.samples }),
       );
     } catch (e) {
       setSaveErr((e as Error).message);
@@ -203,6 +226,55 @@ function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) 
  * request had failed. A boat alongside with her instruments off records nothing, which is the
  * common case and the one an empty screen reads worst.
  */
+/**
+ * The width the page's blocks are drawn in, which is not the width of what is inside them.
+ *
+ * The lanes decide both, and a window that returned nothing has no lanes: the bar, the panel
+ * and the table's frame all collapsed to a single lane - 254px on a 1920px screen - and a
+ * reader who had just been looking at nine columns watched the page fold into a column while
+ * the panel he was working in folded with it. Nothing about the screen changed; only the
+ * answer did.
+ *
+ * So an empty answer keeps the room the screen has. The head and the rows still draw the lanes
+ * they actually have (they take laneVar, not this), which for an empty window is the time
+ * column alone; the blocks around them stay the size they were.
+ */
+/**
+ * Whether the rows on the screen are the interval the reader asked for, all the way back.
+ *
+ * The boat keeps raw minutes for today and nothing more: a query at bucket=1 is clamped to the
+ * current UTC day in the plugin itself ("raw is today-only by design"), and everything earlier
+ * survives as one rollup row per hour. Asked for a window that starts yesterday at minute
+ * resolution, the page draws today's minutes above yesterday's hours - which is the best
+ * answer there is, and looks like a fault while the bar overhead still says EVERY MINUTE.
+ *
+ * So the page says it. Nothing here changes what is fetched; it names what arrived.
+ */
+function readsHourlyBeforeToday(r: ExportRequest): boolean {
+  return r.gran === "1m" && dateInputToMs(r.from) < startOfUtcDay(Date.now());
+}
+
+/**
+ * Why a window comes back empty, which is not always because nothing happened in it.
+ *
+ * Rows are stamped at the end of the interval they cover, so a window that reaches into today
+ * holds no hourly row until the hour is out and no daily row until the day is. Asked for today
+ * at ten past midnight, the log is genuinely empty at every interval but the minute - and the
+ * boat has been logging all along. "Nothing was logged between these dates" is a statement
+ * about the boat, and saying it there would be a lie the reader has no way to catch.
+ */
+function emptyRangeNote(r: ExportRequest): string {
+  const endsAhead = dateInputToMs(r.to) + 86400_000 - 1 >= Date.now();
+  if (endsAhead && r.gran !== "1m")
+    return "No row has closed at this interval yet. A shorter interval shows today's.";
+  return "Nothing was logged between these dates.";
+}
+
+function blockVar(drawn: LogColumn[], width: number | null): CSSProperties {
+  if (drawn.length > 1 || width === null) return laneVar(drawn);
+  return { "--lb-cols": lanesThatFit(width) } as CSSProperties;
+}
+
 function NoRows({ what }: { what: string }) {
   return (
     <div className="sp-empty">
@@ -309,9 +381,10 @@ function LiveView({
   const earned = logbookColumns(snaps, windUnit);
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
+  const block = blockVar(drawn, width);
   return (
     <>
-      <div className="lb-ctrl" style={laneVar(drawn)}>
+      <div className="lb-ctrl" style={block}>
         <ModeSeg mode={mode} setMode={setMode} />
         <div className="seg">
           {GRANS.map((g) => (
@@ -326,26 +399,24 @@ function LiveView({
         />
         <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
-      {picking && (
+      <Reveal open={picking} style={block}>
         <ColumnPicker
           cols={earned}
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}
-          style={laneVar(drawn)}
         />
-      )}
-      {exporting && (
+      </Reveal>
+      <Reveal open={exporting} style={block}>
         <ExportPanel
           initial={request ?? undefined}
           onView={onView}
           onSave={onSave}
           onCancel={() => setExporting(false)}
-          style={laneVar(drawn)}
         />
-      )}
+      </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className="lb-frame" style={laneVar(drawn)}>
+      <div className="lb-frame" style={block}>
         <PrintHead window={GRAN_LABEL[granularity]} interval={INTERVAL_NAME[granularity]} />
         <Cols cols={drawn} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
@@ -391,6 +462,7 @@ function DayView({
   const earned = logbookColumns(snaps, windUnit);
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
+  const block = blockVar(drawn, width);
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
   const dayLabel = isToday
@@ -401,7 +473,7 @@ function DayView({
 
   return (
     <>
-      <div className="lb-ctrl" style={laneVar(drawn)}>
+      <div className="lb-ctrl" style={block}>
         <ModeSeg mode={mode} setMode={setMode} />
         <div className="lb-date">
           <button onClick={prevDay} aria-label="Previous day">‹</button>
@@ -424,26 +496,24 @@ function DayView({
         />
         <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
-      {picking && (
+      <Reveal open={picking} style={block}>
         <ColumnPicker
           cols={earned}
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}
-          style={laneVar(drawn)}
         />
-      )}
-      {exporting && (
+      </Reveal>
+      <Reveal open={exporting} style={block}>
         <ExportPanel
           initial={request ?? undefined}
           onView={onView}
           onSave={onSave}
           onCancel={() => setExporting(false)}
-          style={laneVar(drawn)}
         />
-      )}
+      </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className="lb-frame" style={laneVar(drawn)}>
+      <div className="lb-frame" style={block}>
         <PrintHead window={dayLabel} interval={INTERVAL_NAME["1h"]} />
         <Cols cols={drawn} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
@@ -520,12 +590,21 @@ function RangeView({
   printing,
   donePrinting,
 }: ViewProps & { req: ExportRequest | null; printing: boolean; donePrinting: () => void }) {
-  const fallback: ExportRequest = { from: dateToInput(), to: dateToInput(), gran: "1h", format: "csv" };
+  const fallback: ExportRequest = {
+    from: dateToInput(),
+    to: dateToInput(),
+    gran: "1h",
+    format: "csv",
+    stats: ["last"],
+    distance: false,
+    samples: false,
+  };
   const r = req ?? fallback;
   const { snaps, err, busy, truncated, loaded } = useLogbookRange(r.from, r.to, r.gran);
   const earned = logbookColumns(snaps, windUnit);
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
+  const block = blockVar(drawn, width);
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
   useEffect(() => {
@@ -540,7 +619,7 @@ function RangeView({
   const interval = INTERVAL_NAME[r.gran];
   return (
     <>
-      <div className="lb-ctrl" style={laneVar(drawn)}>
+      <div className="lb-ctrl" style={block}>
         <ModeSeg mode="range" setMode={setMode} />
         <button className="lb-colbtn on" onClick={() => setExporting(!exporting)}>
           {label} · <b>{interval}</b>
@@ -552,26 +631,24 @@ function RangeView({
           onOpen={() => setPicking(!picking)}
         />
       </div>
-      {picking && (
+      <Reveal open={picking} style={block}>
         <ColumnPicker
           cols={earned}
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}
-          style={laneVar(drawn)}
         />
-      )}
-      {exporting && (
+      </Reveal>
+      <Reveal open={exporting} style={block}>
         <ExportPanel
           initial={request ?? undefined}
           onView={onView}
           onSave={onSave}
           onCancel={() => setExporting(false)}
-          style={laneVar(drawn)}
         />
-      )}
+      </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className="lb-frame" style={laneVar(drawn)}>
+      <div className="lb-frame" style={block}>
         <PrintHead window={label} interval={interval} />
         <Cols cols={drawn} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}>
@@ -585,8 +662,13 @@ function RangeView({
             here; a longer interval covers the same days in fewer.
           </div>
         )}
+        {readsHourlyBeforeToday(r) && (
+          <div className="lb-note">
+            Minutes are kept for today only. Earlier days in this window read one row per hour.
+          </div>
+        )}
         {!busy && snaps.length === 0 ? (
-          <NoRows what={`Nothing was logged between these dates.`} />
+          <NoRows what={emptyRangeNote(r)} />
         ) : (
           <Rows snaps={snaps} cols={drawn} footer={null} />
         )}

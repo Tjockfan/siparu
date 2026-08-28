@@ -1,3 +1,5 @@
+import { SPEED_GUARD_KN } from './aggregate'
+
 /**
  * Plugin configuration: JSON Schema for the Signal K admin UI + resolved
  * runtime options with defaults.
@@ -110,7 +112,7 @@ export const INTERNAL = {
    */
   fabricationHorizonMs: 120_000,
   /** Track segments implying speed above this are excluded from rollup distance. */
-  rollupSpeedGuardKn: 80,
+  rollupSpeedGuardKn: SPEED_GUARD_KN,
   /** No delta for this long -> /health reports degraded. */
   degradedAfterMs: 5 * 60_000
 }

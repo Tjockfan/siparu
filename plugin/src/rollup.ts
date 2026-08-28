@@ -14,6 +14,7 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { MetricAgg, MetricField, RollupDay, RollupHour, Snapshot, metricFields } from './contract'
+import { NumAgg, haversineNm, mergeAggs, mergeHours } from './aggregate'
 import { INTERNAL } from './config'
 import { Logger, Store, parseNdjson } from './store'
 import { dayKey, dayOfHourKey, monthOfHourKey } from './time'
@@ -39,16 +40,8 @@ export function clampRange(fromTs: number, toTs: number): [number, number] {
   return [Math.max(fromTs, 0), Math.min(toTs, Date.now())]
 }
 
-const EARTH_RADIUS_NM = 3440.065
 
-export function haversineNm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const toRad = (d: number) => (d * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
-  return 2 * EARTH_RADIUS_NM * Math.asin(Math.min(1, Math.sqrt(a)))
-}
+export { haversineNm }
 
 /** Track distance with a glitch guard: segments implying > guard speed are skipped. */
 export function trackDistanceNm(rows: Snapshot[]): number {
@@ -69,13 +62,6 @@ export function trackDistanceNm(rows: Snapshot[]): number {
   return dist
 }
 
-interface NumAgg extends MetricAgg {
-  min: number
-  max: number
-  avg: number
-  n: number
-}
-
 function aggregateLinear(values: number[]): NumAgg | null {
   if (values.length === 0) return null
   let min = Infinity
@@ -87,25 +73,6 @@ function aggregateLinear(values: number[]): NumAgg | null {
     sum += v
   }
   return { min, max, avg: sum / values.length, n: values.length, last: values[values.length - 1] ?? null }
-}
-
-/** Merge already-aggregated linear buckets (hour rollups) into one. */
-function mergeLinearAggs(aggs: MetricAgg[]): NumAgg | null {
-  let min = Infinity
-  let max = -Infinity
-  let sum = 0
-  let n = 0
-  let last: number | string | null = null
-  for (const m of aggs) {
-    if (typeof m.min !== 'number' || typeof m.max !== 'number' || typeof m.avg !== 'number') continue
-    const mn = (m as NumAgg).n ?? 1
-    if (m.min < min) min = m.min
-    if (m.max > max) max = m.max
-    sum += m.avg * mn
-    n += mn
-    if (m.last !== null && m.last !== undefined) last = m.last
-  }
-  return n > 0 ? { min, max, avg: sum / n, n, last } : null
 }
 
 /** Union of dynamic path names across a set of snapshots, in first-seen order. */
@@ -163,81 +130,7 @@ export function buildHourRollup(hour: string, rows: Snapshot[]): RollupHour {
 }
 
 export function buildDayRollup(date: string, hours: RollupHour[]): RollupDay {
-  const sorted = [...hours].sort((a, b) => a.hour.localeCompare(b.hour))
-  const metrics: Partial<Record<MetricField, MetricAgg>> = {}
-
-  for (const field of LINEAR_FIELDS) {
-    let min = Infinity
-    let max = -Infinity
-    let sum = 0
-    let n = 0
-    let last: number | string | null = null
-    for (const h of sorted) {
-      const m = h.metrics[field]
-      if (!m || typeof m.min !== 'number' || typeof m.max !== 'number' || typeof m.avg !== 'number') continue
-      const mn = (m as NumAgg).n ?? 1
-      if (m.min < min) min = m.min
-      if (m.max > max) max = m.max
-      sum += m.avg * mn
-      n += mn
-      if (m.last !== null && m.last !== undefined) last = m.last
-    }
-    if (n > 0) metrics[field] = { min, max, avg: sum / n, n, last } as NumAgg
-  }
-  for (const field of LAST_ONLY_FIELDS) {
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      const m = sorted[i]?.metrics[field]
-      if (m && m.last !== null && m.last !== undefined) {
-        metrics[field] = { last: m.last }
-        break
-      }
-    }
-  }
-
-  // Dynamic gauges: merge each path's hourly aggregates into the day, weighting the
-  // average by sample count, same as the linear fields above.
-  const path_metrics: Record<string, MetricAgg> = {}
-  const dayPathKeys = new Set<string>()
-  for (const h of sorted) if (h.path_metrics) for (const k of Object.keys(h.path_metrics)) dayPathKeys.add(k)
-  for (const key of dayPathKeys) {
-    const agg = mergeLinearAggs(
-      sorted.map((h) => h.path_metrics?.[key]).filter((m): m is MetricAgg => m !== undefined)
-    )
-    if (agg) path_metrics[key] = agg
-  }
-
-  const firstPos = sorted.map((h) => h.pos_first).find((p) => p !== null) ?? null
-  const lastPos =
-    [...sorted]
-      .reverse()
-      .map((h) => h.pos_last)
-      .find((p) => p !== null) ?? null
-
-  // Hour rollups only cover fixes inside their own hour; the leg between
-  // one hour's last fix and the next hour's first fix would otherwise
-  // silently vanish from the (permanent) daily distance.
-  let distance = sorted.reduce((acc, h) => acc + h.distance_nm, 0)
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i]
-    const b = sorted[i + 1]
-    if (!a?.pos_last || !b?.pos_first) continue
-    const dtH = (b.first_ts - a.last_ts) / 3_600_000
-    if (dtH <= 0) continue
-    const segNm = haversineNm(a.pos_last.lat, a.pos_last.lon, b.pos_first.lat, b.pos_first.lon)
-    if (segNm / dtH <= INTERNAL.rollupSpeedGuardKn) distance += segNm
-  }
-
-  return {
-    date,
-    count: sorted.reduce((acc, h) => acc + h.count, 0),
-    first_ts: sorted[0]?.first_ts ?? 0,
-    last_ts: sorted[sorted.length - 1]?.last_ts ?? 0,
-    distance_nm: distance,
-    pos_first: firstPos,
-    pos_last: lastPos,
-    metrics,
-    ...(Object.keys(path_metrics).length > 0 ? { path_metrics } : {})
-  }
+  return { date, ...mergeHours(hours, INTERNAL.rollupSpeedGuardKn) }
 }
 
 export class RollupEngine {
