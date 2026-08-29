@@ -103,9 +103,16 @@ export default function Layout() {
           chunk is cold the header+tabbar stay FIXED and only the content area
           shows BoatLoader (inline). With prefetch it rarely appears in
           practice. */}
-      <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+      <main className="relative flex-1 min-h-0 overflow-hidden flex flex-col">
         <Suspense fallback={<BoatLoader />}>
-          <AnimatePresence mode="wait" initial={false} custom={off}>
+          {/* popLayout, not wait. Wait mode swaps children only when the exit animation has
+              FINISHED, and an animation is a thing that can stall - a hidden tab's rAF is
+              paused, so a navigation made in the background left the old page standing under
+              the new address until the animation got to run. That stall is the "one
+              navigation behind" bug this layout has had in two disguises. popLayout mounts
+              the new page immediately - the address is correct the same frame it changes -
+              and pops the leaving one out of the flow to fade over it. */}
+          <AnimatePresence mode="popLayout" initial={false} custom={off}>
             <motion.div
               key={location.pathname}
               className="h-full min-h-0 flex flex-col"
@@ -116,16 +123,15 @@ export default function Layout() {
               exit="exit"
             >
               {/* The captured node, not the element. `<Outlet />` reads the address at render
-                  time, and in wait mode the OLD wrapper keeps rendering through its own exit -
-                  so the moment the address changed, the leaving layer was already showing the
-                  NEW page. Every switch became a double blink: the new screen at full opacity
-                  for a frame, faded to bare ground, then faded back in (measured on video,
-                  dev/verify/flicker.py - two full blank frames per switch).
+                  time, and the leaving wrapper keeps rendering through its own exit - so the
+                  moment the address changed, the exit layer was already showing the NEW page,
+                  and every switch became a double blink: the new screen at full opacity for a
+                  frame, bare ground, then the fade-in (measured on video,
+                  dev/verify/flicker.py - two full blank frames per switch in wait mode).
                   `useOutlet()` hands the wrapper the page it was keyed for, so the exit shows
-                  the page that is leaving. The lag this was once blamed for - the screen one
-                  navigation behind its own address - does not reproduce against this shape:
-                  door→engine, bridge→engine mid-fade and remote→instruments mid-fade all land
-                  on the right page (dev/verify/route_lag.py, three sequences green). */}
+                  the page that is actually leaving; the entering wrapper is created with the
+                  new address's node the same render. Route landing is pinned by
+                  dev/verify/route_lag.py - door and mid-fade sequences. */}
               {outlet}
             </motion.div>
           </AnimatePresence>
