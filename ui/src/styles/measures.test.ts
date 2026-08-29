@@ -194,12 +194,10 @@ describe("the windows the logbook is drawn in", () => {
   });
 
   it("is exactly as wide as the lanes it holds", () => {
-    // 1206px with nine columns on, which is where both windows stop at 1920. What is left of
-    // the panel falls either side of them, because the page centres what it holds. (120px
-    // lanes: the widest figure a lane carries is ~60px of tabular digits, and 160px lanes put
-    // more empty glass than figures on the page.)
+    // 1566px with nine columns on, which is where both windows stop at 1920. What is left of
+    // the panel falls either side of them, because the page centres what it holds.
     expect(widthOf(9)).toBe(SIDES + TIME_LANE + 9 * (LANE + GAP));
-    expect(widthOf(9)).toBe(1206);
+    expect(widthOf(9)).toBe(1566);
     expect(widthOf(7)).toBe(SIDES + TIME_LANE + 7 * (LANE + GAP));
   });
 

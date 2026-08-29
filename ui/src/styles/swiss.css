@@ -1121,7 +1121,7 @@ body {
   --lb-fade-out: 180ms;
   --lb-fade-in: 320ms;
   --lb-unit: 104px;
-  --lb-lane: 120px;
+  --lb-lane: 160px;
   --lb-gap: 4px;
   --lb-pad: 16px;
 }
