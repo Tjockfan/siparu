@@ -16,7 +16,7 @@
  */
 import { describePath, systemNumeric } from "../../../../plugin/src/units";
 import type { Snapshot } from "../../lib/api";
-import { metricHead } from "./columns";
+import { logbookSub, metricHead } from "./columns";
 
 /** One reading a family takes, drawn as a column across its machines. */
 export interface UnitMetric {
@@ -73,8 +73,11 @@ export function unitGroups(snaps: Snapshot[]): UnitGroup[] {
     for (const path of Object.keys(s.path_values ?? {})) {
       const d = describePath(path);
       // A path no reading describes has no unit and no metric: a row headed with a guess is
-      // worse than a path left out of the book.
-      if (!d || d.sub === null) continue;
+      // worse than a path left out of the book. `logbookSub` names the one deliberate
+      // exception, the tank level, whose sub the gauge screen leaves off.
+      if (!d) continue;
+      const sub = logbookSub(d);
+      if (sub === null) continue;
       if (!byTab.has(d.tab)) {
         tabs.push(d.tab);
         byTab.set(d.tab, new Map());
@@ -82,9 +85,9 @@ export function unitGroups(snaps: Snapshot[]): UnitGroup[] {
       }
       const units = byTab.get(d.tab)!;
       if (!units.has(d.label)) units.set(d.label, new Map());
-      units.get(d.label)!.set(d.sub, path);
+      units.get(d.label)!.set(sub, path);
       const metrics = metricsByTab.get(d.tab)!;
-      if (!metrics.includes(d.sub)) metrics.push(d.sub);
+      if (!metrics.includes(sub)) metrics.push(sub);
     }
   }
 

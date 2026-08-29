@@ -193,6 +193,30 @@ describe("the two books", () => {
     expect(cols.filter((c) => c.book === "engine").map((c) => c.head)).toEqual(["FUEL", "L/NM"]);
   });
 
+  /**
+   * The tanks earn columns too: their level path carries no sub (the gauge screen's choice),
+   * and the book used to drop them for it - eight tanks aboard and none in the log. Two
+   * families of tanks must also stay apart by more than one initial: "Fuel 0" and
+   * "Fresh water 0" both shortened to F0.
+   */
+  it("earns a level column per tank, headed apart across tank families", () => {
+    const cols = logbookColumns(
+      [
+        row({
+          path_values: {
+            "tanks.fuel.0.currentLevel": 0.8,
+            "tanks.freshWater.0.currentLevel": 0.6,
+          },
+        }),
+      ],
+      "kn"
+    );
+    expect(cols.filter((c) => c.book === "engine").map((c) => c.head)).toEqual([
+      "F0 LEVEL",
+      "FW0 LEVEL",
+    ]);
+  });
+
   /** A path no reading describes is not given a column headed with a guess. */
   it("draws no column for a path it cannot name", () => {
     const cols = logbookColumns([row({ path_values: { "sensors.foo.bar": 1 } })], "kn");
@@ -229,6 +253,9 @@ describe("the two books", () => {
       for (const m of ["revolutions", "voltage", "current", "runTime"]) {
         paths[`electrical.generators.${g}.${m}`] = 1;
       }
+    }
+    for (const t of ["fuel.0", "fuel.1", "freshWater.0", "blackWater.0", "greyWater.0", "lubrication.0"]) {
+      paths[`tanks.${t}.currentLevel`] = 0.5;
     }
     const heads = logbookColumns([row({ path_values: paths })], "kn")
       .filter((c) => c.book === "engine")

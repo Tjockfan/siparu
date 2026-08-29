@@ -254,6 +254,20 @@ export function metricHead(sub: string): string {
 }
 
 /**
+ * The reading a path carries, as this book names it.
+ *
+ * A tank's level deliberately carries no sub on the gauge screen - the cell there says
+ * "Fuel 0" over "72%", and "Fuel 0 / Current level" would name what the figure already
+ * shows. A log column cannot lean on its figure that way: the head is all the reader has
+ * before the rows, so the level gets its name back here. Any other sub-less path stays out
+ * of the book, as it always has - a head would be a guess at what it is.
+ */
+export function logbookSub(d: SystemReading): string | null {
+  if (d.sub !== null) return d.sub;
+  return d.tab === "tanks" ? "Current level" : null;
+}
+
+/**
  * How a unit is headed: the initial of a side, the number of a numbered one.
  *
  * "Port" and "Starboard" share no initial with each other and none with "Center", so a letter
@@ -262,7 +276,9 @@ export function metricHead(sub: string): string {
  */
 function unitHead(label: string): string {
   const m = /^(Engine|Generator|Fuel|Fresh water|Black water|Grey water|Lubrication)\s+(\S+)$/.exec(label);
-  if (m) return `${m[1][0]}${m[2]}`.toUpperCase();
+  // An initial per word, not one per family: "Fuel 0" and "Fresh water 0" sharing F0 is the
+  // gearbox collision over again, two lanes with one name.
+  if (m) return `${m[1]!.split(" ").map((w) => w[0]).join("")}${m[2]}`.toUpperCase();
   return label.slice(0, 1).toUpperCase();
 }
 
@@ -285,8 +301,10 @@ function engineCandidates(snaps: Snapshot[]): { col: LogColumn; has: (s: Snapsho
   for (const path of paths) {
     const d = describePath(path);
     // A path no reading describes gets no column: a header would be a guess at what it is.
-    if (!d || d.sub === null) continue;
-    described.push({ path, d: d as SystemReading & { sub: string } });
+    if (!d) continue;
+    const sub = logbookSub(d);
+    if (sub === null) continue;
+    described.push({ path, d: { ...d, sub } });
   }
   // The machine's initial exists to keep her apart from the next one, so a family of one
   // machine heads her columns with the reading alone: "FUEL", not "E FUEL" repeated down

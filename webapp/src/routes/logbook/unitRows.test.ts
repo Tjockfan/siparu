@@ -33,11 +33,30 @@ describe("unitGroups", () => {
         "tanks.fuel.0.currentLevel": 0.8,
       }),
     ]);
-    // The tanks are absent, and not because this table dropped them: a tank path describes a
-    // unit and no metric ("Fuel 0", sub null), so there is no reading to head a column with.
-    // That is a gap in the log itself and is filed as one; it is not this table's to invent.
-    expect(g.map((x) => x.tab)).toEqual(["engine", "generator"]);
-    expect(g.map((x) => x.head)).toEqual(["ENGINES", "GENERATORS"]);
+    expect(g.map((x) => x.tab)).toEqual(["engine", "generator", "tanks"]);
+    expect(g.map((x) => x.head)).toEqual(["ENGINES", "GENERATORS", "TANKS"]);
+  });
+
+  /**
+   * The tanks were the one family the book silently dropped: their level path describes a unit
+   * and no metric ("Fuel 0", sub null - the gauge screen's choice, where the figure names
+   * itself), and both table shapes skipped sub-less paths. Fuel and water are the engineer's
+   * log as much as his engines are, so the level gets its name back at the door of this book.
+   */
+  it("gives the tanks their group, one row per tank, the level as the reading", () => {
+    const g = unitGroups([
+      row({
+        "tanks.fuel.0.currentLevel": 0.8,
+        "tanks.fuel.1.currentLevel": 0.75,
+        "tanks.freshWater.0.currentLevel": 0.6,
+        "tanks.blackWater.0.currentLevel": 0.2,
+      }),
+    ]);
+    const tanks = g.find((x) => x.tab === "tanks")!;
+    expect(tanks.units.map((u) => u.head)).toEqual(["FUEL 0", "FUEL 1", "FRESH WATER 0", "BLACK WATER 0"]);
+    expect(tanks.metrics.map((m) => m.head)).toEqual(["LEVEL"]);
+    // A fraction of one on the wire, a percentage in the book: 0.8 is 80.
+    expect(unitCell(row({ "tanks.fuel.0.currentLevel": 0.8 }), tanks.units[0]!, tanks.metrics[0]!)).toBe("80");
   });
 
   it("makes each engine a row and each reading a column", () => {
