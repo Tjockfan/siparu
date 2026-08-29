@@ -1,5 +1,5 @@
 import { useState, useEffect, Suspense } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { useLocation, useOutlet } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import BoatLoader from "./BoatLoader";
 import SwissTopBar from "./swiss/SwissTopBar";
@@ -50,6 +50,7 @@ const pageVars = {
 
 export default function Layout() {
   const location = useLocation();
+  const outlet = useOutlet();
   const isLive = location.pathname === "/" || location.pathname === "/map";
 
   // Warm up the heavy sibling tab chunks in the background (Map -> MapLibre).
@@ -114,13 +115,18 @@ export default function Layout() {
               animate="center"
               exit="exit"
             >
-              {/* The element, not a captured node. `useOutlet()` handed the page down as a value
-                  read where this component rendered, and in wait mode the presence layer holds
-                  the child it was given until the one before it has finished leaving - so the
-                  screen was one navigation behind its own address: the engineer's table under
-                  the officer's heading. Rendered as an element it reads the route where and
-                  when it is drawn, which is inside the layer that is being shown. */}
-              <Outlet />
+              {/* The captured node, not the element. `<Outlet />` reads the address at render
+                  time, and in wait mode the OLD wrapper keeps rendering through its own exit -
+                  so the moment the address changed, the leaving layer was already showing the
+                  NEW page. Every switch became a double blink: the new screen at full opacity
+                  for a frame, faded to bare ground, then faded back in (measured on video,
+                  dev/verify/flicker.py - two full blank frames per switch).
+                  `useOutlet()` hands the wrapper the page it was keyed for, so the exit shows
+                  the page that is leaving. The lag this was once blamed for - the screen one
+                  navigation behind its own address - does not reproduce against this shape:
+                  door→engine, bridge→engine mid-fade and remote→instruments mid-fade all land
+                  on the right page (dev/verify/route_lag.py, three sequences green). */}
+              {outlet}
             </motion.div>
           </AnimatePresence>
         </Suspense>
