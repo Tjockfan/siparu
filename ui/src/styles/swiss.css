@@ -2262,8 +2262,52 @@ body {
   align-items: center;
   gap: var(--cluster-gap);
   padding: var(--cluster-gap);
+  /* Transparent for the same reason the board is: the screen's ground - the lamps and the
+     grid - has to reach the glass above it, or the sheets have nothing to blur. */
+  background: transparent;
 }
 .swiss .sp-remote > * { width: 100%; max-width: 760px; }
+
+/* The clusters wear the dashboard's dress: the heading band over one glass sheet, the bands
+   inside it as cells. The bands were opaque --cell surfaces from their bridge days; here
+   they sit on a sheet that already carries the blur, so they thin to the pane fill and the
+   ground shows through them the way it shows through every reading on the board. */
+.swiss .sp-remote .rm-glass {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  backdrop-filter: blur(var(--pane-blur)) saturate(155%);
+  -webkit-backdrop-filter: blur(var(--pane-blur)) saturate(155%);
+  border-top: 1px solid var(--pane-lit);
+}
+.swiss .sp-remote .pair {
+  background: var(--pane);
+  border-top: none;
+  padding: 14px 16px;
+}
+/* The board's own label colour: the same 9.5px uppercase label is --text in a bridge cell
+   (.c .t), and on a translucent pane over the day ground --muted slips under AA. Scoped off
+   the dressed states, whose title colours land earlier in the file and must keep winning. */
+.swiss .sp-remote .pair:not(.warn):not(.asking):not(.err) .t { color: var(--text); }
+/* Centred, not baseline: the badge's first flex item is the empty lamp, whose synthesised
+   baseline sat the badge text 1px above the cluster name. */
+.swiss .sp-remote .sp-sec-h { align-items: center; }
+.swiss .sp-remote .pair.warn { padding-left: 13px; }
+/* The one state that must not read as a notification keeps its accent fill: the pane rule
+   above lands later in the file than .pair.asking and would thin it to glass otherwise. */
+.swiss .sp-remote .pair.asking { background: var(--accent-block); }
+/* The rail's LIVE lamp, on the badge of a link that is actually getting through. */
+.swiss .sp-remote .sp-sec-badge { display: inline-flex; align-items: center; gap: 6px; }
+.swiss .sp-remote .rm-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: spPulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .swiss .sp-remote .rm-dot { animation: none; }
+}
 
 /* Same reason as .sp-auth-wait: --muted drops to ~4:1 on the day background, and
    12px body text needs 4.5:1 to pass AA. */
@@ -2393,6 +2437,7 @@ body {
   .swiss .sm-cell,
   .swiss .sm-cell.sm-empty { background: var(--cell); }
   .swiss .sm-matrix { background: var(--rule); }
+  .swiss .sp-remote .pair { background: var(--cell); }
 }
 
 /* Day has its own glass now (see the day token block), so the three rules that held it on the

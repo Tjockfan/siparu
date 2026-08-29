@@ -16,7 +16,7 @@
  * nobody can tap Approve without standing at this screen, on the boat's own network. That tap
  * is the whole security model, so it is not allowed to look like a notification.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api, type PairScreen, type SealingStatus, type UplinkStatus } from "../../lib/api";
 import { ageOf } from "../../lib/age";
 import { screenRefusals, sealingNotice } from "../../lib/sealing";
@@ -140,7 +140,8 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
     screens.length > 0 ? (
       <div className="pair">
         <div className="pl">
-          <div className="t">Screens she seals to</div>
+          {/* No title of its own: the cluster heading above names the list, and the badge
+              beside it counts it. */}
           <div className="fps">
             {screens.map((fp, i) => (
               <span className="fp" key={`${fp}-${i}`}>
@@ -225,6 +226,55 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
     </>
   ) : null;
 
+  /*
+   * The page is composed the way the dashboard is: clusters under the heading band the
+   * systems wear, their contents as cells on one glass sheet. The link is one cluster and
+   * the screens are the other, because they answer two different questions - "is she
+   * linked and getting through" and "who can read her" - and a reader arrives with one of
+   * them, not both.
+   */
+  const screensRefused = (refusals?.unapproved.length ?? 0) + (refusals?.unwrapped.length ?? 0);
+  const screensSection =
+    fingerprints || refused ? (
+      <section className="sp-sec">
+        <h2 className="sp-sec-h">
+          <span className="sp-sec-n">Screens</span>
+          {/* Counted off the same list the cells below print, so the badge cannot say
+              one thing and the sheet another. Refusals take it in red: a key she turned
+              away is the one line on this page that can mean somebody else's reader. */}
+          <span className={`sp-sec-badge${screensRefused > 0 ? " quiet" : ""}`}>
+            {screensRefused > 0
+              ? `${screensRefused} refused`
+              : `${screens.length} sealed`}
+          </span>
+        </h2>
+        <div className="rm-glass">
+          {fingerprints}
+          {refused}
+        </div>
+      </section>
+    ) : null;
+
+  const linkSection = (badge: { text: string; quiet?: boolean; live?: boolean } | null, cells: ReactNode) => (
+    <section className="sp-sec">
+      <h2 className="sp-sec-h">
+        <span className="sp-sec-n">Link ashore</span>
+        {/* Absent until the first status lands, the way the bridge clusters open without a
+            badge: a CHECKING badge over a "Checking the link…" cell said one thing twice. */}
+        {badge ? (
+          <span className={`sp-sec-badge${badge.quiet ? " quiet" : ""}`}>
+            {/* The dot the rail's LIVE lamp wears, for the one state where frames are
+                actually leaving her: "on" and "getting through" are different claims, and
+                only the second one earns a pulse. */}
+            {badge.live ? <span className="rm-dot" aria-hidden="true" /> : null}
+            {badge.text}
+          </span>
+        ) : null}
+      </h2>
+      <div className="rm-glass">{cells}</div>
+    </section>
+  );
+
   // Nothing until the first status lands: a band that appears and then changes shape
   // would shove the grid around on every boot. The fingerprints are not part of that shape -
   // they come from the health poll, not from this one, and a boat whose pairing status is slow
@@ -232,9 +282,8 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
   if (!data)
     return (
       <>
-        {silence}
-        {fingerprints}
-        {refused}
+        {linkSection(null, silence ?? <div className="pair"><div className="pl"><div className="s">Checking the link…</div></div></div>)}
+        {screensSection}
       </>
     );
 
@@ -260,7 +309,7 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
       <div className="pl">
         <div className="t">Still revoking the old key</div>
         <div className="s">
-          Remote viewing is off on this boat, but Siparu could not be reached to revoke
+          Remote watching is off on this boat, but Siparu could not be reached to revoke
           its copy of the key. It will keep trying whenever the boat is online.
         </div>
       </div>
@@ -274,7 +323,7 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
         return (
           <div className="pair">
             <div className="pl">
-              <div className="t">Remote viewing</div>
+              <div className="t">Remote watching</div>
               <div className="s">
                 {data.state === "expired"
                   ? "The code expired. Nothing was linked."
@@ -289,7 +338,7 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
         return (
           <div className="pair">
             <div className="pl">
-              <div className="t">Remote viewing · waiting</div>
+              <div className="t">Remote watching</div>
               <div className="code">{data.userCode}</div>
               <div className="s">
                 Enter this at <b>{PORTAL}</b> · {minutesLeft(data.expiresAt)} min left
@@ -338,12 +387,10 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
           // dead screen and only someone standing here can fix it.
           <div className={`pair${data.uplink?.rejected ? " err" : ""}`}>
             <div className="pl">
-              {/* Not "on" when nothing ashore is allowed to watch. Not dressed as an error
-                  either: the pairing stands, she is recording, and the thing that is missing
-                  is a subscription rather than a boat. */}
-              <div className="t">
-                {data.uplink?.unentitled ? "Remote viewing · paused" : "Remote viewing · on"}
-              </div>
+              {/* The state moved to the cluster badge - "paused" when nothing ashore is
+                  allowed to watch, never "on" then - so the cell says what the link IS and
+                  the heading says how it is doing, once each. */}
+              <div className="t">Remote watching</div>
               <div className="who">{data.email ?? "linked account"}</div>
               {/* Silent because she cannot seal: the uplink is fine and its own line would
                   say "Sending" under a band that has just said nothing is getting through.
@@ -374,7 +421,7 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
         return (
           <div className="pair err">
             <div className="pl">
-              <div className="t">Remote viewing · error</div>
+              <div className="t">Remote watching</div>
               <div className="s">{data.message}</div>
             </div>
             {!locked && (
@@ -388,14 +435,49 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
     }
   })();
 
+  /*
+   * The badge is the cluster's one-word answer, in the register the systems badges use.
+   * Red is kept for the two states that want a person at this screen right now: someone
+   * asking to pair, and a link that is being refused - the same rule the quiet badge
+   * follows on the dashboard.
+   */
+  const badge = (() => {
+    switch (data.state) {
+      case "paired": {
+        // Read off the same fields the cell's own sentence reads (uplinkLine), in the same
+        // order - a badge computed from fewer facts than the line under it is how "ON" came
+        // to shine over "Not reaching Siparu." on the first review of this page.
+        const up = data.uplink;
+        if (up?.unentitled) return { text: "inactive" };
+        if (up?.rejected || silent) return { text: "not sending", quiet: true };
+        if (!up || up.failures > 0) return { text: "not reaching", quiet: true };
+        // Linked with no frame out yet: on, but the pulse waits for the first one to land.
+        if (!up.lastSentTs) return { text: "on" };
+        return { text: "on", live: true };
+      }
+      case "showing_code":
+        return { text: "waiting" };
+      case "awaiting_approval":
+        return { text: "asking", quiet: true };
+      case "error":
+        return { text: "error", quiet: true };
+      default:
+        return { text: "off" };
+    }
+  })();
+
   return (
     <>
-      {silence}
-      {warning}
-      {revoking}
-      {band}
-      {fingerprints}
-      {refused}
+      {linkSection(
+        badge,
+        <>
+          {silence}
+          {warning}
+          {revoking}
+          {band}
+        </>
+      )}
+      {screensSection}
     </>
   );
 }
