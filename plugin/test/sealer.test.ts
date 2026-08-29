@@ -93,10 +93,20 @@ describe('deciding how a frame goes out', () => {
 
   it('puts nothing readable on the wire', () => {
     const verdict = sealer([device('kid-phone').wire]).s.seal(FRAME)
-    const wire = JSON.stringify(verdict)
-    expect(wire).not.toContain('43.55')
-    expect(wire).not.toContain('lat')
-    expect(wire).not.toContain('sog')
+    expect(verdict.mode).toBe('sealed')
+    if (verdict.mode !== 'sealed') return
+    // The position digits are checked against the whole wire: base64url has no dot, so
+    // "43.55" can only appear as a number that leaked in the clear.
+    expect(JSON.stringify(verdict)).not.toContain('43.55')
+    // The field names are not: ciphertext is uniform random bytes, and about one frame in
+    // five hundred spells "lat" or "sog" somewhere inside its base64 (measured; this test
+    // used to go red on it). The claim is about the cleartext surface, so the sealed blobs
+    // are blanked - their unreadability is proven end to end by the opening test above,
+    // and the field list itself is pinned by the one below.
+    const { body: _b, eph: _e, nonce: _n, sig: _s, keys: wrapped, ...clear } = verdict.frame
+    const readable = JSON.stringify({ ...clear, kids: wrapped.map((k) => k.kid) })
+    expect(readable).not.toContain('lat')
+    expect(readable).not.toContain('sog')
   })
 
   it('sends exactly the eight frame fields and not one more', () => {
