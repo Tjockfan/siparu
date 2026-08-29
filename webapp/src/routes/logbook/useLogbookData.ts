@@ -49,8 +49,14 @@ export interface LogbookLive {
  * The interval is the caller's now, not this hook's. The screen fades between what it shows,
  * and the choice a reader pressed has to be able to trail behind the table that is drawn -
  * which means the choice lives where the fade does, and this hook is handed the interval the
- * table should be showing. A change of interval still empties the page before the new rows
- * arrive, exactly as the old in-hook setter did.
+ * table should be showing.
+ *
+ * A change of interval keeps the rows it has until the new ones arrive, the way the day and
+ * range hooks always have. Emptying the page first looked free, but the page's width comes
+ * off its rows: a table with none falls back to whatever lanes fit the screen, the frame
+ * swelled to that for the beat the fetch took, and the fade turned the beat into a visible
+ * stretch and snap-back. The stale rows themselves are never seen - they sit under the fade,
+ * and the answer lands well inside it.
  */
 export function useLogbookLive(granularity: Granularity): LogbookLive {
   const [extraLoads, setExtraLoads] = useState(0);
@@ -63,7 +69,6 @@ export function useLogbookLive(granularity: Granularity): LogbookLive {
   if (prevGran !== granularity) {
     setPrevGran(granularity);
     setExtraLoads(0);
-    setSnaps([]);
     setHasMore(false);
   }
 

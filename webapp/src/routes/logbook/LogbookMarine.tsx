@@ -107,6 +107,9 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   // read on a phone and beside a chart table, and the number of columns that can be read at
   // once is the one thing that genuinely differs between them.
   const [tableRef, width] = useElementWidth<HTMLDivElement>();
+  // The lane count the screen last drew, held so a view arriving empty keeps that room
+  // (see blockVar) instead of swelling to the screen's lanes for the beat its fetch takes.
+  const lanesHold = useRef<number | null>(null);
   // The width hook takes a callback ref and keeps no node; the glide below needs the node.
   const rootEl = useRef<HTMLDivElement | null>(null);
   const setRoot = useCallback(
@@ -244,6 +247,7 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     setFamily,
     shownFamily,
     leaving,
+    lanesHold,
     windUnit,
     toggleWind,
     selection,
@@ -292,6 +296,8 @@ interface ViewProps {
   shownFamily: string | null;
   /** The old table is on its way out; whatever arrives next arrives under the fade. */
   leaving: boolean;
+  /** The lane count last drawn, kept across views so an empty beat holds its room. */
+  lanesHold: { current: number | null };
   windUnit: WindUnit;
   toggleWind: () => void;
   selection: ColumnSelection;
@@ -426,9 +432,24 @@ function emptyRangeNote(r: ExportRequest): string {
   return "Nothing was logged between these dates.";
 }
 
-function blockVar(drawn: LogColumn[], width: number | null): CSSProperties {
+/**
+ * The room an empty table keeps is the room the last full one had.
+ *
+ * A view arrives empty for a beat - it mounts, asks, and the rows land a moment later - and
+ * an empty table has no lanes to size the blocks from. Sizing them from whatever fits the
+ * screen made the frame swell to the screen's lanes for exactly that beat and settle back
+ * when the rows arrived, which under the fade reads as the page stretching and snapping. The
+ * lane count the screen last actually drew is the best guess for what is about to arrive, so
+ * that is what a lull holds; the screen-fit count remains the answer only before anything has
+ * ever been drawn.
+ */
+function blockVar(
+  drawn: LogColumn[],
+  width: number | null,
+  hold: { current: number | null },
+): CSSProperties {
   if (drawn.length > 1 || width === null) return laneVar(drawn);
-  return { "--lb-cols": lanesThatFit(width) } as CSSProperties;
+  return { "--lb-cols": hold.current ?? lanesThatFit(width) } as CSSProperties;
 }
 
 function NoRows({ what }: { what: string }) {
@@ -472,6 +493,7 @@ function tableShape(
   selection: ColumnSelection,
   width: number | null,
   family: string | null,
+  hold: { current: number | null },
 ): TableShape {
   const groups = book === "engine" ? unitGroups(snaps) : [];
   const chosen = groups.find((g) => g.tab === family) ?? groups[0];
@@ -482,6 +504,7 @@ function tableShape(
   if (chosen && chosen.units.length > 1) {
     const metrics = fittedMetrics(chosen.metrics, width, true);
     const group = { ...chosen, metrics };
+    hold.current = Math.max(1, metrics.length);
     return {
       groups,
       group,
@@ -498,7 +521,8 @@ function tableShape(
   const earned = chosen ? all.filter((c) => c.key === "ts" || c.tab === chosen.tab) : all;
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
-  return { groups, group: null, earned, cols, drawn, block: blockVar(drawn, width), cls: "" };
+  if (drawn.length > 1) hold.current = drawn.length - 1;
+  return { groups, group: null, earned, cols, drawn, block: blockVar(drawn, width, hold), cls: "" };
 }
 
 /**
@@ -619,6 +643,7 @@ function LiveView({
   setFamily,
   shownFamily,
   leaving,
+  lanesHold,
   windUnit,
   toggleWind,
   selection,
@@ -635,7 +660,7 @@ function LiveView({
 }: ViewProps) {
   const { snaps, err, busy, hasMore, loadMore } = useLogbookLive(shownGran);
   const { groups, group, earned, cols, drawn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily,
+    snaps, book, windUnit, selection, width, shownFamily, lanesHold,
   );
   return (
     <>
@@ -711,6 +736,7 @@ function DayView({
   setFamily,
   shownFamily,
   leaving,
+  lanesHold,
   windUnit,
   toggleWind,
   selection,
@@ -727,7 +753,7 @@ function DayView({
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
   const { groups, group, earned, cols, drawn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily,
+    snaps, book, windUnit, selection, width, shownFamily, lanesHold,
   );
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
@@ -851,6 +877,7 @@ function RangeView({
   setFamily,
   shownFamily,
   leaving,
+  lanesHold,
   windUnit,
   toggleWind,
   selection,
@@ -879,7 +906,7 @@ function RangeView({
   const r = req ?? fallback;
   const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
   const { groups, group, earned, cols, drawn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily,
+    snaps, book, windUnit, selection, width, shownFamily, lanesHold,
   );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
