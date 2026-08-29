@@ -1258,7 +1258,12 @@ body {
 }
 /* Two blocks side by side where there is room, one under the other on a phone. */
 .swiss .lbp-books { display: flex; flex-wrap: wrap; gap: 12px 26px; }
-.swiss .lbp-book { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.swiss .lbp-book { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+/* The 300px share belongs to blocks racked side by side in a row, and only there. The column
+   picker holds one block directly in a column-direction panel, where a flex basis is a
+   HEIGHT: the panel stood 300px tall over one row of chips, which read as a window with
+   nothing in it. */
+.swiss .lbp-books > .lbp-book { flex: 1 1 300px; }
 .swiss .lbp-h { display: flex; align-items: baseline; gap: 8px; }
 .swiss .lbp-all { margin-left: auto; display: flex; gap: 4px; }
 .swiss .lbp-chips { display: flex; flex-wrap: wrap; gap: 5px; }
