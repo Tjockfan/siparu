@@ -1,7 +1,7 @@
 /* Logbook - snapshot history (Swiss redesign).
  * Brutalist data table: Live|Day + granularity, UTC·SOG·HDG·TWS·BARO·DEP rows.
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { api, type Snapshot } from "../../lib/api";
 import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
 import { bucketHours, bucketRow, type BucketGran } from "../../lib/buckets";
@@ -38,7 +38,7 @@ import {
  * eye reads a change rather than a flicker. The stylesheet holds the same number: --lb-fade-out
  * there is this, and a suite pins the two together.
  */
-const FADE_MS = 130;
+const FADE_MS = 180;
 
 const GRANS: Granularity[] = ["1m", "1h", "6h", "1d"];
 const GRAN_LABEL: Record<Granularity, string> = {
@@ -97,6 +97,50 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   // read on a phone and beside a chart table, and the number of columns that can be read at
   // once is the one thing that genuinely differs between them.
   const [tableRef, width] = useElementWidth<HTMLDivElement>();
+  // The width hook takes a callback ref and keeps no node; the glide below needs the node.
+  const rootEl = useRef<HTMLDivElement | null>(null);
+  const setRoot = useCallback(
+    (node: HTMLDivElement | null) => {
+      rootEl.current = node;
+      tableRef(node);
+    },
+    [tableRef],
+  );
+
+  // The two families are not the same width, and the swap changes the lane count while the
+  // table is invisible. Left alone, the bar and the frame snap to the new width - the one hard
+  // cut in an otherwise gradual change. So their widths are noted as the old table starts to
+  // leave, and once the new one is in place each glides from the width it had to the width it
+  // has, over the same clock as the arriving fade. Played on the rendered widths rather than
+  // as a CSS transition of max-width: that max-width can stand far beyond what the parent
+  // allows, and a transition between two calc values spends most of its run outside the
+  // visible range, which is exactly the snap this is here to remove.
+  const glideFrom = useRef<Map<HTMLElement, number> | null>(null);
+  useLayoutEffect(() => {
+    const root = rootEl.current;
+    if (!root) return;
+    const blocks = () => root.querySelectorAll<HTMLElement>(".lb-ctrl, .lb-pick, .lb-frame");
+    if (familyLeaving) {
+      const m = new Map<HTMLElement, number>();
+      blocks().forEach((el) => m.set(el, el.getBoundingClientRect().width));
+      glideFrom.current = m;
+      return;
+    }
+    const from = glideFrom.current;
+    glideFrom.current = null;
+    if (!from || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const ms = parseFloat(getComputedStyle(root).getPropertyValue("--lb-fade-in")) || 0;
+    blocks().forEach((el) => {
+      const was = from.get(el);
+      if (was === undefined || typeof el.animate !== "function") return;
+      const now = el.getBoundingClientRect().width;
+      if (Math.abs(now - was) < 1) return;
+      el.animate([{ maxWidth: `${was}px` }, { maxWidth: `${now}px` }], {
+        duration: ms,
+        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+      });
+    });
+  }, [familyLeaving, shownFamily]);
 
   // The window a reader asked for, the panel that asks for it, and whether one of them is on
   // its way to the printer. The request outlives the panel: it is what the range view draws,
@@ -202,7 +246,7 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     saveErr,
   };
   return (
-    <div className="lb" ref={tableRef}>
+    <div className="lb" ref={setRoot}>
       {mode === "live" ? (
         <LiveView {...shared} />
       ) : mode === "day" ? (

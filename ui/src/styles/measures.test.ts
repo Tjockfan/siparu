@@ -86,7 +86,7 @@ describe("the measurements the logbook table is laid out from", () => {
    * are held to each other.
    */
   it("fades out over exactly as long as the table waits before it swaps", () => {
-    expect(declaredMs("lb-fade-out")).toBe(130); // LogbookMarine.tsx: FADE_MS
+    expect(declaredMs("lb-fade-out")).toBe(180); // LogbookMarine.tsx: FADE_MS
     // Coming back is the slower half: a table arriving is read, a table leaving is not.
     expect(declaredMs("lb-fade-in")).toBeGreaterThan(declaredMs("lb-fade-out"));
   });

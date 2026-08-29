@@ -1118,8 +1118,8 @@ body {
      than measured per boat, so a table does not change width when a generator is switched on. */
   /* The table's own fade, out and back. --lb-fade-out is also written in LogbookMarine.tsx,
      which is what holds the swap and the motion to the same schedule; a suite pins the two. */
-  --lb-fade-out: 130ms;
-  --lb-fade-in: 200ms;
+  --lb-fade-out: 180ms;
+  --lb-fade-in: 320ms;
   --lb-unit: 104px;
   --lb-lane: 160px;
   --lb-gap: 4px;
@@ -1377,6 +1377,12 @@ body {
   max-width: calc(
     var(--lb-tm) + max(1, var(--lb-cols, 5)) * (var(--lb-lane) + var(--lb-gap)) + 2 * var(--lb-pad)
   );
+  /* The two families are not the same width, and the swap changes --lb-cols while the table is
+     out of sight. The glide between the two widths is played in JavaScript (LogbookMarine),
+     not transitioned here: this max-width can stand far beyond the width the parent actually
+     allows, and a transition between two calc values spends most of its time outside the
+     visible range - which reads as a snap. The script animates between the two rendered
+     widths instead. */
   background: var(--pane);
   border: 1px solid var(--pane-edge);
   backdrop-filter: blur(var(--pane-blur)) saturate(155%);
@@ -1408,12 +1414,15 @@ body {
    A page that swaps its contents on the frame the tab is pressed reads as a flicker rather
    than as a change: the engines are there, then the generators are, and nothing tells the eye
    that one replaced the other. So the table goes quiet first and comes back carrying the other
-   family. Only the three parts that are about the boat move - the head, the band and the rows.
-   The frame around them holds still, because what is changing is what the table says and not
-   where the table is.
-   Opacity alone: a transform would move figures the reader is reading, and a height would move
-   the page under his hand. The leaving half is the shorter of the two, so the wait before the
-   new table appears is half the motion he sees. */
+   family. Only the head, the band and the rows fade; the frame does not, but it does change
+   width - the two families are not the same size, and a frame that snapped to the new width
+   while its contents were still invisible was the one hard cut left in the motion. So the
+   width rides the same clock as the arriving fade (see the .lb-ctrl/.lb-pick/.lb-frame rule),
+   and the frame glides while the new table comes up inside it.
+   Opacity and width, nothing else: a transform would move figures the reader is reading, and a
+   height would move the page under his hand. The leaving half is the shorter of the two, so
+   the wait before the new table appears is half the motion he sees. Leaving eases in - a fade
+   that drops fast on its first frames reads as a blink, not a departure. */
 .swiss .lb-cols,
 .swiss .lb-day,
 .swiss .lb-rows {
@@ -1424,6 +1433,7 @@ body {
 .swiss .lb-frame.leaving .lb-rows {
   opacity: 0;
   transition-duration: var(--lb-fade-out);
+  transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
 }
 /* A reader who has asked his machine not to animate is asking about this too. The change still
    happens and still takes its moment - the table is swapped on the same schedule either way -
