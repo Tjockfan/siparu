@@ -38,8 +38,6 @@ const REFRESH_MS = 15_000;
 export { useNow } from "../../lib/useNow";
 
 export interface LogbookLive {
-  granularity: Granularity;
-  changeGran: (g: Granularity) => void;
   snaps: Snapshot[];
   err: string | null;
   busy: boolean;
@@ -47,23 +45,30 @@ export interface LogbookLive {
   loadMore: () => void;
 }
 
-export function useLogbookLive(): LogbookLive {
-  const [granularity, setGranularity] = useState<Granularity>("1h");
+/**
+ * The interval is the caller's now, not this hook's. The screen fades between what it shows,
+ * and the choice a reader pressed has to be able to trail behind the table that is drawn -
+ * which means the choice lives where the fade does, and this hook is handed the interval the
+ * table should be showing. A change of interval still empties the page before the new rows
+ * arrive, exactly as the old in-hook setter did.
+ */
+export function useLogbookLive(granularity: Granularity): LogbookLive {
   const [extraLoads, setExtraLoads] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const bucket = GRANULARITY_MINUTES[granularity];
-  const limit = ROWS_LIMIT[granularity] + extraLoads * ROWS_LIMIT[granularity];
-
-  const changeGran = useCallback((g: Granularity) => {
-    setGranularity(g);
+  const [prevGran, setPrevGran] = useState(granularity);
+  if (prevGran !== granularity) {
+    setPrevGran(granularity);
     setExtraLoads(0);
     setSnaps([]);
     setHasMore(false);
-  }, []);
+  }
+
+  const bucket = GRANULARITY_MINUTES[granularity];
+  const limit = ROWS_LIMIT[granularity] + extraLoads * ROWS_LIMIT[granularity];
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -97,7 +102,7 @@ export function useLogbookLive(): LogbookLive {
 
   const loadMore = useCallback(() => setExtraLoads((n) => n + 1), []);
 
-  return { granularity, changeGran, snaps, err, busy, hasMore, loadMore };
+  return { snaps, err, busy, hasMore, loadMore };
 }
 
 export interface LogbookDay {

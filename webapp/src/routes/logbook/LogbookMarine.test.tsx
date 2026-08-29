@@ -22,8 +22,6 @@ const page: Snapshot[] = [];
 vi.mock("./useLogbookData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./useLogbookData")>()),
   useLogbookLive: () => ({
-    granularity: "1h",
-    changeGran: () => {},
     snaps: page,
     err: null,
     busy: false,
