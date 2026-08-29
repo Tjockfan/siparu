@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import type { Voyage, VoyageRollup, TrackPoint, FuelPathsView } from "../../lib/api";
+import { ageOf } from "../../lib/age";
 import { fmtCoordDM, fmtNum } from "../../lib/format";
 import { FUEL_MODES, fuelReadout, type FuelMode } from "../../lib/fuel";
 import { downloadText, exportFilename, trackGpx, voyagesCsv } from "../../lib/export";
@@ -52,6 +53,12 @@ function fmtDur(h: number | null): string {
 
 function fmtDate(ts: number): string {
   return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+}
+
+/** How long ago the boat was last heard, for a badge over an answer that may be old. */
+function agoShort(ts: number): string {
+  const { value, unit } = ageOf((Date.now() - ts) / 1000);
+  return `${value}${unit === "s" ? "s" : ` ${unit}`} ago`;
 }
 
 function hhmm(ts: number): string {
@@ -191,83 +198,139 @@ export default function VoyageMarine() {
         <span className="d">{new Date().toISOString().slice(0, 10)}</span>
       </div>
 
-      {active && <ActiveBanner v={active} />}
-
-      <div className="vy-seg seg" role="group" aria-label="Stats window">
-        {WINDOWS.map((w) => (
-          <button key={w.k} className={win === w.k ? "on" : ""} onClick={() => setWin(w.k)}>
-            {w.label}
-          </button>
-        ))}
-      </div>
-      <StatsGrid roll={roll} loading={d.loading} />
-
-      <div className="vy-hd">
-        <span className="vy-hd-l">Voyages <b>{d.list.length}</b></span>
-        <span className="vy-hd-acts">
-          {canPick && (
-            <button type="button" className="vy-fuelsrc" onClick={() => setShowFuel(true)}>
-              Fuel · {fuelSourceSummary(fuelView!)}
-            </button>
-          )}
-          {d.list.length > 0 && (
-            <button
-              type="button"
-              className="vy-fuelsrc"
-              onClick={() =>
-                downloadText(
-                  exportFilename("siparu-voyages", Date.now(), "csv"),
-                  "text/csv",
-                  voyagesCsv(d.list),
-                )
-              }
-            >
-              CSV
-            </button>
-          )}
-          {/* The browser's own print dialogue is where a PDF comes from on every
-              platform this runs on, including the iPad. The button is here because
-              nobody looks for a print menu inside a boat app. */}
-          {d.list.length > 0 && (
-            <button type="button" className="vy-fuelsrc" onClick={() => window.print()}>
-              Print
-            </button>
-          )}
-        </span>
-      </div>
-
-      {d.err ? (
-        <div className="vy-err">{d.err}</div>
-      ) : !d.loading && d.list.length === 0 ? (
-        <div className="sp-empty">
-          <div className="em-t">No voyages yet</div>
-          <div className="em-s">Passages appear here once the boat gets under way.</div>
-        </div>
-      ) : (
-        <div className="vy-list">
-          {d.list.map((v, i) => (
-            <VoyageRow
-              key={v.id}
-              v={v}
-              // The list runs newest first, so the passage before this one is the
-              // next row down. Undefined at the bottom of a truncated list, where
-              // there may well be an earlier one the boat still knows about; the
-              // plugin answers no_previous only when there truly is none.
-              prev={d.list[i + 1]}
-              wasJoined={merged.includes(v.id)}
-              open={openId === v.id}
-              track={tracks[v.id]}
-              fuelNotice={fuelNotice}
-              fuelMode={fuelMode}
-              onFuelMode={setFuelMode}
-              onToggle={() => toggle(v.id)}
-              onMerge={() => runEdit(() => api.voyage.mergePrevious(v.id))}
-              onUndoMerge={() => runEdit(() => api.voyage.undoMerge(v.id))}
-              editErr={openId === v.id ? editErr : null}
-            />
-          ))}
-        </div>
+      {/* The page is clusters on the glass, like the board and the remote screen: each
+          under the systems' heading band, its contents as cells on one blurred sheet. */}
+      {active && (
+        <section className="sp-sec">
+          <h2 className="sp-sec-h">
+            <span className="sp-sec-n">Under way</span>
+            {active.start_port ? <span className="sp-sec-note">from {active.start_port}</span> : null}
+            {/* The pulse is a claim of NOW, and the poll behind it can be failing while
+                `active` still holds the last answer. A dead link drops the lamp and says
+                how old the answer is, instead of beating over figures nobody is sending -
+                the same rule the remote page's ON lamp keeps. */}
+            {d.currentStale ? (
+              <span className="sp-sec-badge quiet">
+                since {hhmm(active.start_ts)}
+                {d.currentSeenTs !== null ? ` · last seen ${agoShort(d.currentSeenTs)}` : " · unreachable"}
+              </span>
+            ) : (
+              <span className="sp-sec-badge">
+                <span className="vy-pulse" aria-hidden="true" />
+                since {hhmm(active.start_ts)}
+              </span>
+            )}
+          </h2>
+          <div className="sp-glass">
+            <ActiveBanner v={active} />
+          </div>
+        </section>
       )}
+
+      <section className="sp-sec">
+        <h2 className="sp-sec-h">
+          <span className="sp-sec-n">Totals</span>
+          <span className="sp-sec-note">{WINDOWS.find((w) => w.k === win)?.label.toLowerCase()}</span>
+          {/* The cells below print dots when the load failed; a band that said nothing over
+              them would leave the dots unexplained two clusters above the error's sentence. */}
+          {d.err && !roll ? <span className="sp-sec-badge quiet">unreachable</span> : null}
+        </h2>
+        <div className="sp-glass">
+          <div className="vy-seg seg" role="group" aria-label="Stats window">
+            {WINDOWS.map((w) => (
+              <button key={w.k} className={win === w.k ? "on" : ""} onClick={() => setWin(w.k)}>
+                {w.label}
+              </button>
+            ))}
+          </div>
+          <StatsGrid roll={roll} loading={d.loading} />
+        </div>
+      </section>
+
+      <section className="sp-sec">
+        <h2 className="sp-sec-h">
+          <span className="sp-sec-n">Voyages</span>
+          {/* Counted off what the sheet below actually shows, err and loading included: a
+              badge saying 3 over "She did not answer in time" is the lie the design rubric
+              now names. The list is fetched capped at 50, so 50 is "shown", not "all". */}
+          {d.err ? (
+            <span className="sp-sec-badge quiet">unreachable</span>
+          ) : d.loading && d.list.length === 0 ? null : (
+            <span className="sp-sec-badge">
+              {d.list.length === 50 ? "50 shown" : d.list.length}
+            </span>
+          )}
+        </h2>
+        <div className="sp-glass">
+          {(canPick || d.list.length > 0) && (
+          <div className="vy-hd">
+            <span className="vy-hd-acts">
+              {canPick && (
+                <button type="button" className="vy-fuelsrc" onClick={() => setShowFuel(true)}>
+                  Fuel · {fuelSourceSummary(fuelView!)}
+                </button>
+              )}
+              {d.list.length > 0 && (
+                <button
+                  type="button"
+                  className="vy-fuelsrc"
+                  onClick={() =>
+                    downloadText(
+                      exportFilename("siparu-voyages", Date.now(), "csv"),
+                      "text/csv",
+                      voyagesCsv(d.list),
+                    )
+                  }
+                >
+                  CSV
+                </button>
+              )}
+              {/* The browser's own print dialogue is where a PDF comes from on every
+                  platform this runs on, including the iPad. The button is here because
+                  nobody looks for a print menu inside a boat app. */}
+              {d.list.length > 0 && (
+                <button type="button" className="vy-fuelsrc" onClick={() => window.print()}>
+                  Print
+                </button>
+              )}
+            </span>
+          </div>
+          )}
+
+          {d.err ? (
+            <div className="vy-err">{d.err}</div>
+          ) : !d.loading && d.list.length === 0 ? (
+            <div className="sp-empty">
+              <div className="em-t">No voyages yet</div>
+              <div className="em-s">Passages appear here once the boat gets under way.</div>
+            </div>
+          ) : (
+            <div className="vy-list">
+              {d.list.map((v, i) => (
+                <VoyageRow
+                  key={v.id}
+                  v={v}
+                  // The list runs newest first, so the passage before this one is the
+                  // next row down. Undefined at the bottom of a truncated list, where
+                  // there may well be an earlier one the boat still knows about; the
+                  // plugin answers no_previous only when there truly is none.
+                  prev={d.list[i + 1]}
+                  wasJoined={merged.includes(v.id)}
+                  open={openId === v.id}
+                  track={tracks[v.id]}
+                  fuelNotice={fuelNotice}
+                  fuelMode={fuelMode}
+                  onFuelMode={setFuelMode}
+                  onToggle={() => toggle(v.id)}
+                  onMerge={() => runEdit(() => api.voyage.mergePrevious(v.id))}
+                  onUndoMerge={() => runEdit(() => api.voyage.undoMerge(v.id))}
+                  editErr={openId === v.id ? editErr : null}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
       {showFuel && fuelView && (
         <FuelSourceSheet
@@ -283,10 +346,8 @@ export default function VoyageMarine() {
 function ActiveBanner({ v }: { v: Voyage }) {
   return (
     <div className="vy-active">
-      <div className="vy-active-hd">
-        <span className="vy-pulse" aria-hidden="true" />
-        Under way{v.start_port ? ` · from ${v.start_port}` : ""} · since {hhmm(v.start_ts)}
-      </div>
+      {/* No heading row of its own any more: the cluster band above carries the name, the
+          port and the start time, with the pulse on its badge. */}
       <div className="vy-active-grid">
         <div className="vy-a-hero">
           <div className="t">Distance · <span className="sub">nm</span></div>

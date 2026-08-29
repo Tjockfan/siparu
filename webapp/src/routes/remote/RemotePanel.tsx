@@ -248,7 +248,7 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
               : `${screens.length} sealed`}
           </span>
         </h2>
-        <div className="rm-glass">
+        <div className="sp-glass">
           {fingerprints}
           {refused}
         </div>
@@ -271,7 +271,7 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
           </span>
         ) : null}
       </h2>
-      <div className="rm-glass">{cells}</div>
+      <div className="sp-glass">{cells}</div>
     </section>
   );
 

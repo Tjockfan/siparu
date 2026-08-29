@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import type { Voyage, VoyageStatsCards } from "../../lib/api";
 import { usePolling } from "../../lib/usePolling";
+import { cacheTimestamp } from "../../lib/prefetchCache";
 
 export type StatWindow = "today" | "yesterday" | "rolling_7d" | "season";
 
@@ -29,6 +30,12 @@ export function voyageLoadError(e: unknown): string {
 
 export interface VoyageData {
   current: Voyage | null;
+  /** The poll behind `current` is failing, so `current` is the last answer, not the present:
+   *  usePolling keeps data on error, which is right for a blip and a lie for a lamp. A pulse
+   *  drawn from `current` alone kept beating after the link died. */
+  currentStale: boolean;
+  /** When `current` was last actually heard, for saying how old the stale answer is. */
+  currentSeenTs: number | null;
   stats: VoyageStatsCards | null;
   list: Voyage[];
   loading: boolean;
@@ -38,7 +45,7 @@ export interface VoyageData {
 /** `reloadKey` re-fetches stats + list when it changes: after a fuel-path change
  *  the plugin restarts and re-integrates every voyage, so the figures move. */
 export function useVoyageData(reloadKey = 0): VoyageData {
-  const { data: current } = usePolling<Voyage | null>(
+  const { data: current, error: currentErr } = usePolling<Voyage | null>(
     api.voyage.current,
     60_000,
     [reloadKey],
@@ -74,5 +81,13 @@ export function useVoyageData(reloadKey = 0): VoyageData {
     };
   }, [reloadKey]);
 
-  return { current: current ?? null, stats, list, loading, err };
+  return {
+    current: current ?? null,
+    currentStale: currentErr !== null,
+    currentSeenTs: cacheTimestamp("voyage:current"),
+    stats,
+    list,
+    loading,
+    err,
+  };
 }

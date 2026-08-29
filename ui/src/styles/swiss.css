@@ -59,8 +59,9 @@
   /* GLASS. A pane is a translucent sheet lying on a lit ground, not a filled box, and the
      blur has nothing to work on unless something is behind it: that is what --ground-* is
      for, and why removing the ground turns every pane into flat grey. Corners stay square.
-     Only the grid carries backdrop-filter; the cells inside it just change opacity, because
-     one compositing layer per screen is affordable on a phone and thirty are not. */
+     Only the sheets carry backdrop-filter - the board's .grid and the cluster pages' few
+     .sp-glass panes - never the cells inside them, because a handful of compositing layers
+     per screen is affordable on a phone and thirty are not. */
   --pane: rgba(255, 255, 255, 0.055);   /* the sheet itself */
   --pane-edge: rgba(255, 255, 255, 0.15);
   --pane-lit: rgba(255, 255, 255, 0.3); /* light falls from above, so the top edge is brighter */
@@ -74,6 +75,8 @@
   --field: rgba(255, 255, 255, 0.085);
   --field-hover: rgba(255, 255, 255, 0.15);
   --pane-blur: 34px;
+  /* Light falling down the top of a .sp-glass sheet. Follows --pane-lit's inversion. */
+  --glass-sheen: rgba(255, 255, 255, 0.06);
   --cluster-gap: 14px;   /* ground between clusters; the glass is only glass where this shows */
   --ground-lift: rgba(126, 163, 192, 0.3);  /* sea light, upper left */
   --ground-warm: rgba(229, 72, 77, 0.17);   /* the accent, low and to starboard */
@@ -138,6 +141,8 @@
   --field: rgba(255, 255, 255, 0.85);
   --field-hover: rgba(255, 255, 255, 0.96);
   --pane-blur: 20px;
+  /* Shade, not light: see --pane-lit above - a bright pane's top edge darkens. */
+  --glass-sheen: rgba(0, 0, 0, 0.045);
   --cluster-gap: 14px;
   /* Daylight rather than sea light: cooler and weaker, because a bright ground shows a tint
      far more readily than a dark one carries a glow. Same two lamps, same two corners. */
@@ -1855,8 +1860,13 @@ body {
    ============================================================ */
 .swiss .vy {
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
-  overscroll-behavior: contain; background: var(--ink-band);
-  display: flex; flex-direction: column; gap: 2px;
+  overscroll-behavior: contain;
+  /* Transparent for the reason the board and the remote page are: the screen's ground has
+     to reach the glass sheets, or they have nothing to blur. The opaque ink this carried
+     predates the glass theme. */
+  background: transparent;
+  padding: var(--cluster-gap);
+  display: flex; flex-direction: column; gap: var(--cluster-gap);
   /* A column of paper, because that is what this screen is.
      A passage row carries a date and a figure and pins the figure to its right edge, so the
      wider the window the further apart the two halves of one row sit: measured with a season
@@ -1874,20 +1884,26 @@ body {
   align-items: center;
 }
 .swiss .vy > * { width: 100%; max-width: var(--vy-measure); }
+/* Centred down the screen like the remote page and the logbook door; auto margins so an
+   overflowing season still scrolls from its top (see .sp-remote for the reasoning). */
+.swiss .vy > :first-child { margin-top: auto; }
+/* The print heading is the DOM's first child and display:none on screen, which swallows the
+   auto margin with it: the first VISIBLE child is the one after it. */
+.swiss .vy > .vy-print-hd + * { margin-top: auto; }
+.swiss .vy > :last-child { margin-bottom: auto; }
 .swiss .vy::-webkit-scrollbar { width: 0; }
 
-/* --- active voyage banner --- */
-.swiss .vy-active { background: var(--cell); color: var(--text); border-left: 2px solid var(--accent); padding: 14px 16px 16px; }
-.swiss .vy-active-hd {
-  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; display: flex; align-items: center; gap: 8px;
-}
+/* --- active voyage banner (a cell on its cluster's sheet) --- */
+.swiss .vy-active { background: var(--pane); color: var(--text); border-left: 2px solid var(--accent); padding: 16px 18px 18px; }
 .swiss .vy-pulse {
   width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none;
   animation: spPulse 1.4s ease-in-out infinite;
 }
+@media (prefers-reduced-motion: reduce) {
+  .swiss .vy-pulse { animation: none; }
+}
 .swiss .vy-active-grid {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin-top: 12px; align-items: end;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; align-items: end;
 }
 .swiss .vy-a-hero .t, .swiss .vy-a-cell .t {
   font-family: var(--sp-font); font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
@@ -1902,9 +1918,12 @@ body {
 
 /* --- stats window segment + grid --- */
 .swiss .vy-seg { border-left: none; border-right: none; border-top: none; }
-.swiss .vy-seg button { flex: 1; padding: 8px 5px; }
-.swiss .vy-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; background: var(--ink-band); }
-.swiss .vy-hero { grid-column: 1 / -1; background: var(--cell); border-left: 2px solid var(--accent); }
+/* On the sheet a control wears the field surface, not the opaque cell: the ground has to
+   come through both or the panel is a glass sheet with opaque tiles on it. */
+.swiss .vy-seg button { flex: 1; padding: 9px 5px; background: var(--field); }
+.swiss .vy-seg button.on { background: var(--text); }
+.swiss .vy-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; background: transparent; }
+.swiss .vy-hero { grid-column: 1 / -1; background: var(--pane); border-left: 2px solid var(--accent); }
 .swiss .vy-hero .t { color: var(--accent); }
 .swiss .vy-hero .sub { color: var(--muted); }
 .swiss .vy-hero .n {
@@ -1917,13 +1936,15 @@ body {
 
 /* --- list header --- */
 .swiss .vy-hd {
-  display: flex; align-items: center; justify-content: space-between; background: var(--ink-band);
-  padding: 13px 16px 9px; font-family: var(--sp-font); font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px; background: var(--pane);
+  padding: 10px 12px; font-family: var(--sp-font); font-size: 10px; font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--band-muted);
 }
-.swiss .vy-hd b { color: var(--accent); font-family: var(--sp-mono); font-size: 12px; }
-.swiss .vy-hd-l { display: inline-flex; align-items: baseline; gap: 6px; }
 .swiss .vy-hd-acts { display: inline-flex; align-items: center; gap: 6px; }
+/* The cluster badge carries the pulse when she is under way; centred like the remote
+   page's, because the lamp has no baseline of its own to sit on. */
+.swiss .vy .sp-sec-h { align-items: center; }
+.swiss .vy .sp-sec-badge { display: inline-flex; align-items: center; gap: 6px; }
 /* The printed heading. Absent on screen; @media print reveals it. */
 .swiss .vy-print-hd { display: none; }
 
@@ -1969,7 +1990,7 @@ body {
 .swiss .fs-err { margin-top: 10px; font-family: var(--sp-font); font-size: 12px; color: var(--accent-soft); }
 
 /* --- voyage list --- */
-.swiss .vy-list { background: var(--cell); display: flex; flex-direction: column; }
+.swiss .vy-list { background: var(--pane); display: flex; flex-direction: column; }
 .swiss .vy-rowwrap { border-bottom: 1px solid var(--hair); }
 .swiss .vy-rowwrap.open { background: rgba(255, 255, 255, 0.02); }
 .swiss .vy-row {
@@ -1977,15 +1998,15 @@ body {
   padding: 13px 16px; display: flex; flex-direction: column; gap: 4px;
 }
 .swiss .vy-row-top { display: flex; align-items: baseline; gap: 10px; }
-.swiss .vy-date { font-family: var(--sp-font); font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.swiss .vy-date { font-family: var(--sp-font); font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
 .swiss .vy-badge {
   font-family: var(--sp-font); font-size: 7.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--accent); border: 1px solid var(--accent); padding: 2px 5px;
 }
-.swiss .vy-dist { margin-left: auto; font-family: var(--sp-mono); font-size: 16px; font-weight: 600; }
+.swiss .vy-dist { margin-left: auto; font-family: var(--sp-mono); font-size: 18px; font-weight: 600; }
 .swiss .vy-unit { font-size: 0.6em; color: var(--muted); margin-left: 2px; }
 .swiss .vy-route { font-family: var(--sp-font); font-size: 11.5px; font-weight: 600; color: var(--accent); letter-spacing: 0.01em; }
-.swiss .vy-row-sub { font-family: var(--sp-mono); font-size: 11px; color: var(--muted); }
+.swiss .vy-row-sub { font-family: var(--sp-mono); font-size: 12px; color: var(--muted); }
 
 /* --- detail (expand): track + meta --- */
 .swiss .vy-detail { padding: 2px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -2266,7 +2287,10 @@ body {
      grid - has to reach the glass above it, or the sheets have nothing to blur. */
   background: transparent;
 }
-.swiss .sp-remote > * { width: 100%; max-width: 760px; }
+/* Wider and larger-set than the bands were on the bridge: this page is read on a desk
+   browser at arm's length, and the bridge's 12px body under a 9.5px label was sized for a
+   strip under a grid, not for the only thing on the screen. */
+.swiss .sp-remote > * { width: 100%; max-width: 920px; }
 /* Centred down the screen the way the logbook door is: the clusters ride the middle of the
    glass rather than hanging from its top. Auto margins rather than justify-content:center,
    because a centred flex scroller clips whatever overflows its top edge - the margins
@@ -2278,19 +2302,71 @@ body {
    inside it as cells. The bands were opaque --cell surfaces from their bridge days; here
    they sit on a sheet that already carries the blur, so they thin to the pane fill and the
    ground shows through them the way it shows through every reading on the board. */
-.swiss .sp-remote .rm-glass {
+/* The liquid sheet: one blurred pane per cluster, lit from above, edged all round. Shared
+   by the pages that are a column of clusters on the glass (remote, voyage); the board keeps
+   its own .grid construction. The sheen is painted once over the whole sheet rather than
+   per cell - the way the tap glow lights a pressed tab - so the cells underneath stay the
+   flat panes the board's are. Corners stay square. */
+.swiss .sp-glass {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
   backdrop-filter: blur(var(--pane-blur)) saturate(155%);
   -webkit-backdrop-filter: blur(var(--pane-blur)) saturate(155%);
   border-top: 1px solid var(--pane-lit);
+  border-left: 1px solid var(--pane-edge);
+  border-right: 1px solid var(--pane-edge);
+  border-bottom: 1px solid var(--pane-edge);
+}
+/* The sheen follows --pane-lit's logic, not its colour: at night the sheet catches light
+   out of a dark room, in daylight it is already the brightest thing on screen and what a
+   real pane shows at its top is shade. A fixed stop rather than a percentage, because the
+   voyage sheet can be fifty rows tall and 34% of that is a curtain, not an edge. */
+.swiss .sp-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 120px);
 }
 .swiss .sp-remote .pair {
   background: var(--pane);
   border-top: none;
-  padding: 14px 16px;
+  padding: 20px 24px;
+  transition: background 0.25s;
 }
+@media (hover: hover) {
+  .swiss .sp-remote .pair:hover { background: var(--cell-hover); }
+}
+/* The desk-reading scale: every voice one step up from the bridge-strip sizes. */
+.swiss .sp-remote .sp-sec-h { font-size: 11.5px; padding: 13px 16px 7px; }
+.swiss .sp-remote .pair .t { font-size: 11px; }
+/* Body at reading brightness: --muted was drawn for captions under a grid, and over the
+   translucent pane it reads as haze from a desk browser. */
+.swiss .sp-remote .pair .s {
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin-top: 5px;
+  max-width: 74ch;
+}
+/* Not on the asking block, whose own soft-on-accent colours land earlier in the file. */
+.swiss .sp-remote .pair:not(.asking) .s {
+  color: var(--text);
+  opacity: 0.82;
+}
+.swiss .sp-remote .pair .who { font-size: 17px; margin-top: 5px; }
+.swiss .sp-remote .pair .fp { font-size: 16px; letter-spacing: 0.1em; }
+.swiss .sp-remote .pair .code { font-size: 38px; }
+.swiss .sp-remote .pbtn { font-size: 11px; padding: 11px 16px; }
+/* The tap glow the tabs and segments carry, on the page's own buttons. */
+.swiss .sp-remote .pbtn { position: relative; transition: transform 0.13s ease; }
+.swiss .sp-remote .pbtn::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 62%);
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.swiss .sp-remote .pbtn:active::after { opacity: 1; transition: opacity 0s; }
 /* The board's own label colour: the same 9.5px uppercase label is --text in a bridge cell
    (.c .t), and on a translucent pane over the day ground --muted slips under AA. Scoped off
    the dressed states, whose title colours land earlier in the file and must keep winning. */
@@ -2325,6 +2401,10 @@ body {
   .swiss .pair { flex-direction: column; align-items: stretch; gap: 10px; }
   .swiss .pair .acts { justify-content: flex-end; }
   .swiss .pair .code { font-size: 26px; }
+  /* The desk-scale rule above is more specific than the line before this one, and a media
+     query raises no specificity: without its own override the 38px code wins on a 320px
+     phone. */
+  .swiss .sp-remote .pair .code { font-size: 28px; }
 }
 
 /* ============================================================
@@ -2857,6 +2937,18 @@ body {
     padding: 0 !important;
     align-items: stretch !important;
   }
+  /* The clusters undress on paper: the bands are chrome, the glass has no ground to blur,
+     and the centring margins would float the record down the sheet. */
+  .swiss .vy .sp-sec-h { display: none !important; }
+  .swiss .vy .sp-glass {
+    border: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .swiss .vy .sp-glass::after { display: none !important; }
+  .swiss .vy > :first-child,
+  .swiss .vy > .vy-print-hd + *,
+  .swiss .vy > :last-child { margin: 0 !important; }
   .swiss .lb-frame {
     border: none !important;
     background: transparent !important;
