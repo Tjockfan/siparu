@@ -521,9 +521,9 @@ function tableShape(
   const groups = book === "engine" ? unitGroups(snaps) : [];
   const chosen = groups.find((g) => g.tab === family) ?? groups[0];
   // Turning a family on its side is what buys a wide table back, and a family of one machine
-  // has no width to buy: her twelve gauges fit as twelve columns, headed with her name the way
-  // they always were. Rows there would print that name on every line and head the readings
-  // with nothing.
+  // has no width to buy: her twelve gauges fit as twelve columns, headed by the readings alone
+  // (one machine has no initial worth repeating down the header). Rows there would print her
+  // name on every line and head the readings with nothing.
   if (chosen && chosen.units.length > 1) {
     const pick = chosen.metrics.map((m) => ({ key: metricKey(chosen.tab, m.key), head: m.head }));
     const kept = chosen.metrics.filter((m) => isOn({ key: metricKey(chosen.tab, m.key) }, selection));

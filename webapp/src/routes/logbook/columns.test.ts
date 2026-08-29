@@ -131,7 +131,7 @@ describe("the two books", () => {
       "kn"
     );
     const eng = cols.filter((c) => c.book === "engine");
-    expect(eng.map((c) => c.head)).toEqual(["P RPM"]);
+    expect(eng.map((c) => c.head)).toEqual(["RPM"]);
     expect(eng[0].cell(row({ path_values: { "propulsion.port.revolutions": 26.0 } }))).toBe("1560");
   });
 
@@ -140,13 +140,15 @@ describe("the two books", () => {
    * offered three tachometer columns, and never was offered them by a list somebody wrote down.
    */
   it("offers one engine's columns to a boat with one engine, and three to a boat with three", () => {
+    // A lone machine's columns drop her initial: the prefix exists to tell machines apart,
+    // and "E0 RPM · E0 TEMP" down a whole header names a distinction the boat does not have.
     const single = logbookColumns(
       [row({ path_values: { "propulsion.0.revolutions": 24.0, "propulsion.0.temperature": 355 } })],
       "kn"
     );
     expect(single.filter((c) => c.book === "engine").map((c) => c.head)).toEqual([
-      "E0 RPM",
-      "E0 TEMP",
+      "RPM",
+      "TEMP",
     ]);
 
     const triple = logbookColumns(
@@ -173,7 +175,22 @@ describe("the two books", () => {
       [row({ path_values: { "electrical.generators.0.voltage": 230.1 } })],
       "kn"
     );
-    expect(cols.filter((c) => c.book === "engine").map((c) => c.head)).toEqual(["G0 VOLT"]);
+    expect(cols.filter((c) => c.book === "engine").map((c) => c.head)).toEqual(["VOLT"]);
+    expect(cols.filter((c) => c.book === "engine").map((c) => c.tab)).toEqual(["generator"]);
+  });
+
+  /**
+   * Seen on a live boat: her engine reports a burn rate and the derived plugin a distance per
+   * volume, and both shortened to FUEL - two columns headed the same on screen and in the CSV.
+   * The burn rate keeps the word; the L/nm column is headed by its unit, which is the one
+   * short name that states its direction.
+   */
+  it("heads a lone engine's burn rate FUEL and its fuel-per-mile by the unit", () => {
+    const cols = logbookColumns(
+      [row({ path_values: { "propulsion.main.fuel.rate": 8.4e-6, "propulsion.main.fuel.economy": 1_848_605 } })],
+      "kn"
+    );
+    expect(cols.filter((c) => c.book === "engine").map((c) => c.head)).toEqual(["FUEL", "L/NM"]);
   });
 
   /** A path no reading describes is not given a column headed with a guess. */

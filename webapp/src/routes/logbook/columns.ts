@@ -22,7 +22,7 @@
  * One list, read by both the header and the row, so the two cannot disagree about order or
  * membership again.
  */
-import { describePath, systemNumeric } from "../../../../plugin/src/units";
+import { describePath, systemNumeric, type SystemReading } from "../../../../plugin/src/units";
 import type { Snapshot } from "../../lib/api";
 import { fmtNum, knotToBeaufort, kToC, msToKnots, paToHPa, radToDeg, sogKnFiltered } from "../../lib/format";
 
@@ -226,6 +226,10 @@ const METRIC_HEAD: Record<string, string> = {
   "Engine torque": "TORQ",
   "Run time": "HRS",
   "Fuel rate": "FUEL",
+  // Not FUEL, which "Fuel per mile" would shorten to: the burn rate above already heads a
+  // column that way, and two columns headed FUEL on one boat leave the reader guessing which
+  // is the L/h and which the L/nm. The unit is the one name that states the direction.
+  "Fuel per mile": "L/NM",
   "Fuel used (since reset)": "USED",
   "Fuel pressure": "FUELP",
   "Alternator voltage": "ALT",
@@ -277,16 +281,28 @@ function engineCandidates(snaps: Snapshot[]): { col: LogColumn; has: (s: Snapsho
   for (const s of snaps) {
     for (const p of Object.keys(s.path_values ?? {})) if (!paths.includes(p)) paths.push(p);
   }
-  const out: { col: LogColumn; has: (s: Snapshot) => boolean }[] = [];
+  const described: { path: string; d: SystemReading & { sub: string } }[] = [];
   for (const path of paths) {
     const d = describePath(path);
     // A path no reading describes gets no column: a header would be a guess at what it is.
     if (!d || d.sub === null) continue;
+    described.push({ path, d: d as SystemReading & { sub: string } });
+  }
+  // The machine's initial exists to keep her apart from the next one, so a family of one
+  // machine heads her columns with the reading alone: "FUEL", not "E FUEL" repeated down
+  // the whole header for a boat with nothing to tell apart.
+  const unitsByTab = new Map<string, Set<string>>();
+  for (const { d } of described) {
+    if (!unitsByTab.has(d.tab)) unitsByTab.set(d.tab, new Set());
+    unitsByTab.get(d.tab)!.add(d.label);
+  }
+  const out: { col: LogColumn; has: (s: Snapshot) => boolean }[] = [];
+  for (const { path, d } of described) {
     const metric = metricHead(d.sub);
     out.push({
       col: {
         key: `p:${path}`,
-        head: `${unitHead(d.label)} ${metric}`,
+        head: unitsByTab.get(d.tab)!.size > 1 ? `${unitHead(d.label)} ${metric}` : metric,
         book: "engine",
         tab: d.tab,
         cell: (s) => {

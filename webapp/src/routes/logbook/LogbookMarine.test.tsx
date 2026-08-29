@@ -128,10 +128,12 @@ describe("the logbook table over a boat's own instruments", () => {
     const bridge = await draw(rows, "bridge");
     expect(bridge).toContain("SOG");
     expect(bridge).toContain("DEP");
-    expect(bridge).not.toContain("P RPM");
+    expect(bridge).not.toContain("RPM");
 
+    // A lone engine's column is headed by the reading alone: there is no second machine for
+    // an initial to tell her apart from.
     const engine = await draw(rows, "engine");
-    expect(engine).toContain("P RPM");
+    expect(engine).toContain("RPM");
     expect(engine).toContain("1530");
     expect(engine).not.toContain("SOG");
     expect(engine).not.toContain("DEP");
@@ -213,8 +215,8 @@ describe("the logbook table over a boat's own instruments", () => {
       ],
       "engine",
     );
-    expect(html).toContain("P RPM");
-    expect(html).toContain("P OIL");
+    expect(html).toContain("RPM");
+    expect(html).toContain("OIL");
     // The generators have their own tab, and their readings wait behind it.
     expect(html).not.toContain("VOLT");
     expect(html).toContain("GENERATORS");
