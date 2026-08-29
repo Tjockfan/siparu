@@ -2267,6 +2267,12 @@ body {
   background: transparent;
 }
 .swiss .sp-remote > * { width: 100%; max-width: 760px; }
+/* Centred down the screen the way the logbook door is: the clusters ride the middle of the
+   glass rather than hanging from its top. Auto margins rather than justify-content:center,
+   because a centred flex scroller clips whatever overflows its top edge - the margins
+   collapse to zero instead and the page scrolls as before. */
+.swiss .sp-remote > :first-child { margin-top: auto; }
+.swiss .sp-remote > :last-child { margin-bottom: auto; }
 
 /* The clusters wear the dashboard's dress: the heading band over one glass sheet, the bands
    inside it as cells. The bands were opaque --cell surfaces from their bridge days; here
