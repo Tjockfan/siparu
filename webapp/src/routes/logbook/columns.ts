@@ -75,12 +75,35 @@ const UTC: LogColumn = {
 };
 
 /**
+ * One half of a position, written the way the bridge board writes it: degrees and decimal
+ * minutes, hemisphere last. Thousandths of a minute is roughly two metres, which is the same
+ * resolution the board and the exports already print.
+ */
+function fmtPos(deg: number | null, width: number, pos: string, neg: string): string {
+  if (deg === null) return "·";
+  const abs = Math.abs(deg);
+  const d = Math.floor(abs);
+  const m = (abs - d) * 60;
+  return `${String(d).padStart(width, "0")}°${m.toFixed(3).padStart(6, "0")}' ${deg < 0 ? neg : pos}`;
+}
+
+/**
  * Every column the logbook can draw, in reading order, each paired with the question "did the
  * boat report this?". Heading accepts either source, as the row always has: a boat with a
  * magnetic compass and no true heading still has a heading column.
  */
 function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) => boolean }[] {
   return [
+    // The position leads the readings the way it leads a written log line: the entry says
+    // where she was before it says how she was doing.
+    {
+      col: { key: "lat", head: "LAT", book: "bridge", cell: (s) => fmtPos(s.lat, 2, "N", "S") },
+      has: (s) => s.lat !== null,
+    },
+    {
+      col: { key: "lon", head: "LON", book: "bridge", cell: (s) => fmtPos(s.lon, 3, "E", "W") },
+      has: (s) => s.lon !== null,
+    },
     {
       col: { key: "sog", head: "SOG", book: "bridge", cell: (s) => fmtNum(sogKnFiltered(s.sog), 1) },
       has: (s) => s.sog !== null,

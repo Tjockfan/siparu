@@ -25,11 +25,19 @@ import { INTERVAL_NAME, type Granularity } from "./useLogbookData";
 
 export type ExportFormat = "csv" | "pdf";
 
+/** How a PDF page is dressed: the screen's own dark ink, or white for a printer. */
+export type PdfStyle = "screen" | "paper";
+
 const GRANS: Granularity[] = ["1m", "1h", "6h", "1d"];
 
 const FORMATS: { v: ExportFormat; name: string; note: string }[] = [
   { v: "csv", name: "CSV", note: "a file for a spreadsheet" },
   { v: "pdf", name: "PDF", note: "the page, through your printer" },
+];
+
+const STYLES: { v: PdfStyle; name: string }[] = [
+  { v: "screen", name: "Screen" },
+  { v: "paper", name: "Paper" },
 ];
 
 /**
@@ -67,6 +75,8 @@ export interface ExportRequest {
   /** The window's own numbers rather than a reading: how far she ran, how many samples. */
   distance: boolean;
   samples: boolean;
+  /** PDF only: which of the two dresses the page wears. CSV carries no ink to choose. */
+  style: PdfStyle;
 }
 
 export default function ExportPanel({
@@ -87,12 +97,13 @@ export default function ExportPanel({
   const [stats, setStats] = useState<Stat[]>(initial?.stats ?? ["last"]);
   const [distance, setDistance] = useState(initial?.distance ?? false);
   const [samples, setSamples] = useState(initial?.samples ?? false);
+  const [style, setStyle] = useState<PdfStyle>(initial?.style ?? "screen");
 
   // A window that ends before it begins is the one mistake two date fields make on their own,
   // and it is worth catching here rather than as an empty table: an empty table is what a quiet
   // week looks like too, and the reader cannot tell the two apart.
   const backwards = to < from;
-  const req: ExportRequest = { from, to, gran, format, stats, distance, samples };
+  const req: ExportRequest = { from, to, gran, format, stats, distance, samples, style };
 
   // A minute is a sample, not a window: it has no mean and no extremes, so there is nothing to
   // choose and the choice is not shown. A PDF is the page itself, and the page is the table.
@@ -168,6 +179,27 @@ export default function ExportPanel({
             ))}
           </div>
         </div>
+        {format === "pdf" && (
+          <div className="lbp-book">
+            <div className="lbp-h">
+              <span className="lbp-n">Style</span>
+              <span className="lbp-s">
+                {style === "screen" ? "the app's own dark ink" : "white, for a printer"}
+              </span>
+            </div>
+            <div className="lbp-chips">
+              {STYLES.map((s) => (
+                <button
+                  key={s.v}
+                  className={`lbp-c${style === s.v ? " on" : ""}`}
+                  onClick={() => setStyle(s.v)}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {summarised && (
         <div className="lbp-book lbp-figs">

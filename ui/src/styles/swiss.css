@@ -1244,6 +1244,15 @@ body {
    thing and can be pressed; on paper there is no bar and a table of figures with no window
    named on it is not a record of anything. */
 .swiss .lb-print-hd { display: none; }
+.swiss .lb-print-ft { display: none; }
+/* The dated line the range view writes above its first row and wherever the UTC day turns:
+   a week of hours never leaves the reader guessing which day an hour belongs to. Set like
+   the caption band under the head, quieter - it divides the table, it is not a heading. */
+.swiss .lb-sep {
+  font-family: var(--sp-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2em;
+  color: var(--chrome-text); background: var(--ink-band);
+  padding: 6px var(--lb-pad); border-bottom: 1px solid var(--hair);
+}
 .swiss .lbp-n,
 .swiss .lbp-s {
   font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
@@ -2767,6 +2776,9 @@ body {
   /* The panes scroll on screen because the app owns the viewport; on paper the
      document is as tall as it is, and an overflow container prints one screenful
      and silently drops the rest. */
+  html,
+  body,
+  #root,
   .swiss.sp-screen,
   .swiss.sp-screen main,
   .swiss .vy,
@@ -2776,6 +2788,13 @@ body {
     overflow: visible !important;
     height: auto !important;
     min-height: 0 !important;
+  }
+  /* The screen is pinned to the viewport (position:fixed, inset:0), and a fixed box with both
+     edges pinned stays one viewport tall whatever its height says - which printed exactly one
+     page of any log and silently dropped the rest. On paper there is no viewport to pin to. */
+  .swiss.sp-screen {
+    position: static !important;
+    inset: auto !important;
   }
 
   /* The logbook on paper. The frame the table sits in is a window onto a page that scrolls;
@@ -2802,15 +2821,90 @@ body {
   .swiss .lb-more {
     display: none !important;
   }
+  /* The masthead (PrintHead): mark and wordmark on the left, the way every Siparu surface
+     opens; on the right when the page was made and which window it holds. Written in tokens,
+     so the same rules dress the white page and, under html.pdf-screen, the dark one. */
   .swiss .lb-print-hd {
-    display: flex; justify-content: space-between; align-items: baseline;
-    padding: 0 16px 10px; border-bottom: 1px solid var(--rule); margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 0 0 14px; border-bottom: 2px solid var(--text); margin-bottom: 10px;
   }
-  .swiss .lb-print-hd .b {
-    font-family: var(--sp-font); font-size: 13px; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+  .swiss .lb-print-hd .sp-lockup { font-size: 21px; }
+  .swiss .lb-print-hd .ph-wm {
+    font-family: var(--sp-font); font-size: 21px; font-weight: 800; letter-spacing: -0.02em;
+    text-transform: uppercase; color: var(--text); line-height: 1;
   }
-  .swiss .lb-print-hd .d { font-family: var(--sp-mono); font-size: 10px; color: var(--muted); }
+  .swiss .lb-print-hd .ph-book {
+    display: block; margin-top: 7px;
+    font-family: var(--sp-mono); font-size: 8px; font-weight: 500; letter-spacing: 0.18em;
+    color: var(--muted);
+  }
+  .swiss .lb-print-hd .ph-book b { color: var(--accent); font-weight: 600; }
+  .swiss .lb-print-hd .ph-meta {
+    text-align: right; font-family: var(--sp-mono); font-size: 8px; line-height: 1.9;
+  }
+  .swiss .lb-print-hd .ph-meta .l { color: var(--muted); letter-spacing: 0.14em; margin-right: 8px; }
+  .swiss .lb-print-hd .ph-meta b { color: var(--text); font-weight: 600; letter-spacing: 0.05em; }
+  /* The page's last line (PrintFoot). */
+  .swiss .lb-print-ft {
+    display: flex; padding-top: 10px;
+    font-family: var(--sp-mono); font-size: 7px; letter-spacing: 0.12em; color: var(--muted);
+  }
+  /* The dated line where the day turns: never torn from the row it introduces, and dressed
+     for paper unless the dark page keeps its screen ink. */
+  .swiss .lb-sep {
+    break-inside: avoid; break-after: avoid;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  html:not(.pdf-screen) .swiss .lb-sep {
+    background: #e8e6e1; color: #000; border-bottom: 1.5px solid #888;
+  }
+  /* The white page is ruled like a ledger: a line under every entry, a heavier one under the
+     heads, and a hairline between lanes. The lanes' gap closes so the vertical rules stand
+     cell to cell; the rows stretch so a rule runs the row's full height. */
+  html:not(.pdf-screen) .swiss .lb-row,
+  html:not(.pdf-screen) .swiss .lb-cols { gap: 0; }
+  /* The row's own vertical padding moves onto its cells, so a lane's rule runs the row's full
+     height instead of printing as a tick between two bands of padding. */
+  html:not(.pdf-screen) .swiss .lb-row { align-items: stretch; border-bottom: 1px solid #ccc; padding-block: 0; }
+  html:not(.pdf-screen) .swiss .lb-row > * { padding-block: 4px; }
+  html:not(.pdf-screen) .swiss .lb-cols { border-bottom: 1.5px solid #000; }
+  html:not(.pdf-screen) .swiss .lb-row > :not(:first-child),
+  html:not(.pdf-screen) .swiss .lb-cols > :not(:first-child) {
+    border-left: 1px solid #ccc; padding-left: 6px;
+  }
+  /* The masthead is the page's heading; the app's own bar over it printed the lockup twice
+     and a clock that means nothing on paper. Logbook pages only - the voyage record keeps
+     its own arrangement. */
+  .swiss:has(.lb) .head { display: none !important; }
+  /* The lanes keep the screen's shared template - every row measured against the same lanes,
+     which is what keeps a column a column from one row to the next (a per-row max-content
+     lane let a row with a wider name shift every figure after it). The page buys its room
+     with type instead: smaller figures and narrower leading lanes. The leading lanes get
+     print-only names rather than new values for --lb-tm and --lb-unit, because those two are
+     declared once and copied by fitColumns.ts, and the measures suite holds them to one rule. */
+  .swiss .lb {
+    --lb-tm-print: 34px;
+    --lb-unit-print: 64px;
+  }
+  .swiss .lb-row,
+  .swiss .lb-cols {
+    grid-template-columns:
+      var(--lb-tm-print) repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane))) !important;
+  }
+  .swiss .lb-row.u,
+  .swiss .lb-cols.u {
+    grid-template-columns:
+      var(--lb-tm-print) var(--lb-unit-print)
+      repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane))) !important;
+  }
+  .swiss .lb-row { padding: 4px 8px; }
+  .swiss .lb-row .tm { font-size: 10px !important; }
+  .swiss .lb-row .v { font-size: 9.5px !important; white-space: nowrap; }
+  .swiss .lb-row .v.dim { font-size: 9.5px !important; }
+  .swiss .lb-row.u .un { font-size: 8px; }
+  .swiss .lb-cols { font-size: 6.8px !important; padding-block: 6px 4px; }
+  .swiss .lb-day { padding-block: 5px; font-size: 8px; }
+  .swiss .lb-sep { font-size: 7.5px; padding-block: 4px; }
   /* An entry is one line of a record and is not split down the middle by a page break. The
      column heads repeat on no page but the first: they are a grid rather than a table head,
      and paper has no mechanism for repeating one. A window named in the heading and rows in
@@ -2865,4 +2959,39 @@ body {
   .swiss .vy-cards { break-inside: avoid; }
 
   @page { margin: 12mm; }
+
+  /* ============================================================
+     THE DARK PAGE  (html.pdf-screen)
+     ============================================================
+     The second of the two PDF dresses: the app's own night ink, asked for in the export
+     panel. RangeView puts the class on the root for exactly as long as the print dialog is
+     open. The white-page rules above stay as they are; this block re-arms the night tokens
+     under a heavier selector and forces the ink onto the paper - a printed background is
+     normally the reader's checkbox, and a page that only works when he finds it is a page
+     that ships broken.
+     ============================================================ */
+  html.pdf-screen .swiss {
+    --cell: #1a1d21;
+    --ink-band: #101214;
+    --text: #e8eaed;
+    --muted: #8b9095;
+    --band-muted: #8b9095;
+    --chrome-text: #e8eaed;
+    --rule: rgba(255, 255, 255, 0.16);
+    --hair: rgba(255, 255, 255, 0.085);
+    --accent: #e5484d;
+    background: #101214;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  html.pdf-screen,
+  html.pdf-screen body,
+  html.pdf-screen .swiss.sp-screen {
+    background: #101214 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* The zebra the approved sheet carries: every other entry lifted just off the page. On the
+     white page the grid rules the rows instead, as a ledger is ruled. */
+  html.pdf-screen .swiss .lb-row:nth-child(even) { background: #171a1e; }
 }

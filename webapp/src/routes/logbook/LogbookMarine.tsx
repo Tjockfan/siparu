@@ -14,6 +14,7 @@ import ExportPanel, { type ExportRequest } from "./ExportPanel";
 import Reveal from "./Reveal";
 import { columnsFor, hhmm, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
 import { fittedColumns, lanesThatFit, fittedMetrics } from "./fitColumns";
+import { BrandMark } from "siparu-ui";
 import {
   isOn,
   loadSelection,
@@ -266,6 +267,10 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   };
   return (
     <div className="lb" ref={setRoot}>
+      {/* The log runs wide - the engineer's full set is twenty lanes - so its printed pages
+          turn sideways. @page cannot be scoped by selector, so the rule exists only while a
+          logbook page is mounted; the voyage record keeps the stylesheet's portrait. */}
+      <style>{"@media print { @page { size: A4 landscape; margin: 12mm; } }"}</style>
       {shownMode === "live" ? (
         <LiveView {...shared} />
       ) : shownMode === "day" ? (
@@ -508,6 +513,10 @@ function tableShape(
   width: number | null,
   family: string | null,
   hold: { current: number | null },
+  /** False in the range view: a closed window is a document, and a document carries every
+   *  column the reader chose - the lanes shrink instead, the way the CSV already refuses to
+   *  drop what the screen has no room for. */
+  fit = true,
 ): TableShape {
   const groups = book === "engine" ? unitGroups(snaps) : [];
   const chosen = groups.find((g) => g.tab === family) ?? groups[0];
@@ -518,7 +527,7 @@ function tableShape(
   if (chosen && chosen.units.length > 1) {
     const pick = chosen.metrics.map((m) => ({ key: metricKey(chosen.tab, m.key), head: m.head }));
     const kept = chosen.metrics.filter((m) => isOn({ key: metricKey(chosen.tab, m.key) }, selection));
-    const metrics = fittedMetrics(kept, width, true);
+    const metrics = fit ? fittedMetrics(kept, width, true) : kept;
     const group = { ...chosen, metrics };
     hold.current = Math.max(1, metrics.length);
     return {
@@ -536,7 +545,7 @@ function tableShape(
   // he is on rather than every machine aboard at once.
   const earned = chosen ? all.filter((c) => c.key === "ts" || c.tab === chosen.tab) : all;
   const cols = visibleColumns(earned, selection);
-  const drawn = fittedColumns(cols, width);
+  const drawn = fit ? fittedColumns(cols, width) : cols;
   if (drawn.length > 1) hold.current = drawn.length - 1;
   return {
     groups,
@@ -722,7 +731,7 @@ function LiveView({
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
-        <PrintHead window={GRAN_LABEL[shownGran]} interval={INTERVAL_NAME[shownGran]} />
+        <PrintHead book={book} window={GRAN_LABEL[shownGran]} interval={INTERVAL_NAME[shownGran]} />
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[shownGran]}</span><b>{snaps.length}</b></div>
         {err && <div className="lb-err">{err}</div>}
@@ -742,6 +751,7 @@ function LiveView({
             }
           />
         )}
+        <PrintFoot />
       </div>
     </>
   );
@@ -826,7 +836,7 @@ function DayView({
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
-        <PrintHead window={dayLabel} interval={INTERVAL_NAME["1h"]} />
+        <PrintHead book={book} window={dayLabel} interval={INTERVAL_NAME["1h"]} />
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
         {err && <div className="lb-err">{err}</div>}
@@ -835,26 +845,77 @@ function DayView({
         ) : (
           <Rows snaps={snaps} cols={drawn} group={group} footer={null} />
         )}
+        <PrintFoot />
       </div>
     </>
   );
 }
 
+/** "29 Aug 2026 · 17:42 UTC", the moment the page went to paper. */
+function generatedStamp(): string {
+  const d = new Date();
+  const day = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${day.toUpperCase()} · ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+}
+
+/** Which officer keeps this book, for the masthead's byline. */
+const BOOK_KEEPER: Record<LogBook, string> = {
+  bridge: "CHIEF OFFICER",
+  engine: "CHIEF ENGINEER",
+};
+
 /**
- * The heading a printed page carries and a screen does not.
+ * The masthead a printed page carries and a screen does not.
  *
  * On screen the bar above says which window this is and can be pressed to change it. On paper
  * there is no bar - it is one of the first things the print stylesheet takes away - and a table
  * of figures with no window named on it is not a record of anything. Every mode draws one, so
- * it does not matter which of them the reader happened to have open when he printed.
+ * it does not matter which of them the reader happened to have open when he printed. The mark
+ * and the wordmark sit where they sit on every other Siparu surface; the right side says when
+ * the page was made and what it holds.
  */
-function PrintHead({ window: w, interval }: { window: string; interval: string }) {
+function PrintHead({ book, window: w, interval }: { book: LogBook; window: string; interval: string }) {
   return (
     <div className="lb-print-hd">
-      <span className="b">Logbook · {w}</span>
-      <span className="d">{interval} · UTC</span>
+      <div className="ph-id">
+        <span className="sp-lockup">
+          <BrandMark className="sp-glyph" />
+          <span className="ph-wm">Siparu</span>
+        </span>
+        <span className="ph-book">
+          LOGBOOK · <b>{book.toUpperCase()}</b> · {BOOK_KEEPER[book]}
+        </span>
+      </div>
+      <div className="ph-meta">
+        <div><span className="l">GENERATED</span><b>{generatedStamp()}</b></div>
+        <div><span className="l">WINDOW</span><b>{`${w} · ${interval} · UTC`.toUpperCase()}</b></div>
+      </div>
     </div>
   );
+}
+
+/** The printed page's last line; the screen never shows it. */
+function PrintFoot() {
+  return (
+    <div className="lb-print-ft">
+      <span>siparu.app</span>
+    </div>
+  );
+}
+
+/** "SAT · 29 AUG 2026" - the line a page writes where the day turns. */
+function utcDayLine(ts: number): string {
+  return new Date(ts)
+    .toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    })
+    .replace(/,\s*/, " · ")
+    .toUpperCase();
 }
 
 /** "3 Aug - 10 Aug 2026", and just the one date when both ends are the same day. */
@@ -916,21 +977,32 @@ function RangeView({
     stats: ["last"],
     distance: false,
     samples: false,
+    style: "screen",
   };
   const r = req ?? fallback;
   const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
+  // Oldest first: a closed window is a document, and a document is read forwards. The live and
+  // day views keep the newest on top because they follow a boat still logging; this one does
+  // not move, and it is the page that goes to paper.
+  const shown = useMemo(() => [...snaps].sort((a, b) => a.ts - b.ts), [snaps]);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily, lanesHold,
+    shown, book, windUnit, selection, width, shownFamily, lanesHold, false,
   );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
   useEffect(() => {
     if (!printing || !loaded || busy) return;
+    // The screen dress is a class on the root for the print stylesheet to key on; it goes on
+    // for the dialog and comes off when the dialog closes, so a later Cmd+P prints paper.
+    if (r.style === "screen") document.documentElement.classList.add("pdf-screen");
     // Cleared before the call, not after: print() blocks until the dialog closes, and a reader
     // who cancels it must not find the page trying again on the next render.
     finish();
     window.print();
-  }, [printing, loaded, busy, finish]);
+    document.documentElement.classList.remove("pdf-screen");
+  }, [printing, loaded, busy, finish, r.style]);
+  // A print interrupted by an unmount must not leave the whole app dressed for the dark page.
+  useEffect(() => () => document.documentElement.classList.remove("pdf-screen"), []);
 
   const label = windowLabel(r.from, r.to);
   const interval = INTERVAL_NAME[r.gran];
@@ -967,7 +1039,7 @@ function RangeView({
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
-        <PrintHead window={label} interval={interval} />
+        <PrintHead book={book} window={label} interval={interval} />
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}>
           <span>{label} · {interval}</span>
@@ -983,11 +1055,12 @@ function RangeView({
         {minutesNote(minutesFrom, r, snaps) && (
           <div className="lb-note">{minutesNote(minutesFrom, r, snaps)}</div>
         )}
-        {!busy && snaps.length === 0 ? (
+        {!busy && shown.length === 0 ? (
           <NoRows what={emptyRangeNote(r)} />
         ) : (
-          <Rows snaps={snaps} cols={drawn} group={group} footer={null} />
+          <Rows snaps={shown} cols={drawn} group={group} footer={null} dated />
         )}
+        <PrintFoot />
       </div>
     </>
   );
@@ -998,25 +1071,33 @@ function Rows({
   cols,
   group,
   footer,
+  dated = false,
 }: {
   snaps: Snapshot[];
   cols: LogColumn[];
   group: UnitGroup | null;
   footer: React.ReactNode;
+  /** Range view only: a dated line above the first row and wherever the UTC day turns, so a
+   *  week of hours never leaves the reader guessing which day an hour belongs to. */
+  dated?: boolean;
 }) {
-  if (group) {
-    return (
-      <div className="lb-rows" style={metricVar(group)}>
-        {snaps.map((s) => (
-          <UnitBlock key={s.ts} s={s} group={group} />
-        ))}
-        {footer}
-      </div>
+  const items: React.ReactNode[] = [];
+  let prevDay: string | null = null;
+  for (const s of snaps) {
+    if (dated) {
+      const day = utcDayLine(s.ts);
+      if (day !== prevDay) {
+        items.push(<div className="lb-sep" key={`sep-${s.ts}`}>{day}</div>);
+        prevDay = day;
+      }
+    }
+    items.push(
+      group ? <UnitBlock key={s.ts} s={s} group={group} /> : <Row key={s.ts} s={s} cols={cols} />,
     );
   }
   return (
-    <div className="lb-rows" style={laneVar(cols)}>
-      {snaps.map((s) => <Row key={s.ts} s={s} cols={cols} />)}
+    <div className="lb-rows" style={group ? metricVar(group) : laneVar(cols)}>
+      {items}
       {footer}
     </div>
   );
