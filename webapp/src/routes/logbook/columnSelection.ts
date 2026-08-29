@@ -11,11 +11,25 @@
  * Each book remembers separately. A reader who wants no barometer in the deck log has said
  * nothing about the engineer's, and a single store would make him say it twice.
  */
-import type { LogBook, LogColumn } from "./columns";
+import type { LogBook } from "./columns";
 
 export interface ColumnSelection {
   /** Columns of this book the reader has turned off. */
   off: string[];
+}
+
+/**
+ * The one thing this module asks of an item: the key a refusal is stored under. The bridge's
+ * columns carry one and so do the engineer's readings, which is how one store and one picker
+ * serve a table drawn either way.
+ */
+export interface Keyed {
+  key: string;
+}
+
+/** What the picker needs of an item: its key and the word on its chip. */
+export interface PickItem extends Keyed {
+  head: string;
 }
 
 /**
@@ -37,25 +51,25 @@ export const ALL_ON: ColumnSelection = { off: [] };
  */
 export const FIXED_KEY = "ts";
 
-export function isFixed(col: LogColumn): boolean {
+export function isFixed(col: Keyed): boolean {
   return col.key === FIXED_KEY;
 }
 
 /** Whether this column is drawn under the given selection. */
-export function isOn(col: LogColumn, sel: ColumnSelection): boolean {
+export function isOn(col: Keyed, sel: ColumnSelection): boolean {
   return isFixed(col) || !sel.off.includes(col.key);
 }
 
-export function visibleColumns(cols: LogColumn[], sel: ColumnSelection): LogColumn[] {
+export function visibleColumns<T extends Keyed>(cols: T[], sel: ColumnSelection): T[] {
   return cols.filter((c) => isOn(c, sel));
 }
 
 /** The columns the picker offers, in the order they would be drawn. */
-export function offerable(cols: LogColumn[]): LogColumn[] {
+export function offerable<T extends Keyed>(cols: T[]): T[] {
   return cols.filter((c) => !isFixed(c));
 }
 
-export function withToggled(sel: ColumnSelection, col: LogColumn): ColumnSelection {
+export function withToggled(sel: ColumnSelection, col: Keyed): ColumnSelection {
   if (isFixed(col)) return sel;
   return {
     off: isOn(col, sel) ? [...sel.off, col.key] : sel.off.filter((k) => k !== col.key),
@@ -63,7 +77,7 @@ export function withToggled(sel: ColumnSelection, col: LogColumn): ColumnSelecti
 }
 
 /** Every column on, or every one off. */
-export function withAll(cols: LogColumn[], on: boolean): ColumnSelection {
+export function withAll(cols: Keyed[], on: boolean): ColumnSelection {
   return { off: on ? [] : offerable(cols).map((c) => c.key) };
 }
 

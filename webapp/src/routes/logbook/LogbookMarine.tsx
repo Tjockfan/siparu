@@ -15,10 +15,12 @@ import Reveal from "./Reveal";
 import { columnsFor, hhmm, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
 import { fittedColumns, lanesThatFit, fittedMetrics } from "./fitColumns";
 import {
+  isOn,
   loadSelection,
   saveSelection,
   visibleColumns,
   type ColumnSelection,
+  type PickItem,
 } from "./columnSelection";
 import {
   useLogbookLive,
@@ -476,15 +478,27 @@ interface TableShape {
   groups: UnitGroup[];
   /** The family on screen, or null when the table is drawn a column per reading. */
   group: UnitGroup | null;
-  /** Column-major only: everything earned, what the reader kept, and what fits. */
-  earned: LogColumn[];
-  cols: LogColumn[];
+  /** Column-major only: the columns actually drawn at this width. */
   drawn: LogColumn[];
+  /** What the picker offers for this table - columns or readings, whichever it is made of. */
+  pick: PickItem[];
+  /** The picker button's two counts: lanes drawn at this width, and lanes chosen. */
+  btn: { shown: number; chosen: number };
   /** The lane count, for the head, the rows and the two windows they sit in. */
   block: CSSProperties;
   /** What the bar and the frame carry so their width matches the table inside them. */
   cls: string;
 }
+
+/**
+ * The key a refusal of one family's reading is stored under.
+ *
+ * Namespaced by the family, because RPM is a word both the engines and the generators use: a
+ * reader striking fuel rate off the engines' page has said nothing about theirs. The prefix
+ * also keeps these clear of the column keys the same book stores when a family of one machine
+ * is drawn a column per reading.
+ */
+const metricKey = (tab: string, key: string) => `u:${tab}:${key}`;
 
 function tableShape(
   snaps: Snapshot[],
@@ -502,15 +516,17 @@ function tableShape(
   // they always were. Rows there would print that name on every line and head the readings
   // with nothing.
   if (chosen && chosen.units.length > 1) {
-    const metrics = fittedMetrics(chosen.metrics, width, true);
+    const pick = chosen.metrics.map((m) => ({ key: metricKey(chosen.tab, m.key), head: m.head }));
+    const kept = chosen.metrics.filter((m) => isOn({ key: metricKey(chosen.tab, m.key) }, selection));
+    const metrics = fittedMetrics(kept, width, true);
     const group = { ...chosen, metrics };
     hold.current = Math.max(1, metrics.length);
     return {
       groups,
       group,
-      earned: [],
-      cols: [],
       drawn: [],
+      pick,
+      btn: { shown: metrics.length, chosen: kept.length },
       block: { "--lb-cols": Math.max(1, metrics.length) } as CSSProperties,
       cls: " u",
     };
@@ -522,7 +538,15 @@ function tableShape(
   const cols = visibleColumns(earned, selection);
   const drawn = fittedColumns(cols, width);
   if (drawn.length > 1) hold.current = drawn.length - 1;
-  return { groups, group: null, earned, cols, drawn, block: blockVar(drawn, width, hold), cls: "" };
+  return {
+    groups,
+    group: null,
+    drawn,
+    pick: earned,
+    btn: { shown: drawn.length - 1, chosen: cols.length - 1 },
+    block: blockVar(drawn, width, hold),
+    cls: "",
+  };
 }
 
 /**
@@ -659,7 +683,7 @@ function LiveView({
   saveErr,
 }: ViewProps) {
   const { snaps, err, busy, hasMore, loadMore } = useLogbookLive(shownGran);
-  const { groups, group, earned, cols, drawn, block, cls } = tableShape(
+  const { groups, group, drawn, pick, btn, block, cls } = tableShape(
     snaps, book, windUnit, selection, width, shownFamily, lanesHold,
   );
   return (
@@ -672,22 +696,17 @@ function LiveView({
           ))}
         </div>
         <FamilySeg groups={groups} family={family} setFamily={setFamily} />
-        {group === null && (
-          <ColumnsButton
-            shown={drawn.length - 1}
-            chosen={cols.length - 1}
-            open={picking}
-            onOpen={() => setPicking(!picking)}
-          />
-        )}
+        <ColumnsButton
+          shown={btn.shown}
+          chosen={btn.chosen}
+          open={picking}
+          onOpen={() => setPicking(!picking)}
+        />
         <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
-      {/* The picker belongs to a table drawn a column per reading. On the engineer's unit-major
-          page there is nothing to pick - the readings are the columns and they all fit - so a
-          panel left open on the way in from the other book closes rather than opening empty. */}
-      <Reveal open={picking && group === null} style={block} cls={cls}>
+      <Reveal open={picking} style={block} cls={cls}>
         <ColumnPicker
-          cols={earned}
+          cols={pick}
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}
@@ -752,7 +771,7 @@ function DayView({
   saveErr,
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
-  const { groups, group, earned, cols, drawn, block, cls } = tableShape(
+  const { groups, group, drawn, pick, btn, block, cls } = tableShape(
     snaps, book, windUnit, selection, width, shownFamily, lanesHold,
   );
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
@@ -781,22 +800,17 @@ function DayView({
           <button onClick={goToday} disabled={isToday}>Now</button>
         </div>
         <FamilySeg groups={groups} family={family} setFamily={setFamily} />
-        {group === null && (
-          <ColumnsButton
-            shown={drawn.length - 1}
-            chosen={cols.length - 1}
-            open={picking}
-            onOpen={() => setPicking(!picking)}
-          />
-        )}
+        <ColumnsButton
+          shown={btn.shown}
+          chosen={btn.chosen}
+          open={picking}
+          onOpen={() => setPicking(!picking)}
+        />
         <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
       </div>
-      {/* The picker belongs to a table drawn a column per reading. On the engineer's unit-major
-          page there is nothing to pick - the readings are the columns and they all fit - so a
-          panel left open on the way in from the other book closes rather than opening empty. */}
-      <Reveal open={picking && group === null} style={block} cls={cls}>
+      <Reveal open={picking} style={block} cls={cls}>
         <ColumnPicker
-          cols={earned}
+          cols={pick}
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}
@@ -905,7 +919,7 @@ function RangeView({
   };
   const r = req ?? fallback;
   const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
-  const { groups, group, earned, cols, drawn, block, cls } = tableShape(
+  const { groups, group, drawn, pick, btn, block, cls } = tableShape(
     snaps, book, windUnit, selection, width, shownFamily, lanesHold,
   );
 
@@ -928,21 +942,16 @@ function RangeView({
           {label} · <b>{interval}</b>
         </button>
         <FamilySeg groups={groups} family={family} setFamily={setFamily} />
-        {group === null && (
-          <ColumnsButton
-            shown={drawn.length - 1}
-            chosen={cols.length - 1}
-            open={picking}
-            onOpen={() => setPicking(!picking)}
-          />
-        )}
+        <ColumnsButton
+          shown={btn.shown}
+          chosen={btn.chosen}
+          open={picking}
+          onOpen={() => setPicking(!picking)}
+        />
       </div>
-      {/* The picker belongs to a table drawn a column per reading. On the engineer's unit-major
-          page there is nothing to pick - the readings are the columns and they all fit - so a
-          panel left open on the way in from the other book closes rather than opening empty. */}
-      <Reveal open={picking && group === null} style={block} cls={cls}>
+      <Reveal open={picking} style={block} cls={cls}>
         <ColumnPicker
-          cols={earned}
+          cols={pick}
           applied={selection}
           onApply={applySelection}
           onCancel={() => setPicking(false)}

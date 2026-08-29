@@ -14,7 +14,6 @@
  * the rows he is reading. Cancel throws the draft away.
  */
 import { useState } from "react";
-import type { LogColumn } from "./columns";
 import {
   isOn,
   offerable,
@@ -22,6 +21,7 @@ import {
   withAll,
   withToggled,
   type ColumnSelection,
+  type PickItem,
 } from "./columnSelection";
 
 export default function ColumnPicker({
@@ -30,7 +30,7 @@ export default function ColumnPicker({
   onApply,
   onCancel,
 }: {
-  cols: LogColumn[];
+  cols: PickItem[];
   applied: ColumnSelection;
   onApply: (sel: ColumnSelection) => void;
   onCancel: () => void;

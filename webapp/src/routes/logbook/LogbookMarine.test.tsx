@@ -165,6 +165,34 @@ describe("the logbook table over a boat's own instruments", () => {
   });
 
   /**
+   * The engineer chooses his readings the way the officer chooses his columns.
+   *
+   * The unit-major table used to hide the picker on the claim that there was nothing to pick;
+   * twelve gauges across a family of three said otherwise. The refusal is stored per family -
+   * RPM is a word the engines and the generators both use, and striking it off one page says
+   * nothing about the other.
+   */
+  it("lets the engineer strike a reading off his table", async () => {
+    const { describePath } = await import("../../../../plugin/src/units");
+    const sub = describePath("propulsion.port.revolutions")!.sub!;
+    const paths = {
+      "propulsion.port.revolutions": 25,
+      "propulsion.port.oilPressure": 400_000,
+      "propulsion.starboard.revolutions": 26,
+      "propulsion.starboard.oilPressure": 400_001,
+    };
+    try {
+      localStorage.setItem("lb:columns:engine", JSON.stringify({ off: [`u:engine:${sub}`] }));
+      const html = await draw([snap({ path_values: paths })], "engine");
+      expect(html).toContain("Columns");
+      expect(html).not.toContain("RPM");
+      expect(html).toContain("OIL");
+    } finally {
+      localStorage.setItem("lb:columns:engine", JSON.stringify({ off: [] }));
+    }
+  });
+
+  /**
    * The tabs divide the table, not just the one that is turned on its side.
    *
    * A single-engine boat with two generators draws her engine as columns, because one machine
