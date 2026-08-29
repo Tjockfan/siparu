@@ -46,6 +46,12 @@ const declared = (name: string): number => {
   expect(m, `--${name} is declared in px`).not.toBeNull();
   return Number((m as RegExpExecArray)[1]);
 };
+/** The same, for the durations. Declared beside the lanes and read the same way. */
+const declaredMs = (name: string): number => {
+  const m = new RegExp(`--${name}:\\s*([\\d.]+)ms`).exec(tableBody);
+  expect(m, `--${name} is declared in ms`).not.toBeNull();
+  return Number((m as RegExpExecArray)[1]);
+};
 
 /**
  * The logbook table's own three, which `fitColumns.ts` in the webapp holds a copy of so it can
@@ -68,6 +74,21 @@ describe("the measurements the logbook table is laid out from", () => {
     expect(declared("lb-gap")).toBe(4); // fitColumns.ts: LANE_GAP
     expect(declared("lb-pad") * 2).toBe(32); // fitColumns.ts: SIDE_PAD, both sides
     expect(declared("lb-unit")).toBe(104); // fitColumns.ts: UNIT_LANE
+  });
+
+  /**
+   * The fade and the swap behind it.
+   *
+   * The table is swapped in JavaScript and faded in CSS, and the two are one motion: the swap
+   * has to land while the table is out of sight. A stylesheet slower than the timer shows the
+   * new figures arriving under the old table's fade; a stylesheet faster shows the page blank
+   * and waiting. So the leaving half is one number written in two files, and this is where they
+   * are held to each other.
+   */
+  it("fades out over exactly as long as the table waits before it swaps", () => {
+    expect(declaredMs("lb-fade-out")).toBe(130); // LogbookMarine.tsx: FADE_MS
+    // Coming back is the slower half: a table arriving is read, a table leaving is not.
+    expect(declaredMs("lb-fade-in")).toBeGreaterThan(declaredMs("lb-fade-out"));
   });
 
   /**

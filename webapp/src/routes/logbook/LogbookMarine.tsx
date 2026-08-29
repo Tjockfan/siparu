@@ -6,6 +6,7 @@ import { api, type Snapshot } from "../../lib/api";
 import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
 import { bucketHours, bucketRow, type BucketGran } from "../../lib/buckets";
 import { unitCell, unitGroups, type UnitGroup } from "./unitRows";
+import { useCrossFade } from "./useCrossFade";
 import { dateInputToMs, dateToInput } from "../../lib/format";
 import { useElementWidth } from "../../lib/useElementWidth";
 import ColumnPicker from "./ColumnPicker";
@@ -29,6 +30,15 @@ import {
   type Granularity,
   type Mode,
 } from "./useLogbookData";
+
+/**
+ * How long the table takes to leave before it comes back as something else.
+ *
+ * Short enough that a reader running down the tabs is not waiting on it, long enough that the
+ * eye reads a change rather than a flicker. The stylesheet holds the same number: --lb-fade-out
+ * there is this, and a suite pins the two together.
+ */
+const FADE_MS = 130;
 
 const GRANS: Granularity[] = ["1m", "1h", "6h", "1d"];
 const GRAN_LABEL: Record<Granularity, string> = {
@@ -72,6 +82,10 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   // does not send him back to the engines, and null until he picks one - the page then shows
   // the first family the boat reports, which on every boat that has engines is the engines.
   const [family, setFamily] = useState<string | null>(null);
+  // The tab lights the moment it is pressed; the table it opens waits for the old one to go.
+  // FADE_MS is the leaving half, and the stylesheet plays the arriving half over the tokens
+  // this same number is written into (--lb-fade-out).
+  const [shownFamily, familyLeaving] = useCrossFade(family, FADE_MS);
   const [picking, setPicking] = useState(false);
   const applySelection = (sel: ColumnSelection) => {
     setSelection(sel);
@@ -171,6 +185,8 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     setMode,
     family,
     setFamily,
+    shownFamily,
+    familyLeaving,
     windUnit,
     toggleWind,
     selection,
@@ -207,9 +223,12 @@ interface ViewProps {
   book: LogBook;
   mode: Mode;
   setMode: (m: Mode) => void;
-  /** The family of machines on screen, or null for the first one the boat reports. */
+  /** The family the reader has asked for, which is what the tabs light. */
   family: string | null;
   setFamily: (t: string) => void;
+  /** The family the table is still drawing, which trails the one above by a fade. */
+  shownFamily: string | null;
+  familyLeaving: boolean;
   windUnit: WindUnit;
   toggleWind: () => void;
   selection: ColumnSelection;
@@ -532,6 +551,8 @@ function LiveView({
   setMode,
   family,
   setFamily,
+  shownFamily,
+  familyLeaving,
   windUnit,
   toggleWind,
   selection,
@@ -548,7 +569,7 @@ function LiveView({
 }: ViewProps) {
   const { granularity, changeGran, snaps, err, busy, hasMore, loadMore } = useLogbookLive();
   const { groups, group, earned, cols, drawn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, family,
+    snaps, book, windUnit, selection, width, shownFamily,
   );
   return (
     <>
@@ -590,7 +611,7 @@ function LiveView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className={`lb-frame${cls}`} style={block}>
+      <div className={`lb-frame${cls}${familyLeaving ? " leaving" : ""}`} style={block}>
         <PrintHead window={GRAN_LABEL[granularity]} interval={INTERVAL_NAME[granularity]} />
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[granularity]}</span><b>{snaps.length}</b></div>
@@ -622,6 +643,8 @@ function DayView({
   setMode,
   family,
   setFamily,
+  shownFamily,
+  familyLeaving,
   windUnit,
   toggleWind,
   selection,
@@ -638,7 +661,7 @@ function DayView({
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
   const { groups, group, earned, cols, drawn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, family,
+    snaps, book, windUnit, selection, width, shownFamily,
   );
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
@@ -696,7 +719,7 @@ function DayView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className={`lb-frame${cls}`} style={block}>
+      <div className={`lb-frame${cls}${familyLeaving ? " leaving" : ""}`} style={block}>
         <PrintHead window={dayLabel} interval={INTERVAL_NAME["1h"]} />
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
@@ -760,6 +783,8 @@ function RangeView({
   setMode,
   family,
   setFamily,
+  shownFamily,
+  familyLeaving,
   windUnit,
   toggleWind,
   selection,
@@ -788,7 +813,7 @@ function RangeView({
   const r = req ?? fallback;
   const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
   const { groups, group, earned, cols, drawn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, family,
+    snaps, book, windUnit, selection, width, shownFamily,
   );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
@@ -839,7 +864,7 @@ function RangeView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className={`lb-frame${cls}`} style={block}>
+      <div className={`lb-frame${cls}${familyLeaving ? " leaving" : ""}`} style={block}>
         <PrintHead window={label} interval={interval} />
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}>

@@ -1116,6 +1116,10 @@ body {
      "Starboard", "Generator 1" - and the longest of them sets this: 84px held the sides and
      broke "GENERATOR 0" over two lines, which took the row's baseline with it. Fixed rather
      than measured per boat, so a table does not change width when a generator is switched on. */
+  /* The table's own fade, out and back. --lb-fade-out is also written in LogbookMarine.tsx,
+     which is what holds the swap and the motion to the same schedule; a suite pins the two. */
+  --lb-fade-out: 130ms;
+  --lb-fade-in: 200ms;
   --lb-unit: 104px;
   --lb-lane: 160px;
   --lb-gap: 4px;
@@ -1399,6 +1403,35 @@ body {
 .swiss .lb-cols span.tap {
   cursor: pointer; color: var(--accent); user-select: none;
   text-decoration: underline dotted; text-underline-offset: 3px;
+}
+/* The table changing what it is about.
+   A page that swaps its contents on the frame the tab is pressed reads as a flicker rather
+   than as a change: the engines are there, then the generators are, and nothing tells the eye
+   that one replaced the other. So the table goes quiet first and comes back carrying the other
+   family. Only the three parts that are about the boat move - the head, the band and the rows.
+   The frame around them holds still, because what is changing is what the table says and not
+   where the table is.
+   Opacity alone: a transform would move figures the reader is reading, and a height would move
+   the page under his hand. The leaving half is the shorter of the two, so the wait before the
+   new table appears is half the motion he sees. */
+.swiss .lb-cols,
+.swiss .lb-day,
+.swiss .lb-rows {
+  transition: opacity var(--lb-fade-in) cubic-bezier(0.32, 0.72, 0, 1);
+}
+.swiss .lb-frame.leaving .lb-cols,
+.swiss .lb-frame.leaving .lb-day,
+.swiss .lb-frame.leaving .lb-rows {
+  opacity: 0;
+  transition-duration: var(--lb-fade-out);
+}
+/* A reader who has asked his machine not to animate is asking about this too. The change still
+   happens and still takes its moment - the table is swapped on the same schedule either way -
+   it simply arrives without the fade. */
+@media (prefers-reduced-motion: reduce) {
+  .swiss .lb-cols,
+  .swiss .lb-day,
+  .swiss .lb-rows { transition-duration: 1ms; }
 }
 .swiss .lb-day {
   padding: 9px var(--lb-pad); background: var(--ink-band); color: var(--chrome-text);
