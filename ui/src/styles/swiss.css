@@ -1333,7 +1333,10 @@ body {
   .swiss .lb-colbtn:hover { background: var(--cell-hover); }
   .swiss .lbp-act .lbp-go:disabled:hover { background: var(--cell); }
 }
-.swiss .lb-date { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+/* One cluster with the rest of the bar. An auto margin here predated the centred bar and
+ * pushed the date to the far edge, which pinned the mode segment to the left the moment the
+ * reader switched to Day - the only bar on the page that was not centred. */
+.swiss .lb-date { display: flex; align-items: center; gap: 6px; }
 .swiss .lb-date .dt {
   font-family: var(--sp-font); font-size: 12px; font-weight: 600; color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -1855,10 +1858,13 @@ body {
      The measure is the one this record already has on paper: A4 is 210mm and the print rules
      below set a 12mm page margin, so the column an owner prints is 186mm. Screen and paper are
      now the same document, which is the point of the Print button. The tokens test holds the
-     two figures together. Below the measure nothing changes, so a phone never meets it. */
+     two figures together. Below the measure nothing changes, so a phone never meets it.
+     Centred like the log table's frame: pinned left, the page was the one screen whose
+     spare width all fell on one side. */
   --vy-measure: 186mm;
+  align-items: center;
 }
-.swiss .vy > * { max-width: var(--vy-measure); }
+.swiss .vy > * { width: 100%; max-width: var(--vy-measure); }
 .swiss .vy::-webkit-scrollbar { width: 0; }
 
 /* --- active voyage banner --- */
@@ -2776,7 +2782,8 @@ body {
      paper does not scroll, so the frame stops being a frame and the rows simply run on. Its
      glass and its edge go with it: a printed border around a table that breaks across three
      sheets draws a box that never closes. */
-  .swiss .lb {
+  .swiss .lb,
+  .swiss .vy {
     padding: 0 !important;
     align-items: stretch !important;
   }
