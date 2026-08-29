@@ -1893,6 +1893,63 @@ body {
 .swiss .vy > :last-child { margin-bottom: auto; }
 .swiss .vy::-webkit-scrollbar { width: 0; }
 
+/* The desk gets a board, not a column: the passage across the top, the totals matrix and
+   the list side by side under it - the same shape the dashboard takes at the same width.
+   `screen and`, because a landscape print could clear 1000px and the record must stay a
+   column on paper. */
+@media screen and (min-width: 1000px) {
+  .swiss .vy {
+    display: grid;
+    grid-template-columns: fit-content(560px) minmax(0, 880px);
+    justify-content: center;
+    /* SAFE center, and the word is load-bearing: plain center in a scroller pushes a long
+       season's top overflow above the scroll origin, where no scrolling reaches it -
+       measured at 1854px unreachable on a 50-voyage list, matrix included. The auto-margin
+       trick the flex column uses does not carry to grid (measured: it stops centring). */
+    align-content: safe center;
+    align-items: start;
+  }
+  .swiss .vy > * { max-width: none; }
+  /* The flex centring margins would centre each item in its own grid cell instead. */
+  .swiss .vy > :first-child,
+  .swiss .vy > .vy-print-hd + *,
+  .swiss .vy > :last-child { margin: 0; }
+  .swiss .vy > .vy-sec-active { grid-column: 1 / -1; }
+  .swiss .vy > .vy-sec-totals { grid-column: 1; }
+  .swiss .vy > .vy-sec-voyages { grid-column: 2; }
+  /* The board's room is spent on the figures. */
+  .swiss .vy-a-hero .n { font-size: 52px; }
+  .swiss .vy-a-cell .v { font-size: 22px; }
+}
+
+/* --- totals matrix (the board's four windows at once) ---
+   Dressed in the cluster language (pane cells, 2px gaps) rather than the bridge matrix's
+   (1px gaps in an edged frame): this table lives on a cluster page among .sp-glass sheets,
+   and a frame borrowed from the board would be the one boxed element on the page. */
+.swiss .vy-matrix {
+  display: grid;
+  grid-template-columns: minmax(104px, auto) repeat(4, minmax(88px, 1fr));
+  gap: 2px;
+}
+.swiss .vy-matrix > span { background: var(--pane); padding: 11px 13px; min-width: 0; }
+.swiss .mx-h,
+.swiss .mx-r {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+}
+/* The gap, not a leading space: a flex item's edge swallows the space character, and the
+   label printed "DISTANCE· nm". */
+.swiss .mx-r { display: flex; align-items: center; gap: 4px; }
+.swiss .mx-u { color: var(--band-muted); text-transform: none; letter-spacing: 0.04em; }
+.swiss .mx-v {
+  font-family: var(--sp-mono); font-size: 17px; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+/* The distance row is the record's headline figure, marked the way the hero cell is: the
+   edge on the row's own first cell, where a row begins, and the size on its values. */
+.swiss .mx-hero { font-size: 22px; }
+.swiss .mx-hero-r { border-left: 2px solid var(--accent); }
+
 /* --- active voyage banner (a cell on its cluster's sheet) --- */
 .swiss .vy-active { background: var(--pane); color: var(--text); border-left: 2px solid var(--accent); padding: 16px 18px 18px; }
 .swiss .vy-pulse {
@@ -2298,6 +2355,30 @@ body {
 .swiss .sp-remote > :first-child { margin-top: auto; }
 .swiss .sp-remote > :last-child { margin-bottom: auto; }
 
+/* Side by side on a desk: the link and the screens are two questions, and a wide monitor
+   has room to answer both without stacking them down a strip of bare ground. A page down
+   to one cluster keeps the centre line. */
+@media screen and (min-width: 1000px) {
+  .swiss .sp-remote {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 640px));
+    justify-content: center;
+    /* safe: a refusal list taller than a short window must scroll from its top, not lose
+       it above the scroll origin. See the voyage board's note. */
+    align-content: safe center;
+    align-items: start;
+  }
+  .swiss .sp-remote > * { max-width: none; }
+  .swiss .sp-remote > :first-child,
+  .swiss .sp-remote > :last-child { margin: 0; }
+  .swiss .sp-remote > .sp-sec:only-child {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 100%;
+    max-width: 920px;
+  }
+}
+
 /* The clusters wear the dashboard's dress: the heading band over one glass sheet, the bands
    inside it as cells. The bands were opaque --cell surfaces from their bridge days; here
    they sit on a sheet that already carries the blur, so they thin to the pane fill and the
@@ -2523,7 +2604,11 @@ body {
   .swiss .sm-cell,
   .swiss .sm-cell.sm-empty { background: var(--cell); }
   .swiss .sm-matrix { background: var(--rule); }
-  .swiss .sp-remote .pair { background: var(--cell); }
+  .swiss .sp-remote .pair,
+  .swiss .vy-active,
+  .swiss .vy-hd,
+  .swiss .vy-list,
+  .swiss .vy-matrix > span { background: var(--cell); }
 }
 
 /* Day has its own glass now (see the day token block), so the three rules that held it on the
@@ -3100,6 +3185,7 @@ body {
   .swiss .vy-rowwrap,
   .swiss .vy-active,
   .swiss .vy-cards { break-inside: avoid; }
+  .swiss .vy-matrix { break-inside: avoid; }
 
   @page { margin: 12mm; }
 

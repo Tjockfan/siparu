@@ -5,12 +5,13 @@
  * Data comes from voyage/useVoyageData.ts; header + tab bar from Layout. */
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api";
-import type { Voyage, VoyageRollup, TrackPoint, FuelPathsView } from "../../lib/api";
+import type { Voyage, VoyageRollup, VoyageStatsCards, TrackPoint, FuelPathsView } from "../../lib/api";
 import { ageOf } from "../../lib/age";
 import { fmtCoordDM, fmtNum } from "../../lib/format";
 import { FUEL_MODES, fuelReadout, type FuelMode } from "../../lib/fuel";
 import { downloadText, exportFilename, trackGpx, voyagesCsv } from "../../lib/export";
 import { useVoyageData, type StatWindow } from "./useVoyageData";
+import { useMediaQuery } from "../../lib/useMediaQuery";
 import VoyageTrackMap from "./VoyageTrackMap";
 import FuelSourceSheet from "./FuelSourceSheet";
 import { fuelSourceNotice, fuelSourceOffered, fuelSourceSummary } from "../../lib/fuelSource";
@@ -21,6 +22,10 @@ function initFuelMode(): FuelMode {
   const stored = localStorage.getItem(FUEL_MODE_KEY);
   return FUEL_MODES.some((m) => m.mode === stored) ? (stored as FuelMode) : "total_l";
 }
+
+/* The width where the page becomes a board: same threshold as the layout's rail and the
+   dashboard, so the whole app changes shape at one width. */
+const WIDE_QUERY = "(min-width: 1000px)";
 
 const WINDOWS: { k: StatWindow; label: string }[] = [
   { k: "today", label: "Today" },
@@ -79,6 +84,7 @@ export default function VoyageMarine() {
   // every voyage, so stats + list + current are re-fetched under the new figure.
   const [reloadKey, setReloadKey] = useState(0);
   const d = useVoyageData(reloadKey);
+  const wide = useMediaQuery(WIDE_QUERY);
   const [win, setWin] = useState<StatWindow>("today");
   const [openId, setOpenId] = useState<number | null>(null);
   const [tracks, setTracks] = useState<Record<number, TrackPoint[]>>({});
@@ -201,7 +207,7 @@ export default function VoyageMarine() {
       {/* The page is clusters on the glass, like the board and the remote screen: each
           under the systems' heading band, its contents as cells on one blurred sheet. */}
       {active && (
-        <section className="sp-sec">
+        <section className="sp-sec vy-sec-active">
           <h2 className="sp-sec-h">
             <span className="sp-sec-n">Under way</span>
             {active.start_port ? <span className="sp-sec-note">from {active.start_port}</span> : null}
@@ -227,27 +233,43 @@ export default function VoyageMarine() {
         </section>
       )}
 
-      <section className="sp-sec">
+      <section className="sp-sec vy-sec-totals">
         <h2 className="sp-sec-h">
           <span className="sp-sec-n">Totals</span>
-          <span className="sp-sec-note">{WINDOWS.find((w) => w.k === win)?.label.toLowerCase()}</span>
+          {/* The note names the window on show. The board shows all four at once, so there
+              it would be naming a choice the reader is not making. */}
+          {!wide && (
+            <span className="sp-sec-note">{WINDOWS.find((w) => w.k === win)?.label.toLowerCase()}</span>
+          )}
           {/* The cells below print dots when the load failed; a band that said nothing over
               them would leave the dots unexplained two clusters above the error's sentence. */}
-          {d.err && !roll ? <span className="sp-sec-badge quiet">unreachable</span> : null}
+          {/* Keyed on the error alone, like the Voyages band beside it: two clusters fed by
+              the one failed fetch must not tell two stories. */}
+          {d.err ? <span className="sp-sec-badge quiet">unreachable</span> : null}
         </h2>
         <div className="sp-glass">
-          <div className="vy-seg seg" role="group" aria-label="Stats window">
-            {WINDOWS.map((w) => (
-              <button key={w.k} className={win === w.k ? "on" : ""} onClick={() => setWin(w.k)}>
-                {w.label}
-              </button>
-            ))}
-          </div>
-          <StatsGrid roll={roll} loading={d.loading} />
+          {wide ? (
+            /* The desk gets every window at once, the way the engineer's table lays machines
+               against each other: today against the season is a comparison, and a picker that
+               shows one at a time was making the reader hold the other three in his head. The
+               phone keeps the picker - four columns of figures do not fit a hand. */
+            <TotalsMatrix stats={d.stats} loading={d.loading} />
+          ) : (
+            <>
+              <div className="vy-seg seg" role="group" aria-label="Stats window">
+                {WINDOWS.map((w) => (
+                  <button key={w.k} className={win === w.k ? "on" : ""} onClick={() => setWin(w.k)}>
+                    {w.label}
+                  </button>
+                ))}
+              </div>
+              <StatsGrid roll={roll} loading={d.loading} />
+            </>
+          )}
         </div>
       </section>
 
-      <section className="sp-sec">
+      <section className="sp-sec vy-sec-voyages">
         <h2 className="sp-sec-h">
           <span className="sp-sec-n">Voyages</span>
           {/* Counted off what the sheet below actually shows, err and loading included: a
@@ -354,7 +376,7 @@ function ActiveBanner({ v }: { v: Voyage }) {
           <div className="n">{fmtNum(v.distance_nm, 1)}</div>
         </div>
         <div className="vy-a-cell">
-          <div className="t">Underway · <span className="sub">time</span></div>
+          <div className="t">Underway</div>
           <div className="v">{fmtDur(v.hours_underway)}</div>
         </div>
         <div className="vy-a-cell">
@@ -362,6 +384,47 @@ function ActiveBanner({ v }: { v: Voyage }) {
           <div className="v">{v.avg_sog_kn === null ? "·" : <>{v.avg_sog_kn.toFixed(1)}<span className="u">kn</span></>}</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Every window at once, metrics down the side: the same figures the picker showed one
+ * window at a time, laid out so a season can be read against a day. Nothing here is a new
+ * fetch - the stats call has always answered all four windows, and the screen was throwing
+ * three of them away.
+ */
+function TotalsMatrix({ stats, loading }: { stats: VoyageStatsCards | null; loading: boolean }) {
+  const val = (w: StatWindow, f: (r: VoyageRollup) => string): string =>
+    stats ? f(stats[w]) : "·";
+  const row = (label: string, unit: string | null, f: (r: VoyageRollup) => string, hero = false) => (
+    <>
+      <span className={`mx-r${hero ? " mx-hero-r" : ""}`}>
+        {label}
+        {unit ? <span className="mx-u">· {unit}</span> : null}
+      </span>
+      {WINDOWS.map((w) => (
+        // The shimmer rides an inner span with a placeholder figure, the way the phone's
+        // StatsGrid loads: a bare loading cell printed nothing at all and read as the
+        // product's own "she does not report this" mark.
+        <span key={w.k} className={`mx-v${hero ? " mx-hero" : ""}`}>
+          <span className={loading ? "skel" : undefined}>{loading ? "128.4" : val(w.k, f)}</span>
+        </span>
+      ))}
+    </>
+  );
+  return (
+    <div className="vy-matrix">
+      <span className="mx-corner" aria-hidden="true" />
+      {WINDOWS.map((w) => (
+        <span key={w.k} className="mx-h">
+          {w.label}
+        </span>
+      ))}
+      {row("Distance", "nm", (r) => fmtNum(r.distance_nm, 1), true)}
+      {row("Underway", null, (r) => fmtDur(r.hours_underway))}
+      {row("Avg SOG", "kn", (r) => (r.avg_sog_kn == null ? "·" : r.avg_sog_kn.toFixed(1)))}
+      {row("Max SOG", "kn", (r) => (r.max_sog_kn == null ? "·" : r.max_sog_kn.toFixed(1)))}
     </div>
   );
 }
@@ -375,7 +438,7 @@ function StatsGrid({ roll, loading }: { roll: VoyageRollup | null; loading: bool
         <div className={`n${loading ? " skel" : ""}`}>{loading ? "128.4" : roll ? fmtNum(roll.distance_nm, 1) : dash}</div>
       </div>
       <div className="c">
-        <div className="t">Underway · <span className="sub">time</span></div>
+        <div className="t">Underway</div>
         <div className="v">{roll ? fmtDur(roll.hours_underway) : dash}</div>
       </div>
       <div className="c">
