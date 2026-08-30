@@ -22,7 +22,7 @@
  * One list, read by both the header and the row, so the two cannot disagree about order or
  * membership again.
  */
-import { describePath, systemNumeric, type SystemReading } from "../../../../plugin/src/units";
+import { describePath, systemNumeric, unitFor, type SystemReading } from "../../../../plugin/src/units";
 import type { Snapshot } from "../../lib/api";
 import { fmtNum, knotToBeaufort, kToC, msToKnots, paToHPa, radToDeg, sogKnFiltered } from "../../lib/format";
 
@@ -52,6 +52,16 @@ export interface LogColumn {
   dim?: boolean;
   /** The wind head toggles knots and Beaufort on tap; nothing else does. */
   tappable?: boolean;
+  /**
+   * The unit the figures under this head are printed in, named once over the column instead of
+   * three hundred times down it.
+   *
+   * Absent where the cell carries its own mark and a head would only say it twice: a course
+   * prints "124", a position prints its degrees and its hemisphere, a time is a time. Absent
+   * too where the boat reports a metric this build has no unit for, which is the same silence
+   * `systemNumeric` keeps rather than dressing a figure in a guess.
+   */
+  unit?: string;
   /**
    * How many lanes this column needs. Absent means one, which is every reading: a lane is sized
    * for a four-figure number and they all are.
@@ -128,7 +138,13 @@ function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) =>
       has: (s) => s.lon !== null,
     },
     {
-      col: { key: "sog", head: "SOG", book: "bridge", cell: (s) => fmtNum(sogKnFiltered(s.sog), 1) },
+      col: {
+        key: "sog",
+        head: "SOG",
+        book: "bridge",
+        unit: "kn",
+        cell: (s) => fmtNum(sogKnFiltered(s.sog), 1),
+      },
       has: (s) => s.sog !== null,
     },
     {
@@ -160,6 +176,8 @@ function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) =>
         key: "wind",
         head: windUnit === "kn" ? "TWS" : "BFT",
         book: "bridge",
+        // Beaufort is a scale, not a unit: its head already says which scale is in force.
+        unit: windUnit === "kn" ? "kn" : undefined,
         tappable: true,
         cell: (s) => {
           const tws = msToKnots(s.wind_speed_true);
@@ -190,6 +208,7 @@ function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) =>
         key: "baro",
         head: "BARO",
         book: "bridge",
+        unit: "hPa",
         dim: true,
         cell: (s) => {
           const b = paToHPa(s.air_pressure_pa);
@@ -203,6 +222,7 @@ function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) =>
         key: "air",
         head: "AIR",
         book: "bridge",
+        unit: "°C",
         cell: (s) => fmtNum(kToC(s.air_temp_k), 1),
       },
       has: (s) => s.air_temp_k !== null,
@@ -212,6 +232,7 @@ function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) =>
         key: "sea",
         head: "SEA",
         book: "bridge",
+        unit: "°C",
         cell: (s) => fmtNum(kToC(s.water_temp_k), 1),
       },
       has: (s) => s.water_temp_k !== null,
@@ -221,6 +242,7 @@ function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) =>
         key: "depth",
         head: "DEP",
         book: "bridge",
+        unit: "m",
         cell: (s) => (s.depth === null ? "·" : s.depth.toFixed(1)),
       },
       has: (s) => s.depth !== null,
@@ -346,6 +368,7 @@ function engineCandidates(snaps: Snapshot[]): { col: LogColumn; has: (s: Snapsho
         head: unitsByTab.get(d.tab)!.size > 1 ? `${unitHead(d.label)} ${metric}` : metric,
         book: "engine",
         tab: d.tab,
+        unit: unitFor(path),
         cell: (s) => {
           const v = s.path_values?.[path];
           if (typeof v !== "number") return "·";

@@ -14,7 +14,7 @@
  * in what order all come out of the paths on the page. A boat that grows a fourth engine grows
  * a fourth line the hour she reports it.
  */
-import { describePath, systemNumeric } from "../../../../plugin/src/units";
+import { describePath, systemNumeric, unitFor } from "../../../../plugin/src/units";
 import type { Snapshot } from "../../lib/api";
 import { logbookSub, metricHead } from "./columns";
 
@@ -23,6 +23,8 @@ export interface UnitMetric {
   /** The reading's own name, as the path describes it ("Oil pressure"). */
   key: string;
   head: string;
+  /** The unit its figures are printed in, named once over the column. See LogColumn.unit. */
+  unit?: string;
 }
 
 /** One machine in a family, drawn as a row: what it is called and where its readings live. */
@@ -97,10 +99,12 @@ export function unitGroups(snaps: Snapshot[]): UnitGroup[] {
       head: label.toUpperCase(),
       paths: Object.fromEntries(paths),
     }));
-    const metrics: UnitMetric[] = metricsByTab.get(tab)!.map((sub) => ({
-      key: sub,
-      head: metricHead(sub),
-    }));
+    // The unit comes off any one machine carrying this reading: a family's machines report the
+    // same metric on the same schema path, so the unit is the family's and not the machine's.
+    const metrics: UnitMetric[] = metricsByTab.get(tab)!.map((sub) => {
+      const path = units.map((u) => u.paths[sub]).find((x) => x !== undefined);
+      return { key: sub, head: metricHead(sub), unit: path === undefined ? "" : unitFor(path) };
+    });
     return { tab, head: GROUP_HEAD[tab] ?? tab.toUpperCase(), units, metrics };
   });
 }

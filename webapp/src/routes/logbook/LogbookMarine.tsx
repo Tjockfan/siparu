@@ -795,7 +795,10 @@ function Cols({
         <span>UTC</span>
         {named && <span className="un">Unit</span>}
         {group.metrics.map((m) => (
-          <span key={m.key}>{m.head}</span>
+          <span key={m.key}>
+            {m.head}
+            <Unit of={m.unit} />
+          </span>
         ))}
       </div>
     );
@@ -811,15 +814,32 @@ function Cols({
             title="Tap: knots ⇄ Beaufort"
           >
             {c.head}
+            <Unit of={c.unit} />
           </span>
         ) : (
           <span key={c.key} className={laneClass(c).trim()}>
             {c.head}
+            <Unit of={c.unit} />
           </span>
         ),
       )}
     </div>
   );
+}
+
+/**
+ * The unit under a column's head.
+ *
+ * On its own line rather than beside the head, which is what the room decides: measured across
+ * the engineer's thirteen heads, every one of them fits its unit alongside in a desk lane and
+ * six of the thirteen do not in a phone's. Set beside the head it would be a unit a desk reader
+ * gets and a phone reader does not, on the same table, for no reason he can see.
+ *
+ * A head with no unit still draws the line, empty. Without it the heads that have one sit a row
+ * lower than the heads that do not, and the rule under them stops being straight.
+ */
+function Unit({ of }: { of?: string }) {
+  return <b className="lb-u">{of === undefined || of === "" ? " " : of}</b>;
 }
 
 function LiveView({

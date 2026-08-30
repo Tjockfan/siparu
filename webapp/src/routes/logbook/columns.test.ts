@@ -101,6 +101,58 @@ describe("logbookColumns", () => {
     for (const c of cols) expect(c.lanes ?? 1, c.key).toBe(c.key === "lat" || c.key === "lon" ? 2 : 1);
   });
 
+  /**
+   * A unit is named once over its column, and the column takes it from the path rather than
+   * from a list kept here.
+   *
+   * Without it the engineer's table printed twelve columns of bare figures: "4.0" for an oil
+   * pressure and "94.5" for the oil temperature beside it, a pair a reader has to already know
+   * the boat to tell apart. The names live in the plugin's own metric table, which is the same
+   * table that converts the figures, so a column cannot be headed in one unit and filled in
+   * another.
+   */
+  it("takes each engine column's unit from the path that fills it", () => {
+    const eng = logbookColumns(
+      [
+        row({
+          path_values: {
+            "propulsion.port.revolutions": 26.0,
+            "propulsion.port.oilPressure": 4.0e5,
+            "propulsion.port.oilTemperature": 367.6,
+            "propulsion.port.alternatorVoltage": 28.3,
+          },
+        }),
+      ],
+      "kn",
+    ).filter((c) => c.book === "engine");
+    expect(Object.fromEntries(eng.map((c) => [c.head, c.unit]))).toEqual({
+      RPM: "rpm",
+      OIL: "bar",
+      OILT: "°C",
+      ALT: "V",
+    });
+  });
+
+  /**
+   * A head whose cell already carries the mark says it once. A course prints "124", a position
+   * prints its own degrees and hemisphere, and a head repeating that is a page saying the same
+   * thing twice in a column two figures wide.
+   */
+  it("leaves the unit off a column whose cells carry their own mark", () => {
+    const full = row({
+      lat: 43.5,
+      lon: 7.02,
+      sog: 4.1,
+      cog: 2.0,
+      heading_true: 1.9,
+      air_temp_k: 295,
+      depth: 18.2,
+    });
+    const by = Object.fromEntries(logbookColumns([full], "kn").map((c) => [c.key, c.unit]));
+    expect(by).toMatchObject({ sog: "kn", air: "°C", depth: "m" });
+    for (const key of ["ts", "lat", "lon", "cog", "hdg"]) expect(by[key], key).toBeUndefined();
+  });
+
   it("names the wind column after the unit in force", () => {
     const windy = [row({ wind_speed_true: 6.0 })];
     expect(logbookColumns(windy, "kn").find((c) => c.key === "wind")?.head).toBe("TWS");

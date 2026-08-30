@@ -1496,6 +1496,19 @@ body {
   text-transform: uppercase; color: var(--muted);
 }
 .swiss .lb-cols span:not(:first-child) { text-align: right; }
+/* The unit, under the head rather than beside it. A table that printed it in every cell would
+   print it three hundred times on a page; over the column it is written once. Its own line
+   because the room says so: measured across the engineer's thirteen heads, all thirteen fit
+   their unit alongside in a desk lane and six do not in a phone's, and a unit a desk reader
+   gets and a phone reader does not is worse than no unit at all.
+   Not uppercased and not tracked out: these are unit symbols, and "hPa" is not "HPA". */
+.swiss .lb-cols .lb-u {
+  display: block; font-weight: 500; font-size: 9px; letter-spacing: 0;
+  text-transform: none; color: var(--muted); margin-top: 3px;
+  /* An empty unit still holds its line open, or the heads that have one drop a row below the
+     heads that do not and the rule under them stops being straight. */
+  min-height: 1em; white-space: pre;
+}
 /* The machine is named, not measured: its head reads from the left like the hour beside it. */
 .swiss .lb-cols.u span.un { text-align: left; }
 /* The table is as wide as its lanes, and the desk it leaves over is desk.

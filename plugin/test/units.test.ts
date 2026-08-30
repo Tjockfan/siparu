@@ -518,6 +518,30 @@ describe('systemNumeric: the same conversion, as a number for a graph', () => {
     expect(systemNumeric('propulsion.port.fuel.used', 0).unit).toBe('L')
   })
 
+  /**
+   * Volts and amperes needed no conversion, so they were not in the table that does the
+   * converting - and the table is also where a unit's name lives. Without an entry they fell to
+   * the unknown-metric fallback and were printed bare: an alternator at "28.3" and a generator
+   * at "230.4", two figures a reader has to already know the boat to tell from a temperature.
+   */
+  it('names the electrical readings, which need no conversion but do need a unit', () => {
+    expect(systemNumeric('propulsion.port.alternatorVoltage', 28.3)).toEqual({ value: 28.3, unit: 'V' })
+    expect(systemNumeric('electrical.generators.0.voltage', 230.4)).toEqual({ value: 230.4, unit: 'V' })
+    expect(systemNumeric('electrical.generators.0.current', 22)).toEqual({ value: 22, unit: 'A' })
+    expect(systemValue('propulsion.port.alternatorVoltage', 28.34)).toBe('28.3 V')
+    expect(systemValue('electrical.generators.0.current', 22)).toBe('22.0 A')
+  })
+
+  /**
+   * The one word that could have collided. The sea has a current too, but `environment.current`
+   * is a container and not a reading: what it publishes is `.drift` and `.setTrue`, so no path
+   * ends in the bare word and the electrical key cannot reach a drift in m/s.
+   */
+  it("does not dress the sea's current in amperes", () => {
+    expect(systemNumeric('environment.current.drift', 0.4).unit).not.toBe('A')
+    expect(systemNumeric('environment.current.setTrue', 1.2).unit).not.toBe('A')
+  })
+
   it('scales the core gauges (wind, barometer) the same way the cell reads them', () => {
     // Wind: m/s to knots, no rounding. The graph band must keep the real value, and the cell
     // shows "kn" too, so the axis and the reading it opened from agree.

@@ -216,6 +216,23 @@ const litres = (): SystemMetric => ({
   unit: 'L'
 })
 
+/** Volts and amperes, as the schema already carries them. Here for the unit's name, not for a
+ *  conversion: one decimal, because that is the difference between a healthy alternator and a
+ *  failing one. */
+const volts = (): SystemMetric => ({
+  sub: true,
+  fmt: (v) => `${v.toFixed(1)} V`,
+  scale: (v) => v,
+  unit: 'V'
+})
+
+const amperes = (): SystemMetric => ({
+  sub: true,
+  fmt: (a) => `${a.toFixed(1)} A`,
+  scale: (a) => a,
+  unit: 'A'
+})
+
 /** A fraction of one that the schema itself says is a percentage. Read the note on `gearRatio`. */
 const percent = (sub: boolean): SystemMetric => ({
   sub,
@@ -252,6 +269,24 @@ const SYSTEM_METRIC: Record<string, SystemMetric> = {
   boostPressure: pascals(),
 
   currentLevel: percent(false),
+
+  /**
+   * Electrical potential and the current drawn, both already in the unit a person reads.
+   *
+   * No conversion, which is why they were absent: the table began as the conversions, and a
+   * reading that needed none had no reason to be in it. But the table is also where a unit's
+   * name lives, and without an entry these fell through to the unknown-metric fallback and were
+   * printed bare - an alternator at "28.3" and a generator at "230.4", two figures a reader has
+   * to know the boat to tell apart from a temperature.
+   *
+   * Enumerated, like the temperatures above, and each earns its key. `voltage` and `current` are
+   * electrical throughout the schema; the one path that could have collided is the sea's own
+   * `environment.current`, and that is a container, not a reading - what it publishes is `.drift`
+   * and `.setTrue`, so no path ends in the bare word. `alternatorVoltage` is propulsion's alone.
+   */
+  voltage: volts(),
+  alternatorVoltage: volts(),
+  current: amperes(),
 
   /**
    * What a tank holds, how much is in it, and what it is held at.
@@ -621,4 +656,19 @@ export function systemNumeric(path: string, value: number): { value: number; uni
   if (core) return { value: core.scale(value), unit: core.unit }
   const m = lookup(SYSTEM_METRIC, path)
   return m ? { value: m.scale(value), unit: m.unit } : { value, unit: '' }
+}
+
+/**
+ * The unit a path's figures are printed in, with no figure to hand.
+ *
+ * A column head has to name the unit before any row has arrived, and a table that prints the
+ * unit in every cell prints it three hundred times on a page. The unit belongs to the path, not
+ * to the reading: this is the half of `systemNumeric` that does not need a value. Empty for a
+ * metric no table describes, which is the same silence `systemNumeric` keeps rather than
+ * guessing at a unit.
+ */
+export function unitFor(path: string): string {
+  const core = coreSeriesFor(path)
+  if (core) return core.unit
+  return lookup(SYSTEM_METRIC, path)?.unit ?? ''
 }

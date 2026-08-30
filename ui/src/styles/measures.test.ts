@@ -495,3 +495,42 @@ describe("the logbook door's cards", () => {
     );
   });
 });
+
+/**
+ * The unit over a logbook column.
+ *
+ * It sits on a line of its own under the head rather than beside it, and the room is what
+ * decided that: measured across the engineer's thirteen heads, all thirteen fit their unit
+ * alongside in a desk lane and six of the thirteen do not in a phone's. Beside the head it
+ * would be a unit a desk reader gets and a phone reader does not, on the same table, for no
+ * reason he can see.
+ *
+ * Two rules carry it and neither is visible to a test that renders markup. The second is the
+ * empty line: a head with no unit still holds its line open, or the heads that have one drop a
+ * row below the heads that do not and the rule under them stops being straight.
+ */
+describe("the unit over a logbook column", () => {
+  const unitRule = (): string => {
+    const found = rules().find(([s]) => s === ".swiss .lb-cols .lb-u");
+    expect(found, ".swiss .lb-cols .lb-u").toBeDefined();
+    return (found as [string, string])[1];
+  };
+
+  it("takes a line of its own under the head", () => {
+    expect(unitRule()).toMatch(/display:\s*block/);
+  });
+
+  it("holds that line open when a column has no unit to name", () => {
+    const body = unitRule();
+    expect(body).toMatch(/min-height:\s*1em/);
+    // The placeholder is a space, and a space only survives with white-space preserved.
+    expect(body).toMatch(/white-space:\s*pre/);
+  });
+
+  /** A unit symbol is not a word: "hPa" uppercased is "HPA", which is not a unit of anything. */
+  it("leaves the symbol's own case and spacing alone", () => {
+    const body = unitRule();
+    expect(body).toMatch(/text-transform:\s*none/);
+    expect(body).toMatch(/letter-spacing:\s*0/);
+  });
+});
