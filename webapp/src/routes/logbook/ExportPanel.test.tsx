@@ -117,6 +117,15 @@ describe("the figures a window can be exported with", () => {
     expect(figuresFor("pdf", [])).toEqual(["last"]);
   });
 
+  /**
+   * The chips are the same in both formats and take one press in one and several in the other;
+   * a reader who lit two for a file took the panel for broken. The heading's line says which.
+   */
+  it("says beside the figures whether one or several can be chosen", () => {
+    expect(render({ ...base, gran: "1h", format: "csv" })).toContain("one or more: a column each");
+    expect(render({ ...base, gran: "1h", format: "pdf" })).toContain("one: a table cell holds one number");
+  });
+
   /** A reader who ticked two for a file and then asked for a page sees which one he is getting. */
   it("lights the one figure a page would carry, not the two he chose for a file", () => {
     const html = render({ ...base, gran: "1h", format: "pdf", stats: ["avg", "max"] });

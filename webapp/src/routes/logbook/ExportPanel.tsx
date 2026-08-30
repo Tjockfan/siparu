@@ -235,7 +235,11 @@ export default function ExportPanel({
         <div className="lbp-book lbp-figs">
           <div className="lbp-h">
             <span className="lbp-n">Figures</span>
-            <span className="lbp-s">{oneFigure ? "what the page carries" : "what each row carries"}</span>
+            {/* The same chips take one press or several depending on where the figures are
+                going, and nothing in a chip says which. The line beside the heading does. */}
+            <span className="lbp-s">
+              {oneFigure ? "one: a table cell holds one number" : "one or more: a column each"}
+            </span>
           </div>
           <div className="lbp-chips">
             {FIGURES.map((f) => (
