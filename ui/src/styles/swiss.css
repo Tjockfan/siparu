@@ -3285,6 +3285,9 @@ body {
   .swiss .lb-row .v.dim { font-size: 9.5px !important; }
   .swiss .lb-row.u .un { font-size: 8px; }
   .swiss .lb-cols { font-size: 6.8px !important; padding-block: 6px 4px; }
+  /* The unit line sets its own size and does not follow the head down: left alone it printed
+     at 9px under a 6.8px head. The same ratio as on screen, where it sits a hair over the head. */
+  .swiss .lb-cols .lb-u { font-size: 7.2px; margin-top: 1px; }
   .swiss .lb-day { padding-block: 5px; font-size: 8px; }
   .swiss .lb-sep { font-size: 7.5px; padding-block: 4px; }
   /* An entry is one line of a record and is not split down the middle by a page break. The
