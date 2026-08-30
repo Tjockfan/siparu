@@ -373,6 +373,9 @@ function engineCandidates(snaps: Snapshot[]): { col: LogColumn; has: (s: Snapsho
           const v = s.path_values?.[path];
           if (typeof v !== "number") return "·";
           const n = systemNumeric(path, v).value;
+          // A reading the table cannot make (an economy at rest) comes back NaN, meant for a
+          // chart to drop; on a page it is the same gap as no reading.
+          if (!Number.isFinite(n)) return "·";
           return Number.isInteger(n) ? String(n) : n.toFixed(1);
         },
       },

@@ -263,6 +263,17 @@ describe("the two books", () => {
   });
 
   /**
+   * A boat stopped with her engine running burns fuel over no distance, and the derived plugin
+   * publishes an economy of exactly zero. The inverse of that is no figure at all, and the
+   * gauge prints the dot for it; the log column printed the word NaN under L/nm.
+   */
+  it("prints the gap, not NaN, for a fuel-per-mile of zero", () => {
+    const rest = row({ path_values: { "propulsion.main.fuel.economy": 0 } });
+    const [col] = logbookColumns([rest], "kn").filter((c) => c.book === "engine");
+    expect(col!.cell(rest)).toBe("·");
+  });
+
+  /**
    * The tanks earn columns too: their level path carries no sub (the gauge screen's choice),
    * and the book used to drop them for it - eight tanks aboard and none in the log. Two
    * families of tanks must also stay apart by more than one initial: "Fuel 0" and

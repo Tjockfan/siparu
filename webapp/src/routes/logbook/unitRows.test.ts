@@ -160,6 +160,13 @@ describe("unitGroups", () => {
     ]);
   });
 
+  /** The same gap on the engineer's side-turned table: an economy of zero has no inverse. */
+  it("prints the gap, not NaN, for a fuel-per-mile of zero", () => {
+    const rest = row({ "propulsion.port.fuel.economy": 0, "propulsion.starboard.fuel.economy": 0 });
+    const [eng] = unitGroups([rest]);
+    expect(unitCell(rest, eng!.units[0]!, eng!.metrics[0]!)).toBe("·");
+  });
+
   it("says nothing about a boat that reports no machines at all", () => {
     expect(unitGroups([row({})])).toEqual([]);
   });

@@ -122,5 +122,7 @@ export function unitCell(s: Snapshot, unit: UnitRow, metric: UnitMetric): string
   const v = s.path_values?.[path];
   if (typeof v !== "number") return "·";
   const n = systemNumeric(path, v).value;
+  // NaN is the table's answer for a reading it cannot make (see columns.ts): a gap, not a word.
+  if (!Number.isFinite(n)) return "·";
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
