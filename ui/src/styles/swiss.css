@@ -3305,6 +3305,13 @@ body {
     display: block; text-align: right; padding-inline: 6px;
     font-family: var(--sp-font); font-size: 6.8px; font-weight: 700; letter-spacing: 0.06em;
   }
+  .swiss .lb-sep .sh .lb-u {
+    display: block; font-weight: 500; font-size: 7.2px; letter-spacing: 0; margin-top: 1px;
+    text-transform: none; color: var(--muted); min-height: 1em; white-space: pre;
+  }
+  /* Where the table writes its day lines, they are its heads on paper, and the one head row at
+     the top would say the same names a line above them. It prints only where no day line does. */
+  .swiss .lb-frame.dated .lb-cols { display: none; }
   .swiss .lb-row .tm { font-size: 10px !important; }
   .swiss .lb-row .v { font-size: 9.5px !important; white-space: nowrap; }
   .swiss .lb-row .v.dim { font-size: 9.5px !important; }

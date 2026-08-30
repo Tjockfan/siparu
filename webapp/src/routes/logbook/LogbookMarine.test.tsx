@@ -373,14 +373,17 @@ describe("the logbook table over a boat's own instruments", () => {
     const cols = columnsFor(logbookColumns([snap({ lat: 43.5, lon: 7.0, sog: 4.1, depth: 8 })], "kn"), "bridge");
     const html = renderToStaticMarkup(<DayLine day="SUN · 23 AUG 2026" cols={cols} group={null} />);
     expect(html).toContain('<span class="sd">SUN · 23 AUG 2026</span>');
-    expect(html.match(/<span class="sh( w2)?">[A-Z]+<\/span>/g)?.map((m) => m.replace(/<[^>]+>/g, "")))
+    expect(html.match(/<span class="sh( w2)?">[A-Z]+<b/g)?.map((m) => m.replace(/<[^>]+>|<b$/g, "")))
       .toEqual(["LAT", "LON", "SOG", "DEP"]);
     expect(html.match(/class="sh w2"/g)).toHaveLength(2);
+    // The unit rides with the name: on paper this line is the only head the table has.
+    expect(html).toContain('SOG<b class="lb-u">kn</b>');
+    expect(html).toContain('DEP<b class="lb-u">m</b>');
 
     const [eng] = unitGroups([snap({ path_values: { "propulsion.port.revolutions": 25, "propulsion.starboard.revolutions": 26 } })]);
     const unit = renderToStaticMarkup(<DayLine day="MON · 24 AUG 2026" cols={[]} group={eng!} />);
     expect(unit).toContain('class="lb-sep u"');
-    expect(unit).toContain('<span class="sh"></span><span class="sh">RPM</span>');
+    expect(unit).toContain('<span class="sh"></span><span class="sh">RPM<b class="lb-u">rpm</b></span>');
   });
 
   /**

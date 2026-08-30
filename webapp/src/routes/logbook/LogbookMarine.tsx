@@ -1266,7 +1266,7 @@ function RangeView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
-      <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
+      <div className={`lb-frame dated${cls}${leaving ? " leaving" : ""}`} style={block}>
         <PrintHead book={book} window={label} interval={interval} />
         <div className="lb-day" style={laneVar(drawn)}>
           <span>{label} · {interval}</span>
@@ -1348,13 +1348,15 @@ function Rows({
  * no such row: a grid repeats its heads on no page but the first, and a reader three sheets in
  * was holding a column of bare figures against a head he had to turn back for. The day line
  * is already written at every turn of the day, so it carries the names too, one per lane, set
- * over the figures they name. On screen the names are hidden; the date is the whole line.
+ * over the figures they name, each with its unit, since on paper this line is the only head
+ * the table has (the one head row prints only where no day line does). On screen the names
+ * are hidden; the date is the whole line.
  */
 export function DayLine({ day, cols, group }: { day: string; cols: LogColumn[]; group: UnitGroup | null }) {
   const named = group !== null && group.units.length > 1;
   const heads = group
-    ? group.metrics.map((m) => ({ key: m.key, head: m.head, cls: "" }))
-    : cols.slice(1).map((c) => ({ key: c.key, head: c.head, cls: laneClass(c).trim() }));
+    ? group.metrics.map((m) => ({ key: m.key, head: m.head, unit: m.unit, cls: "" }))
+    : cols.slice(1).map((c) => ({ key: c.key, head: c.head, unit: c.unit, cls: laneClass(c).trim() }));
   return (
     <div className={`lb-sep${named ? " u" : ""}`}>
       <span className="sd">{day}</span>
@@ -1362,6 +1364,7 @@ export function DayLine({ day, cols, group }: { day: string; cols: LogColumn[]; 
       {heads.map((h) => (
         <span key={h.key} className={h.cls ? `sh ${h.cls}` : "sh"}>
           {h.head}
+          <Unit of={h.unit} />
         </span>
       ))}
     </div>
