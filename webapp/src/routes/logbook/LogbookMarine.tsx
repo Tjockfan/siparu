@@ -796,7 +796,7 @@ function ColumnsButton({
 function ExportButton({ open, onOpen }: { open: boolean; onOpen: () => void }) {
   return (
     <button className={`lb-colbtn${open ? " on" : ""}`} onClick={onOpen}>
-      View · <b>{"\u2026"}</b>
+      View
     </button>
   );
 }
@@ -940,7 +940,6 @@ function LiveView({
           initial={request ?? undefined}
           onView={onView}
           onSave={onSave}
-          onCancel={() => setExporting(false)}
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
@@ -1053,7 +1052,6 @@ function DayView({
           initial={request ?? undefined}
           onView={onView}
           onSave={onSave}
-          onCancel={() => setExporting(false)}
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
@@ -1287,7 +1285,6 @@ function RangeView({
           initial={request ?? undefined}
           onView={onView}
           onSave={onSave}
-          onCancel={() => setExporting(false)}
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}

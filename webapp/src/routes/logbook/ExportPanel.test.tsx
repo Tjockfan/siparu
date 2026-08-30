@@ -16,7 +16,7 @@ const noop = () => {};
 
 function render(initial?: Parameters<typeof ExportPanel>[0]["initial"]): string {
   return renderToStaticMarkup(
-    <ExportPanel initial={initial} onView={noop} onSave={noop} onCancel={noop} />,
+    <ExportPanel initial={initial} onView={noop} onSave={noop} />,
   );
 }
 

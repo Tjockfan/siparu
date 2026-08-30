@@ -104,12 +104,10 @@ export default function ExportPanel({
   initial,
   onView,
   onSave,
-  onCancel,
 }: {
   initial?: Partial<ExportRequest>;
   onView: (r: ExportRequest) => void;
   onSave: (r: ExportRequest) => void;
-  onCancel: () => void;
 }) {
   const [from, setFrom] = useState(initial?.from ?? weekAgo());
   const [to, setTo] = useState(initial?.to ?? dateToInput());
@@ -282,8 +280,9 @@ export default function ExportPanel({
       )}
       {backwards && <div className="lbe-warn">That window ends before it begins.</div>}
       {empty && <div className="lbe-warn">Choose at least one figure to put in the file.</div>}
+      {/* No Cancel: the button that opened this closes it, the same press in the same place,
+          the way the column picker's does. A second way out was a second thing to learn. */}
       <div className="lbp-act">
-        <button onClick={onCancel}>Cancel</button>
         {oneFigure && (
           <button disabled={backwards} onClick={() => onView(req)}>
             View
