@@ -588,7 +588,7 @@ interface TableShape {
  */
 const metricKey = (tab: string, key: string) => `u:${tab}:${key}`;
 
-function tableShape(
+export function tableShape(
   snaps: Snapshot[],
   book: LogBook,
   windUnit: WindUnit,
@@ -646,7 +646,7 @@ function tableShape(
   const earned = chosen ? all.filter((c) => c.key === "ts" || c.tab === chosen.tab) : all;
   const cols = visibleColumns(earned, selection);
   const drawn = fit ? fittedColumns(cols, width) : cols;
-  if (drawn.length > 1) hold.current = drawn.length - 1;
+  if (drawn.length > 1) hold.current = laneCount(drawn.slice(1));
   if (cols.length > 1 && !summarised) chosenHold.current = cols.length - 1;
   return {
     groups,

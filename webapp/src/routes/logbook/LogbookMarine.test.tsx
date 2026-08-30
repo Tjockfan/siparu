@@ -11,7 +11,9 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../lib/api";
-import { columnsCount, windowInterval } from "./LogbookMarine";
+import { columnsCount, tableShape, windowInterval } from "./LogbookMarine";
+import { ALL_ON } from "./columnSelection";
+import type { UnitGroup } from "./unitRows";
 
 const page: Snapshot[] = [];
 
@@ -275,6 +277,48 @@ describe("the logbook table over a boat's own instruments", () => {
     // The generators have their own tab, and their readings wait behind it.
     expect(html).not.toContain("VOLT");
     expect(html).toContain("GENERATORS");
+  });
+
+  /**
+   * A position is two lanes wide, and the screen has to spend them: the head and every row
+   * carry the span, and the grid variable counts lanes rather than columns. Pinned on the
+   * rendered markup because fitColumns.test pins the arithmetic and measures.test pins the CSS,
+   * and the wiring between them was the one leg nothing held - a phone overprinting the
+   * longitude with the latitude was exactly that leg missing.
+   *
+   * The unit over a column is the same kind of leg: the column model carries it, the stylesheet
+   * styles it, and only the screen can be caught not drawing it.
+   */
+  it("spends both lanes of a position on screen, and names a unit once over its column", async () => {
+    const html = await draw([snap({ lat: 43.55, lon: 7.02, sog: 4.1, air_pressure_pa: 101_300 })]);
+    // Two heads span two lanes, and the one row's two cells under them.
+    expect(html.match(/class="w2"/g)).toHaveLength(2);
+    expect(html.match(/class="v w2"/g)).toHaveLength(2);
+    // Lanes, not columns: LAT 2 + LON 2 + SOG 1 + BARO 1.
+    expect(html).toContain("--lb-cols:6");
+    expect(html).toContain('<b class="lb-u">hPa</b>');
+    expect(html).toContain('<b class="lb-u">kn</b>');
+  });
+
+  /**
+   * The room an empty beat keeps is what the last full table drew, in lanes.
+   *
+   * The hold was written when a column was a lane; the position made a column two, and the hold
+   * went on counting columns. Every Live to Day swap then dressed its empty beat two lanes
+   * narrower than the table that had just left, and snapped back when the rows landed - the one
+   * stretch the hold exists to remove.
+   */
+  it("holds the lanes a position took across an empty beat, not the columns", () => {
+    const hold = { current: null as number | null };
+    const familyHold = { current: [] as UnitGroup[] };
+    const chosenHold = { current: 0 };
+    const full = tableShape(
+      [snap({ lat: 43.55, lon: 7.02, sog: 4.1 })],
+      "bridge", "kn", ALL_ON, 390, null, hold, familyHold, chosenHold,
+    );
+    expect(full.block).toEqual({ "--lb-cols": 5 });
+    const empty = tableShape([], "bridge", "kn", ALL_ON, 390, null, hold, familyHold, chosenHold);
+    expect(empty.block).toEqual({ "--lb-cols": 5 });
   });
 
   /**

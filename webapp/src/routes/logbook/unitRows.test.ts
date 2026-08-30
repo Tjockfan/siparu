@@ -140,6 +140,26 @@ describe("unitGroups", () => {
     expect(unitCell(s, port, oil!)).toBe("4");
   });
 
+  /**
+   * The unit over a reading is the family's, taken off whichever machine carries it - including
+   * a gauge only the second machine has, which the first machine's paths cannot name.
+   */
+  it("names the unit over each reading, off whichever machine carries it", () => {
+    const [eng] = unitGroups([
+      row({
+        "propulsion.port.revolutions": 25,
+        "propulsion.port.oilPressure": 400_000,
+        "propulsion.starboard.revolutions": 25,
+        "propulsion.starboard.alternatorVoltage": 28.3,
+      }),
+    ]);
+    expect(eng!.metrics.map((m) => [m.head, m.unit])).toEqual([
+      ["RPM", "rpm"],
+      ["OIL", "bar"],
+      ["ALT", "V"],
+    ]);
+  });
+
   it("says nothing about a boat that reports no machines at all", () => {
     expect(unitGroups([row({})])).toEqual([]);
   });
