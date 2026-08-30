@@ -11,7 +11,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../lib/api";
-import { DayLine, columnsCount, tableShape, windowInterval } from "./LogbookMarine";
+import { DayLine, columnsCount, figuresNote, tableShape, windowInterval } from "./LogbookMarine";
 import { columnsFor, logbookColumns } from "./columns";
 import { unitGroups } from "./unitRows";
 import { ALL_ON } from "./columnSelection";
@@ -131,6 +131,24 @@ describe("the logbook table over a boat's own instruments", () => {
     expect(windowInterval("1h", "avg")).toBe("Hourly · Average");
     expect(windowInterval("6h", "min")).toBe("Six-hourly · Minimum");
     expect(windowInterval("1d", "max")).toBe("Daily · Maximum");
+    // Ticked among others, Last is a name like the rest: the reader was shown one of several.
+    expect(windowInterval("1h", "last", 3)).toBe("Hourly · Last");
+  });
+
+  /**
+   * View with four figures ticked drew the first and said nothing; a column of hourly figures
+   * does not say on its face whether they are means or extremes. The note says which is on the
+   * screen and what the file will carry, and says nothing when there is one figure to show.
+   */
+  it("says which of several figures the screen is showing, and which the file will carry", () => {
+    expect(figuresNote(["last"])).toBeNull();
+    expect(figuresNote([])).toBeNull();
+    expect(figuresNote(["avg", "max"])).toBe(
+      "The screen holds one figure, and this is Average. The file will carry Average and Maximum, a column each.",
+    );
+    expect(figuresNote(["last", "avg", "min", "max"])).toBe(
+      "The screen holds one figure, and this is Last. The file will carry Last, Average, Minimum and Maximum, a column each.",
+    );
   });
 
   /**
