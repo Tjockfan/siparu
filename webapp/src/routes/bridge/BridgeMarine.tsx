@@ -272,15 +272,18 @@ export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => 
   if (has(d.baroHPa)) {
     matrix.push(
       <div className={`${cell("c-baro", qBaro)} tap`} key="baro" onClick={onBaro} role="button" aria-label="Barometer detail">
-        <div className="left">
-          <div className="t">Baro · <span className="sub">hPa</span></div>
+        <div className="t">
+          Baro · <span className="sub">hPa</span>
+          {/* The one mark that says the cell opens. It replaces a caption reading "3-hour trend
+              tap" that took a third of the cell to say it, and sat where the trend line should
+              have been. What the line covers is the popup's to state, on the axis it draws. */}
+          <span className="zoom" aria-hidden="true">⤢</span>
+        </div>
+        <div className="baro-read">
           <div className={`n${loading ? " skel" : ""}`}>{d.baroHPa === null ? "·" : Math.round(d.baroHPa)}</div>
           <div className={`trend ${trend.tone}`}>{trend.txt}</div>
         </div>
-        <div className="sparkwrap">
-          <Sparkline className="spark-b" data={d.baroSeries} color="var(--spark-baro)" height={38} top={4} />
-          <div className="lab">3-hour trend · tap ⤢</div>
-        </div>
+        <Sparkline className="spark-b" data={d.baroSeries} color="var(--spark-baro)" height={38} top={4} />
         <QuietAge s={qBaro} />
       </div>,
     );

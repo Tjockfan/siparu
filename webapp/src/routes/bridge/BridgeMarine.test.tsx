@@ -212,6 +212,29 @@ describe("a bridge reading that has gone quiet", () => {
     expect(html).toContain("1009");
     expect(html).not.toContain("c-baro quiet");
   });
+
+  /**
+   * The cell gives its width to the trend line, not to a second column and a caption.
+   *
+   * It used to run across in two columns - the reading on the left, the line and a caption on
+   * the right - and measured at four widths the line was left 54px against the 141px the gust
+   * cell gave the same kind of line in a cell of the same size. Three hours of pressure drawn in
+   * a third of the room is the one thing the cell exists to avoid. The caption that took the
+   * rest wrapped to three lines at every width but a tablet's, and what it said was "tap": an
+   * instruction, where the gust cell's caption at the same size is a reading.
+   *
+   * Structure rather than pixels, because that is what this file can see: the two-column pair is
+   * gone, the reading and its trend are one line, and what tells a reader the cell opens is a
+   * mark in the corner.
+   */
+  it("runs the barometer down the cell rather than across it", () => {
+    const html = draw(bridge({ baroHPa: 1009, baroDelta: -0.4 }));
+    expect(html).toContain("baro-read");
+    expect(html).not.toContain("sparkwrap");
+    // The caption is gone, and with it the only place the word "tap" was written on the board.
+    expect(html).not.toContain("3-hour trend");
+    expect(html).toContain("zoom");
+  });
 });
 
 /**

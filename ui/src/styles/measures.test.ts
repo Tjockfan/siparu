@@ -444,3 +444,33 @@ describe("the logbook's bar of controls", () => {
     expect(body).toContain("tabular-nums");
   });
 });
+
+/**
+ * The barometer cell gives its width to the trend line.
+ *
+ * It is the one cell on the bridge that draws a reading and a chart together, and it used to do
+ * it in two columns: figure left, line and caption right. Measured at four widths, that left the
+ * line 54px where the gust cell beside it - the same size, the same kind of chart - gave its own
+ * 141px. Three hours of pressure drawn in a third of the room is the thing the cell is for.
+ *
+ * Two rules carry that and neither is visible to a test that renders markup, so they are held
+ * here. A ceiling on the line is the second half: the line took `max-width: 220px` when it sat
+ * in a column of its own, and left in place it would cap the width this change went and got.
+ */
+describe("the barometer cell's layout", () => {
+  const rule = (selector: string): string => {
+    const found = rules().find(([s]) => s === selector);
+    expect(found, selector).toBeDefined();
+    return (found as [string, string])[1];
+  };
+
+  it("runs down the cell rather than across it", () => {
+    expect(rule(".swiss .c-baro")).toMatch(/flex-direction:\s*column/);
+  });
+
+  it("puts no ceiling on the trend line, so it is the cell's width", () => {
+    const body = rule(".swiss .spark-b");
+    expect(body).toMatch(/width:\s*100%/);
+    expect(body, "a ceiling here undoes the width the cell just gave it").not.toMatch(/max-width/);
+  });
+});
