@@ -140,13 +140,36 @@ describe("the logbook table over a boat's own instruments", () => {
    */
   it("names the reader's own count when the window has none of its own", () => {
     // The whole selection is drawn: the plain figure, which is what it has always been.
-    expect(columnsCount(9, 9, 9)).toBe("9");
+    expect(columnsCount(9, 9, 9, 9)).toBe("9");
     // Too narrow for all of them - the screen saying so out loud.
-    expect(columnsCount(5, 9, 9)).toBe("5 of 9");
+    expect(columnsCount(5, 9, 9, 9)).toBe("5 of 9");
     // An empty day. The window offers nothing; the reader still keeps nine.
-    expect(columnsCount(0, 0, 9)).toBe("9");
+    expect(columnsCount(0, 0, 9, 0)).toBe("9");
     // And on a page that has never had a row, there is nothing to claim.
-    expect(columnsCount(0, 0, 0)).toBe("0");
+    expect(columnsCount(0, 0, 0, 0)).toBe("0");
+    // A window with rows and a reader who turned every column off: an honest zero, not the
+    // nine he had before he did it.
+    expect(columnsCount(0, 0, 9, 8)).toBe("0");
+  });
+
+  /**
+   * The disabled button was for a window with nothing to offer. A reader who pressed None and
+   * applied it got the same button: nothing drawn, so nothing chosen, so the one control that
+   * reopens the picker went dead, and the choice was saved, so a reload brought the dead button
+   * back. The window still has columns to offer; only the selection is empty, and the button
+   * has to stay live for exactly that reader.
+   */
+  it("keeps the picker reachable for a reader who turned every column off", async () => {
+    try {
+      localStorage.setItem("lb:columns:bridge", JSON.stringify({ off: ["sog", "depth"] }));
+      const html = await draw([snap({ sog: 1.0, depth: 4.2 })]);
+      const [btn] = /<button[^>]*class="lb-colbtn[^"]*"[^>]*>.*?<\/button>/s.exec(html) as RegExpExecArray;
+      expect(btn).not.toContain("disabled");
+      expect(btn).not.toContain("quiet");
+      expect(btn).toContain("<b>0</b>");
+    } finally {
+      localStorage.setItem("lb:columns:bridge", JSON.stringify({ off: [] }));
+    }
   });
 
   /**

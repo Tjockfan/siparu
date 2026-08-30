@@ -568,10 +568,12 @@ interface TableShape {
   drawn: LogColumn[];
   /** What the picker offers for this table - columns or readings, whichever it is made of. */
   pick: PickItem[];
-  /** The picker button's counts: lanes drawn at this width, lanes this window offers to choose
-   *  from, and the reader's own standing count - which the other two both fall to zero under
-   *  when a window has no rows, and which is what the button has to name there. */
-  btn: { shown: number; chosen: number; kept: number };
+  /** The picker button's counts: lanes drawn at this width, lanes the reader has on, the
+   *  reader's own standing count - which the first two both fall to zero under when a window
+   *  has no rows, and which is what the button has to name there - and the columns this window
+   *  could offer at all, which is what tells that empty window from a reader who turned every
+   *  column off and still needs the button to get them back. */
+  btn: { shown: number; chosen: number; kept: number; offered: number };
   /** The lane count, for the head, the rows and the two windows they sit in. */
   block: CSSProperties;
   /** What the bar and the frame carry so their width matches the table inside them. */
@@ -635,7 +637,7 @@ export function tableShape(
       group,
       drawn: [],
       pick,
-      btn: { shown: metrics.length, chosen: kept.length, kept: chosenHold.current },
+      btn: { shown: metrics.length, chosen: kept.length, kept: chosenHold.current, offered: pick.length },
       block: { "--lb-cols": Math.max(1, metrics.length) } as CSSProperties,
       cls: " u",
     };
@@ -653,7 +655,7 @@ export function tableShape(
     group: null,
     drawn,
     pick: earned,
-    btn: { shown: drawn.length - 1, chosen: cols.length - 1, kept: chosenHold.current },
+    btn: { shown: drawn.length - 1, chosen: cols.length - 1, kept: chosenHold.current, offered: earned.length - 1 },
     block: blockVar(drawn, width, hold),
     cls: "",
   };
@@ -723,11 +725,15 @@ export function windowInterval(gran: Granularity, figure: Stat): string {
  * drawing a partial table, it is drawing no table, which the body says in its own words. The
  * button does not open - there is nothing behind it to choose from until the day has rows -
  * and the figure goes quiet, because an empty day is not a fault and does not belong in red.
+ *
+ * That window is told apart by what it could OFFER, not by what is chosen. A reader who pressed
+ * None has chosen nothing too, over a window with every column to offer; his zero is honest,
+ * and his button has to stay live, because it is the only way back to the columns he put down.
  */
-export function columnsCount(shown: number, chosen: number, kept: number): string {
+export function columnsCount(shown: number, chosen: number, kept: number, offered: number): string {
   // Nothing to choose from: the window has no rows, so it named no columns. Say what the
   // reader has, not what this window could not find.
-  if (chosen === 0) return String(kept);
+  if (offered === 0) return String(kept);
   // Fewer drawn than kept: the screen is too narrow for all of them, and he is told so.
   if (shown < chosen) return `${shown} of ${chosen}`;
   return String(chosen);
@@ -737,23 +743,25 @@ function ColumnsButton({
   shown,
   chosen,
   kept,
+  offered,
   open,
   onOpen,
 }: {
   shown: number;
   chosen: number;
   kept: number;
+  offered: number;
   open: boolean;
   onOpen: () => void;
 }) {
-  const empty = chosen === 0;
+  const empty = offered === 0;
   return (
     <button
       className={`lb-colbtn${open ? " on" : ""}${empty ? " quiet" : ""}`}
       onClick={onOpen}
       disabled={empty}
     >
-      Columns · <b>{columnsCount(shown, chosen, kept)}</b>
+      Columns · <b>{columnsCount(shown, chosen, kept, offered)}</b>
     </button>
   );
 }
@@ -892,6 +900,7 @@ function LiveView({
             shown={btn.shown}
             chosen={btn.chosen}
             kept={btn.kept}
+            offered={btn.offered}
             open={picking}
             onOpen={() => setPicking(!picking)}
           />
@@ -1004,6 +1013,7 @@ function DayView({
             shown={btn.shown}
             chosen={btn.chosen}
             kept={btn.kept}
+            offered={btn.offered}
             open={picking}
             onOpen={() => setPicking(!picking)}
           />
@@ -1233,6 +1243,7 @@ function RangeView({
             shown={btn.shown}
             chosen={btn.chosen}
             kept={btn.kept}
+            offered={btn.offered}
             open={picking}
             onOpen={() => setPicking(!picking)}
           />
