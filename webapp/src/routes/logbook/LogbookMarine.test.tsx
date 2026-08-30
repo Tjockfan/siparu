@@ -11,7 +11,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../lib/api";
-import { DayLine, columnsCount, figuresNote, tableShape, windowInterval } from "./LogbookMarine";
+import { DayLine, columnsCount, figuresNote, summaryNote, tableShape, windowInterval, withClosingReadings } from "./LogbookMarine";
 import { columnsFor, logbookColumns } from "./columns";
 import { unitGroups } from "./unitRows";
 import { ALL_ON } from "./columnSelection";
@@ -402,6 +402,36 @@ describe("the logbook table over a boat's own instruments", () => {
     const unit = renderToStaticMarkup(<DayLine day="MON · 24 AUG 2026" cols={[]} group={eng!} />);
     expect(unit).toContain('class="lb-sep u"');
     expect(unit).toContain('<span class="sh"></span><span class="sh">RPM<b class="lb-u">rpm</b></span>');
+  });
+
+  /**
+   * An average page keeps the heading columns, carrying the reading the window closed on.
+   *
+   * They used to leave the table, and the table changed shape with the figure: thirteen lanes
+   * under Last, ten under Average. Only a hole is filled - a mean the window has is never
+   * overwritten by a reading - and a machine's paths are filled the same way.
+   */
+  it("fills what the figure cannot carry from the closing reading, and nothing else", () => {
+    const avg = [snap({ ts: 1, sog: 5.0, heading_true: null, cog: null, path_values: { "propulsion.port.revolutions": 24 } })];
+    const plain = [snap({ ts: 1, sog: 5.9, heading_true: 2.0, cog: 2.1, path_values: { "propulsion.port.revolutions": 26, "propulsion.port.oilPressure": 400_000 } })];
+    const [row] = withClosingReadings(avg, plain);
+    expect(row!.sog).toBe(5.0);
+    expect(row!.heading_true).toBe(2.0);
+    expect(row!.cog).toBe(2.1);
+    expect(row!.path_values).toEqual({ "propulsion.port.revolutions": 24, "propulsion.port.oilPressure": 400_000 });
+    // No plain row for that moment, or no plain rows at all: the summary stands as it is.
+    expect(withClosingReadings(avg, [snap({ ts: 2, heading_true: 1 })])[0]!.heading_true).toBeNull();
+    expect(withClosingReadings(avg, [])).toBe(avg);
+  });
+
+  it("says which columns of a summary page are the closing reading rather than the figure", () => {
+    const fixed = [snap({ lat: 43.5, lon: 7.0 })];
+    expect(summaryNote("avg", ["COG", "HDG", "AWA"], fixed)).toBe(
+      "COG, HDG and AWA have no average, so on each row they carry the reading that window closed on, as the position does.",
+    );
+    expect(summaryNote("max", ["HDG"], [snap({})])).toBe(
+      "HDG has no maximum, so on each row it carries the reading that window closed on.",
+    );
   });
 
   /**

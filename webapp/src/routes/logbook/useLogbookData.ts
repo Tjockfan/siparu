@@ -227,9 +227,9 @@ export interface LogbookRange {
   /** The same windows read as plain readings, when the caller asked for a summary figure.
    *
    *  A summary cannot be taken of everything the boat logs - there is no mean of a heading and
-   *  none of "motoring" - so those columns are simply not there on an average page, and a
-   *  reader who chose them watches them go without being told why. Which ones went is not a
-   *  list anybody should keep by hand: it is the difference between these rows and the ones
+   *  none of "motoring" - so on an average page those columns carry the reading the window
+   *  closed on instead, taken from these rows, and the page says which ones. Which ones is not
+   *  a list anybody should keep by hand: it is the difference between these rows and the ones
    *  above, and the caller works it out by asking both the same question. Costs no fetch; the
    *  buckets are already in hand. Empty when the figure IS the reading. */
   plain: Snapshot[];

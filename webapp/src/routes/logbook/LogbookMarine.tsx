@@ -483,34 +483,58 @@ function minutesNote(minutesFrom: number | null, r: ExportRequest, snaps: Snapsh
  * about the boat, and saying it there would be a lie the reader has no way to catch.
  */
 /**
- * What a summary page is NOT showing, said on the page itself.
+ * Which columns of a summary page are NOT the figure, said on the page itself.
  *
- * A figure narrows the table without being asked to. There is no mean of a heading and none of
- * "motoring", so an average page simply has no COG, HDG or AWA column - and a reader who chose
- * those columns watches three of them go, sees his count drop from eleven to eight, and opens
- * a picker that now offers eight. Three surfaces telling him his selection shrank, and until
- * this sentence, nothing telling him why. On paper it is worse: the bar is not printed, so all
- * that is left of the difference is three columns that are not there.
+ * There is no mean of a heading and none of "motoring", so an average page used to have no
+ * COG, HDG or AWA column at all: a reader who chose those columns watched three of them go and
+ * the table change shape under him with the figure. The columns stay now, and carry what the
+ * position has always carried on this page - the reading the window closed on. A mean of two
+ * fixes is a point in the water the boat was never at, so the fix was never averaged either;
+ * the heading joins it rather than leaving the table. The masthead says AVERAGE over the whole
+ * page, so the page has to say which columns that word does not cover.
  *
  * The names come from the rows, not from a list kept here: the same window read as readings
  * and read as the figure, and the difference between the two sets of columns. A hand-written
  * list is wrong the day a boat reports something nobody thought of.
- *
- * The position is its own half of the sentence. It is drawn on an average page and it is not
- * an average - a mean of two fixes is a point in the water the boat was never at - so it is
- * the fix the window closed on, and the masthead's "AVERAGE" would otherwise cover it too.
  */
-function summaryNote(figure: Stat, dropped: string[], snaps: Snapshot[]): string {
+export function summaryNote(figure: Stat, borrowed: string[], snaps: Snapshot[]): string {
   const word = STAT_LABEL[figure].toLowerCase();
   const list =
-    dropped.length === 1
-      ? dropped[0]
-      : `${dropped.slice(0, -1).join(", ")} and ${dropped[dropped.length - 1]}`;
+    borrowed.length === 1
+      ? borrowed[0]
+      : `${borrowed.slice(0, -1).join(", ")} and ${borrowed[borrowed.length - 1]}`;
   const hasFix = snaps.some((s) => s.lat !== null && s.lon !== null);
-  const fix = hasFix ? " The position on each row is the fix that window closed on." : "";
-  return `${list} ${dropped.length === 1 ? "has" : "have"} no ${word}, so ${
-    dropped.length === 1 ? "it is" : "they are"
-  } left off this page.${fix}`;
+  const one = borrowed.length === 1;
+  return `${list} ${one ? "has" : "have"} no ${word}, so on each row ${
+    one ? "it carries" : "they carry"
+  } the reading that window closed on${hasFix ? ", as the position does" : ""}.`;
+}
+
+/**
+ * A summary row with the closing reading filled in wherever the figure has none.
+ *
+ * Read by the moment: the two sets of rows are the same windows, so a summary row and a plain
+ * row share a timestamp. Only a hole is filled - a figure the window does have is never
+ * overwritten by a reading - and a machine's paths are treated the same way as the fields.
+ */
+export function withClosingReadings(rows: Snapshot[], plain: Snapshot[]): Snapshot[] {
+  if (plain.length === 0) return rows;
+  const byTs = new Map(plain.map((p) => [p.ts, p]));
+  return rows.map((row) => {
+    const p = byTs.get(row.ts);
+    if (!p) return row;
+    const out = { ...row } as Record<string, unknown>;
+    for (const [k, v] of Object.entries(p)) {
+      if (k === "path_values") continue;
+      if ((out[k] === null || out[k] === undefined) && v !== null && v !== undefined) out[k] = v;
+    }
+    if (p.path_values) {
+      const pv = { ...(row.path_values ?? {}) };
+      for (const [k, v] of Object.entries(p.path_values)) if (pv[k] === undefined || pv[k] === null) pv[k] = v;
+      out.path_values = pv;
+    }
+    return out as unknown as Snapshot;
+  });
 }
 
 function emptyRangeNote(r: ExportRequest): string {
@@ -607,10 +631,6 @@ export function tableShape(
    *  column the reader chose - the lanes shrink instead, the way the CSV already refuses to
    *  drop what the screen has no room for. */
   fit = true,
-  /** True when the rows are a summary figure rather than readings. Such a window offers fewer
-   *  columns than the boat has - there is no mean of a heading - and that narrower count is
-   *  the figure's, not the reader's, so it is not what an empty window should fall back to. */
-  summarised = false,
 ): TableShape {
   const named = book === "engine" ? unitGroups(snaps) : [];
   if (named.length > 0) familyHold.current = named;
@@ -631,7 +651,7 @@ export function tableShape(
     const metrics = fit ? fittedMetrics(kept, width, true) : kept;
     const group = { ...chosen, metrics };
     hold.current = Math.max(1, metrics.length);
-    if (kept.length > 0 && !summarised) chosenHold.current = kept.length;
+    if (kept.length > 0) chosenHold.current = kept.length;
     return {
       groups,
       group,
@@ -649,7 +669,7 @@ export function tableShape(
   const cols = visibleColumns(earned, selection);
   const drawn = fit ? fittedColumns(cols, width) : cols;
   if (drawn.length > 1) hold.current = laneCount(drawn.slice(1));
-  if (cols.length > 1 && !summarised) chosenHold.current = cols.length - 1;
+  if (cols.length > 1) chosenHold.current = cols.length - 1;
   return {
     groups,
     group: null,
@@ -1212,10 +1232,15 @@ function RangeView({
   // Oldest first: a closed window is a document, and a document is read forwards. The live and
   // day views keep the newest on top because they follow a boat still logging; this one does
   // not move, and it is the page that goes to paper.
-  const shown = useMemo(() => [...snaps].sort((a, b) => a.ts - b.ts), [snaps]);
+  // The columns a figure cannot carry are filled from the closing reading, so the table keeps
+  // its shape whichever figure is on it (see withClosingReadings and summaryNote).
+  const shown = useMemo(
+    () => withClosingReadings([...snaps].sort((a, b) => a.ts - b.ts), plain),
+    [snaps, plain],
+  );
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
     shown, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold,
-    false, figure !== "last",
+    false,
   );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
@@ -1235,10 +1260,10 @@ function RangeView({
 
   const label = windowLabel(r.from, r.to);
   const interval = windowInterval(r.gran, figure, r.stats.length - 1);
-  // Which of the reader's columns a summary cannot carry, asked of the rows rather than kept
+  // Which of the reader's columns the figure cannot carry, asked of the rows rather than kept
   // as a list: the same window read both ways, and the difference is the answer. See the note
   // over `plain` in useLogbookData, and `summaryNote` for why the page has to say it.
-  const dropped = useMemo(() => {
+  const borrowed = useMemo(() => {
     if (plain.length === 0) return [];
     const heads = (rows: Snapshot[]) =>
       visibleColumns(columnsFor(logbookColumns(rows, windUnit), book), selection).map((c) => c.head);
@@ -1292,8 +1317,8 @@ function RangeView({
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
         {figuresNote(r.stats) && <div className="lb-note">{figuresNote(r.stats)}</div>}
-        {dropped.length > 0 && (
-          <div className="lb-note">{summaryNote(figure, dropped, snaps)}</div>
+        {borrowed.length > 0 && (
+          <div className="lb-note">{summaryNote(figure, borrowed, snaps)}</div>
         )}
         {truncated && (
           <div className="lb-note">
