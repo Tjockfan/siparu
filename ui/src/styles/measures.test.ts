@@ -296,11 +296,14 @@ describe("the logbook's bar of controls", () => {
     ".swiss .lb-date button",
     ".swiss .lb-date .dt",
   ];
+  /** The first rule with this selector, which is the base one: the overrides come after it. */
   const bodyOf = (selector: string): string => {
     const found = rules().find(([s]) => s === selector);
     expect(found, selector).toBeDefined();
     return (found as [string, string])[1];
   };
+  const allOf = (selector: string): string[] =>
+    rules().filter(([s]) => s === selector).map(([, body]) => body);
 
   it("declares the bar's type and height once, on the bar", () => {
     const [fsSelector] = ruleDeclaring("--lb-ctrl-fs");
@@ -309,13 +312,34 @@ describe("the logbook's bar of controls", () => {
     expect(hSelector).toBe(".swiss .lb-ctrl");
   });
 
-  it("sets no control's type or height in figures of its own", () => {
+  it("sets no control's type, height or inset in figures of its own", () => {
     for (const selector of CONTROLS) {
       const body = bodyOf(selector);
       expect(body, `${selector} font-size`).not.toMatch(/font-size:\s*[\d.]+px/);
       expect(body, `${selector} height`).not.toMatch(/[;{\s]height:\s*[\d.]+px/);
       expect(body, `${selector} reads the bar's type`).toContain("--lb-ctrl-fs");
+      expect(body, `${selector} reads the bar's inset`).toContain("--lb-ctrl-pad");
     }
+  });
+
+  /**
+   * The one control in the bar that is an input, and the floor it does not share with the rest.
+   *
+   * iOS Safari zooms the page when a field under 16px takes focus, the layout viewport grows
+   * past the visual one and the app pans sideways. This sheet already learned that once, on the
+   * form fields, and says so over `.field textarea`; the date picker reached the same trap from
+   * the other direction, by taking a row of buttons' type. So the rule above is deliberately
+   * NOT the whole story for this one selector, and the assertion is that the exception exists
+   * rather than that it does not.
+   */
+  it("keeps the date field off the floor iOS zooms below", () => {
+    const bodies = allOf(".swiss .lb-date .dt");
+    expect(bodies.length, "a base rule and a narrow-screen override").toBe(2);
+    const sizes = bodies
+      .map((b) => /font-size:\s*([\d.]+)px/.exec(b))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => Number(m[1]));
+    expect(sizes, "the override states a figure, and it is the floor").toEqual([16]);
   });
 
   /** The group carries the bar's height so that its own border does not stand outside it. */
@@ -346,21 +370,35 @@ describe("the logbook's bar of controls", () => {
   });
 
   /**
-   * The other berth, and the reason it is one. What the columns button says depends on the
-   * screen it is read on and on what the window holds - "Columns · 12", "Columns · 5 of 11",
-   * "Columns · 0" - so the pair it belongs to is given room and closed up to the bar's edge.
-   * Without that the row shuffled 20px each way whenever the sentence changed length.
+   * The other berth, and the reason it is only half a berth. What the columns button says
+   * depends on the screen it is read on and on what the window holds - "Columns · 12",
+   * "Columns · 3 of 12", "Columns · 0" - and on a phone the widest and the narrowest of those
+   * are 39px apart, which in a centred bar is the row shuffling 20px each way. On a desk the
+   * same two states are 4px apart, and the count's own berth below covers that; a floor there
+   * would have to reserve the phone's width over a desk's pair and leave 50px of nothing in the
+   * middle of the row. So the floor is declared where it is earned and not in the base rule.
    */
-  it("berths the buttons that open a panel, closed up to the bar's edge", () => {
+  it("closes the panel buttons up to the bar's edge, and floors them only on a phone", () => {
     const body = bodyOf(".swiss .lb-acts");
-    expect(body).toMatch(/min-width:\s*min\([\d.]+px,\s*100%\)/);
     expect(body).toContain("justify-content: flex-end");
+    expect(body, "no floor on a desk").not.toMatch(/min-width/);
+    const floored = allOf(".swiss .lb-acts").filter((b) => /min-width/.test(b));
+    expect(floored, "one floor, in the narrow-screen block").toHaveLength(1);
+    expect(floored[0]).toMatch(/min-width:\s*min\([\d.]+px,\s*100%\)/);
   });
 
-  /** Inside the button, the same idea one size down: a figure keeps its room across ten. */
-  it("gives the count a berth of its own", () => {
+  /**
+   * Inside the button, the same idea one size down: a figure keeps its room across ten.
+   *
+   * Not 2ch, though that is what the unit's name suggests. `ch` is the advance of a bare figure
+   * and this bar tracks its type out, so two figures drawn come to 17.1px where 2ch reserves
+   * 13px - and the button went on breathing 4px. The berth is what was measured on the screen.
+   */
+  it("gives the count a berth of its own, sized to what is drawn", () => {
     const body = bodyOf(".swiss .lb-colbtn b");
-    expect(body).toContain("min-width: 2ch");
+    const m = /min-width:\s*([\d.]+)ch/.exec(body);
+    expect(m, "a berth in ch, so it follows the type").not.toBeNull();
+    expect(Number((m as RegExpExecArray)[1])).toBeGreaterThan(2);
     expect(body).toContain("tabular-nums");
   });
 });

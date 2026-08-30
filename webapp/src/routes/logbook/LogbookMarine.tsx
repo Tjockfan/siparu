@@ -107,6 +107,13 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   // For the tabs alone. What the table is made of still comes from the window's own rows: an
   // empty day draws an empty day, under the tabs of the boat that is keeping the log.
   const groupsHold = useRef<UnitGroup[]>([]);
+  // And the count of columns the reader keeps, held for the same reason and read by the same
+  // button. The columns come out of the window's rows too, so an empty window has none and the
+  // button said "Columns · 0" - which reads as a selection that has been lost, over a picker
+  // that opens with nothing in it. The selection is untouched; the day has nothing to put in
+  // it. "0 of 9" is the sentence this button already uses for the narrow screen, where drawn
+  // and chosen also part company, and it is the true one here.
+  const chosenHold = useRef(0);
 
   // Which columns are drawn, and the panel that changes them. Held here rather than in each
   // view so switching Live/Day does not reopen the picker or forget the choice. Per book, and
@@ -119,6 +126,7 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     setSelection(loadSelection(shownBook));
     // The other book's families are not this one's, and the bridge keeps none at all.
     groupsHold.current = [];
+    chosenHold.current = 0;
   }
   const [picking, setPicking] = useState(false);
   const applySelection = (sel: ColumnSelection) => {
@@ -274,6 +282,7 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     modeLeaving,
     lanesHold,
     groupsHold,
+    chosenHold,
     windUnit,
     toggleWind,
     selection,
@@ -330,8 +339,10 @@ interface ViewProps {
   modeLeaving: boolean;
   /** The lane count last drawn, kept across views so an empty beat holds its room. */
   lanesHold: { current: number | null };
-  /** The boat.s families, held across a window that names none - see where it is declared. */
+  /** The boat's families, held across a window that names none - see where it is declared. */
   groupsHold: { current: UnitGroup[] };
+  /** The reader's column count, held the same way and for the same reason. */
+  chosenHold: { current: number };
   windUnit: WindUnit;
   toggleWind: () => void;
   selection: ColumnSelection;
@@ -368,18 +379,12 @@ function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) 
 }
 
 /**
- * The one place in the bar that names the window, whichever mode names it.
+ * The one place in the bar that names the window, whichever mode names it: interval chips in
+ * Live, a date and its arrows in Day, the two dates it was given in Range.
  *
- * Live names it with interval chips, Day with a date and its arrows, Range with the two dates
- * it was given. Left to their own widths those three are 134px, 210px and whatever a label
- * comes to, and a centred bar re-centres on every one of them: measured, the mode segment slid
- * 38px left and the two buttons on the right slid 38px the other way each time the reader
- * pressed Day. A slot with a floor under its width holds all three, so nothing beside it moves
- * and the reader's next press is where his eye left it. The floor is a minimum, not a size -
- * a long range label still grows past it, and on a phone the slot gives way rather than
- * pushing the bar wider than the screen.
- *
- * It fades with the table when the mode changes, for the reason in `modeLeaving`.
+ * The three are not the same width, and a centred bar re-centres on each of them. The floor
+ * that stops that is `.lb-win` in the stylesheet, with the measurements. It fades with the
+ * table when the mode changes, for the reason in `modeLeaving`.
  */
 function WindowSlot({ leaving, children }: { leaving: boolean; children: ReactNode }) {
   return <div className={`lb-win${leaving ? " leaving" : ""}`}>{children}</div>;
@@ -532,8 +537,10 @@ interface TableShape {
   drawn: LogColumn[];
   /** What the picker offers for this table - columns or readings, whichever it is made of. */
   pick: PickItem[];
-  /** The picker button's two counts: lanes drawn at this width, and lanes chosen. */
-  btn: { shown: number; chosen: number };
+  /** The picker button's counts: lanes drawn at this width, lanes this window offers to choose
+   *  from, and the reader's own standing count - which the other two both fall to zero under
+   *  when a window has no rows, and which is what the button has to name there. */
+  btn: { shown: number; chosen: number; kept: number };
   /** The lane count, for the head, the rows and the two windows they sit in. */
   block: CSSProperties;
   /** What the bar and the frame carry so their width matches the table inside them. */
@@ -561,6 +568,8 @@ function tableShape(
   /** The boat's families, kept across a window that names none. Read the note where it is
    *  declared: it dresses the tabs only, never the table. */
   familyHold: { current: UnitGroup[] },
+  /** The reader's column count, kept across a window that names no columns. */
+  chosenHold: { current: number },
   /** False in the range view: a closed window is a document, and a document carries every
    *  column the reader chose - the lanes shrink instead, the way the CSV already refuses to
    *  drop what the screen has no room for. */
@@ -568,9 +577,12 @@ function tableShape(
 ): TableShape {
   const named = book === "engine" ? unitGroups(snaps) : [];
   if (named.length > 0) familyHold.current = named;
-  // The tabs the bar offers: this window's families, or the last window's when this one names
-  // none. Everything below reads `named`, so the table is still only ever this window's.
-  const groups = named.length > 0 ? named : familyHold.current;
+  // The tabs the bar offers: this window's families, or the boat's last known ones when this
+  // window has nothing to name them from. Held only for a window with NO ROWS - a window that
+  // has rows and still names no family is a boat that has stopped sending them, and lighting a
+  // tab there would filter a table by something the rows do not carry. Everything below reads
+  // `named`, so the table is only ever this window's either way.
+  const groups = named.length === 0 && snaps.length === 0 ? familyHold.current : named;
   const chosen = named.find((g) => g.tab === family) ?? named[0];
   // Turning a family on its side is what buys a wide table back, and a family of one machine
   // has no width to buy: her twelve gauges fit as twelve columns, headed by the readings alone
@@ -582,12 +594,13 @@ function tableShape(
     const metrics = fit ? fittedMetrics(kept, width, true) : kept;
     const group = { ...chosen, metrics };
     hold.current = Math.max(1, metrics.length);
+    if (kept.length > 0) chosenHold.current = kept.length;
     return {
       groups,
       group,
       drawn: [],
       pick,
-      btn: { shown: metrics.length, chosen: kept.length },
+      btn: { shown: metrics.length, chosen: kept.length, kept: chosenHold.current },
       block: { "--lb-cols": Math.max(1, metrics.length) } as CSSProperties,
       cls: " u",
     };
@@ -599,12 +612,13 @@ function tableShape(
   const cols = visibleColumns(earned, selection);
   const drawn = fit ? fittedColumns(cols, width) : cols;
   if (drawn.length > 1) hold.current = drawn.length - 1;
+  if (cols.length > 1) chosenHold.current = cols.length - 1;
   return {
     groups,
     group: null,
     drawn,
     pick: earned,
-    btn: { shown: drawn.length - 1, chosen: cols.length - 1 },
+    btn: { shown: drawn.length - 1, chosen: cols.length - 1, kept: chosenHold.current },
     block: blockVar(drawn, width, hold),
     cls: "",
   };
@@ -641,21 +655,49 @@ function laneVar(cols: LogColumn[]): CSSProperties {
  * "5 of 9" is the narrow screen saying so out loud. The selection is still nine; the phone has
  * room to draw five of them, and a reader who is not told that is left hunting for a column he
  * turned on and cannot see.
+ *
+ * A window with no rows needs the opposite of "of". The columns come out of the rows, so an
+ * empty day has none to draw AND none to offer, and both counts fell to zero: the button read
+ * a bare "0", in the accent this screen keeps for figures worth reading, over a picker that
+ * opened with nothing in it. Three surfaces telling a reader his selection had gone, at one in
+ * the morning, when nothing had happened but a day turning over.
+ *
+ * So it names his standing count instead, the one he chose and still has. Not "0 of 9": "of"
+ * is here to explain a table that is drawing SOME of his columns, and an empty day is not
+ * drawing a partial table, it is drawing no table, which the body says in its own words. The
+ * button does not open - there is nothing behind it to choose from until the day has rows -
+ * and the figure goes quiet, because an empty day is not a fault and does not belong in red.
  */
+export function columnsCount(shown: number, chosen: number, kept: number): string {
+  // Nothing to choose from: the window has no rows, so it named no columns. Say what the
+  // reader has, not what this window could not find.
+  if (chosen === 0) return String(kept);
+  // Fewer drawn than kept: the screen is too narrow for all of them, and he is told so.
+  if (shown < chosen) return `${shown} of ${chosen}`;
+  return String(chosen);
+}
+
 function ColumnsButton({
   shown,
   chosen,
+  kept,
   open,
   onOpen,
 }: {
   shown: number;
   chosen: number;
+  kept: number;
   open: boolean;
   onOpen: () => void;
 }) {
+  const empty = chosen === 0;
   return (
-    <button className={`lb-colbtn${open ? " on" : ""}`} onClick={onOpen}>
-      Columns · <b>{shown < chosen ? `${shown} of ${chosen}` : chosen}</b>
+    <button
+      className={`lb-colbtn${open ? " on" : ""}${empty ? " quiet" : ""}`}
+      onClick={onOpen}
+      disabled={empty}
+    >
+      Columns · <b>{columnsCount(shown, chosen, kept)}</b>
     </button>
   );
 }
@@ -731,6 +773,7 @@ function LiveView({
   modeLeaving,
   lanesHold,
   groupsHold,
+  chosenHold,
   windUnit,
   toggleWind,
   selection,
@@ -747,7 +790,7 @@ function LiveView({
 }: ViewProps) {
   const { snaps, err, busy, hasMore, loadMore } = useLogbookLive(shownGran);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold,
+    snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold,
   );
   return (
     <>
@@ -765,6 +808,7 @@ function LiveView({
           <ColumnsButton
             shown={btn.shown}
             chosen={btn.chosen}
+            kept={btn.kept}
             open={picking}
             onOpen={() => setPicking(!picking)}
           />
@@ -826,6 +870,7 @@ function DayView({
   modeLeaving,
   lanesHold,
   groupsHold,
+  chosenHold,
   windUnit,
   toggleWind,
   selection,
@@ -842,7 +887,7 @@ function DayView({
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold,
+    snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold,
   );
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
@@ -875,6 +920,7 @@ function DayView({
           <ColumnsButton
             shown={btn.shown}
             chosen={btn.chosen}
+            kept={btn.kept}
             open={picking}
             onOpen={() => setPicking(!picking)}
           />
@@ -1018,6 +1064,7 @@ function RangeView({
   modeLeaving,
   lanesHold,
   groupsHold,
+  chosenHold,
   windUnit,
   toggleWind,
   selection,
@@ -1051,7 +1098,7 @@ function RangeView({
   // not move, and it is the page that goes to paper.
   const shown = useMemo(() => [...snaps].sort((a, b) => a.ts - b.ts), [snaps]);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    shown, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, false,
+    shown, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold, false,
   );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
@@ -1085,6 +1132,7 @@ function RangeView({
           <ColumnsButton
             shown={btn.shown}
             chosen={btn.chosen}
+            kept={btn.kept}
             open={picking}
             onOpen={() => setPicking(!picking)}
           />

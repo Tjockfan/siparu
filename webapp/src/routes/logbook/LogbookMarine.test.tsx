@@ -11,6 +11,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../lib/api";
+import { columnsCount } from "./LogbookMarine";
 
 const page: Snapshot[] = [];
 
@@ -111,6 +112,45 @@ describe("the logbook table over a boat's own instruments", () => {
     const html = await draw([]);
     expect(html).toContain("No snapshots");
     expect(html).toMatch(/Nothing was logged in this window/i);
+  });
+
+  /**
+   * The three sentences the count can be, and the one that was wrong.
+   *
+   * Pinned apart from the screen because the screen cannot show the difference: an empty window
+   * and a reader who has never chosen anything both render "0", and only the second is honest.
+   * What separates them is the standing count carried in from the window before this one.
+   */
+  it("names the reader's own count when the window has none of its own", () => {
+    // The whole selection is drawn: the plain figure, which is what it has always been.
+    expect(columnsCount(9, 9, 9)).toBe("9");
+    // Too narrow for all of them - the screen saying so out loud.
+    expect(columnsCount(5, 9, 9)).toBe("5 of 9");
+    // An empty day. The window offers nothing; the reader still keeps nine.
+    expect(columnsCount(0, 0, 9)).toBe("9");
+    // And on a page that has never had a row, there is nothing to claim.
+    expect(columnsCount(0, 0, 0)).toBe("0");
+  });
+
+  /**
+   * And the bar above it does not contradict that sentence.
+   *
+   * A window's columns come out of its rows, so an empty one has none to draw and none to
+   * offer, and the button that opens the picker read a bare "0" in the accent this screen
+   * keeps for figures worth reading - over a picker that opened with nothing in it. Between
+   * them they told a reader his column selection had gone, when what had happened was that a
+   * day had turned over and the closed hour was not rolled up yet. The body says why the page
+   * is empty; the button has to stop saying something else.
+   */
+  it("does not tell a reader his columns are gone when the window is merely empty", async () => {
+    const html = await draw([]);
+    const button = /<button[^>]*class="lb-colbtn[^"]*"[^>]*>.*?<\/button>/s.exec(html);
+    expect(button, "the columns button is on the page").not.toBeNull();
+    const [btn] = button as RegExpExecArray;
+    // Nothing behind it to choose from, so it does not open.
+    expect(btn).toContain("disabled");
+    // And the figure is not dressed as one that wants reading.
+    expect(btn).toContain("quiet");
   });
 
   /**

@@ -1144,6 +1144,9 @@ body {
      chart table rather than at a desk, and 9.5px is a caption, not a control. */
   --lb-ctrl-fs: 13px;
   --lb-ctrl-h: 32px;
+  /* One inset for everything in the row. It was 9px on the date group and 12px on the buttons,
+     which is not a scale, it is two people's guesses. */
+  --lb-ctrl-pad: 12px;
 }
 /* The group carries the height, not its buttons: a segment's own border sits outside them, and
    buttons standing the bar's height made the group two pixels taller than the single buttons
@@ -1159,7 +1162,7 @@ body {
   /* Height rather than padding: every control in the bar has to stand the same height whichever
      mode drew it, or the bar changes height under the table and the table drops with it
      (measured at 48px in Live against 52px in Day, and the table 4px with it). */
-  height: 100%; padding: 0 12px;
+  height: 100%; padding: 0 var(--lb-ctrl-pad, 12px);
   display: inline-flex; align-items: center; justify-content: center;
 }
 .swiss .seg button:last-child { border-right: none; }
@@ -1173,21 +1176,32 @@ body {
 .swiss .lb-win {
   display: flex; align-items: center; justify-content: center;
   min-width: min(290px, 100%);
+  /* 290 clears the widest measured content on a desk: the date group at 277.8px. */
   /* It leaves with the table it names, on the table's own clock. */
   transition: opacity var(--lb-fade-in) cubic-bezier(0.32, 0.72, 0, 1);
 }
 /* The bar's other berth: the buttons that open a panel.
    What the columns button says is not a constant - "Columns · 12" on a wide screen, "Columns ·
-   5 of 11" on a phone that can only draw five of them, "Columns · 0" over a window with no rows
-   in it - and it came to 40px more on a phone than it did over an empty day. In a centred bar
-   that is the whole row shuffling 20px each way. Berthed and closed up to the end, the bar's
-   outer edge holds still and what moves is the dead glass in front of the pair. */
+   3 of 12" on a phone that can only draw three of them, "Columns · 0" over a window with no
+   rows in it - and the phone's widest is 275px against the empty window's 236px. In a centred
+   bar that is the whole row shuffling 20px each way.
+   The floor is the phone's, and only the phone's. On a desk the same two states differ by 4px,
+   which the count's own berth below absorbs; a floor there would have to be the phone's 275px
+   over a 240px pair, and that 50px of reserved nothing was visible in the bar as a hole between
+   the family tabs and the buttons while every other gap in the row was 9px. */
 .swiss .lb-acts {
   display: flex; align-items: center; justify-content: flex-end; gap: 9px;
-  min-width: min(290px, 100%);
 }
+@media (max-width: 560px) {
+  /* 280 clears the widest measured pair (275.3px at 390: "Columns · 3 of 12" and "Export"). */
+  .swiss .lb-acts { min-width: min(280px, 100%); }
+}
+/* A control on its way out does not answer a press. The table's own leaving half does not need
+   this - a row that is fading is still the row it was - but a chip here commands the table, and
+   a press landing on a control that is halfway gone acts on the window the reader just left. */
 .swiss .lb-win.leaving {
   opacity: 0;
+  pointer-events: none;
   transition-duration: var(--lb-fade-out);
   transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
 }
@@ -1205,19 +1219,28 @@ body {
   font-family: var(--sp-font); font-size: var(--lb-ctrl-fs, 13px); font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase; background: var(--cell); color: var(--text);
   border: 1.5px solid var(--rule); cursor: pointer;
-  height: var(--lb-ctrl-h, 32px); padding: 0 12px;
+  height: var(--lb-ctrl-h, 32px); padding: 0 var(--lb-ctrl-pad, 12px);
   display: inline-flex; align-items: center; justify-content: center;
 }
 /* The count keeps a two-figure berth whether it is holding one figure or two. A boat's column
    count runs from nothing to the high teens over the course of a day's reading, and the button
-   grew and shrank 8.5px under it - which, in a centred bar, is everything to its left and right
-   moving 4px each time the number crossed ten. */
+   grew and shrank under it - which, in a centred bar, is everything to its left and right
+   moving half that each time the number crossed ten.
+   2.7ch, not 2ch, and the difference is letter-spacing: `ch` is the advance of a bare figure
+   (6.5px at this size) and the bar tracks its type out by 0.06em, so two figures on the screen
+   come to 17.1px where 2ch reserves 13px. Measured rather than reasoned - the reserved room has
+   to match what the browser draws, not what the unit is named after. */
 .swiss .lb-colbtn b {
   color: var(--accent); font-weight: 700;
-  display: inline-block; min-width: 2ch; text-align: right;
+  display: inline-block; min-width: 2.7ch; text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .swiss .lb-colbtn.on { background: var(--text); color: var(--cell); }
+/* Nothing to choose from, because the window has no rows to draw columns out of. Disabled the
+   way every other spent control in this bar is, and the figure goes quiet with it: accent is
+   what this screen paints a number that wants reading, and there is no fault here to read. */
+.swiss .lb-colbtn:disabled { opacity: 0.4; cursor: default; }
+.swiss .lb-colbtn.quiet b { color: var(--muted); }
 .swiss .lb-colbtn.on b { color: var(--cell); }
 /* A panel opens the way a drawer slides out: the sheet is uncovered from its top edge down,
    and the table under it is carried to its new place by the same motion instead of jumping
@@ -1410,14 +1433,34 @@ body {
 .swiss .lb-date .dt {
   font-family: var(--sp-font); font-size: var(--lb-ctrl-fs, 13px); font-weight: 700;
   letter-spacing: 0.06em; color: var(--text); font-variant-numeric: tabular-nums;
-  height: var(--lb-ctrl-h, 32px); padding: 0 9px; box-sizing: border-box;
+  height: var(--lb-ctrl-h, 32px); padding: 0 var(--lb-ctrl-pad, 12px); box-sizing: border-box;
   border: 1.5px solid var(--rule); background: var(--cell);
+}
+/* The one control in this bar that is an input, and inputs have a floor the rest do not.
+   16px is it: iOS Safari zooms the page when a field under 16px takes focus, the layout
+   viewport grows past the visual one and the app pans sideways. The sheet already carries that
+   rule for the form fields (see the note over .field textarea) and states where the complaint
+   came from; this field is a date picker in a row of buttons and reached the same trap by
+   inheriting the row's type. The bar keeps its own size on a desk, where nothing zooms. */
+/* The inset comes in on the smallest screens, and the inset only: the type stays where it is,
+   because a control read on a phone is not read from closer. At 320 the three family tabs came
+   to 293px against the 288px the card gives them, and a tab group wider than the sheet it
+   stands on is the one thing in this bar that cannot be wrapped away. */
+@media (max-width: 380px) {
+  .swiss .lb-ctrl { --lb-ctrl-pad: 8px; }
+}
+@media (max-width: 560px) {
+  .swiss .lb-date .dt { font-size: 16px; }
+  /* And the slot has to hold what that costs: 16px type puts the date group at 300.8px, over
+     the desk's floor, so the slot itself grew in Day mode and the shift came back on the phone
+     alone. The floor follows the content it is a floor under. */
+  .swiss .lb-win { min-width: min(310px, 100%); }
 }
 /* The arrows are square and the word is not. Both were drawn as a 28px box, which fits "‹" and
    does not fit "Now": measured, 32px of text in a 28px box, spilling its own border. A floor
    under the width keeps the arrows square and lets the word take the room it needs. */
 .swiss .lb-date button {
-  min-width: var(--lb-ctrl-h, 32px); height: var(--lb-ctrl-h, 32px); padding: 0 9px;
+  min-width: var(--lb-ctrl-h, 32px); height: var(--lb-ctrl-h, 32px); padding: 0 var(--lb-ctrl-pad, 12px);
   border: 1.5px solid var(--rule); background: var(--cell); color: var(--text); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--sp-font); font-size: var(--lb-ctrl-fs, 13px); font-weight: 700;
