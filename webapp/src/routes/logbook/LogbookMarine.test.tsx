@@ -11,7 +11,9 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../lib/api";
-import { columnsCount, tableShape, windowInterval } from "./LogbookMarine";
+import { DayLine, columnsCount, tableShape, windowInterval } from "./LogbookMarine";
+import { columnsFor, logbookColumns } from "./columns";
+import { unitGroups } from "./unitRows";
 import { ALL_ON } from "./columnSelection";
 import type { UnitGroup } from "./unitRows";
 
@@ -342,6 +344,43 @@ describe("the logbook table over a boat's own instruments", () => {
     expect(full.block).toEqual({ "--lb-cols": 5 });
     const empty = tableShape([], "bridge", "kn", ALL_ON, 390, null, hold, familyHold, chosenHold);
     expect(empty.block).toEqual({ "--lb-cols": 5 });
+  });
+
+  /**
+   * The band naming the window stands over the heads, and the heads stand over the rows.
+   *
+   * Printed the other way round, the names of the columns sat two bands above the figures they
+   * named, with the window and the day written in between; a reader ran his eye up past a date
+   * to find out what a column was.
+   */
+  it("puts the window's band over the heads, and the heads next to the rows", async () => {
+    const html = await draw([snap({ sog: 4.1 })]);
+    const band = html.indexOf('class="lb-day"');
+    const heads = html.indexOf('class="lb-cols"');
+    const rows = html.indexOf('class="lb-rows"');
+    expect(band).toBeGreaterThan(-1);
+    expect(band).toBeLessThan(heads);
+    expect(heads).toBeLessThan(rows);
+  });
+
+  /**
+   * Paper repeats no head row, so the line where the day turns carries the names again: the
+   * date first, then a head per lane in the table's own order, a position keeping its two.
+   * The engineer's table leads with the machine's lane as well, and that lane is headed by
+   * nothing here the way it is headed by nothing in the rows.
+   */
+  it("writes the heads again on the day line, one per lane", () => {
+    const cols = columnsFor(logbookColumns([snap({ lat: 43.5, lon: 7.0, sog: 4.1, depth: 8 })], "kn"), "bridge");
+    const html = renderToStaticMarkup(<DayLine day="SUN · 23 AUG 2026" cols={cols} group={null} />);
+    expect(html).toContain('<span class="sd">SUN · 23 AUG 2026</span>');
+    expect(html.match(/<span class="sh( w2)?">[A-Z]+<\/span>/g)?.map((m) => m.replace(/<[^>]+>/g, "")))
+      .toEqual(["LAT", "LON", "SOG", "DEP"]);
+    expect(html.match(/class="sh w2"/g)).toHaveLength(2);
+
+    const [eng] = unitGroups([snap({ path_values: { "propulsion.port.revolutions": 25, "propulsion.starboard.revolutions": 26 } })]);
+    const unit = renderToStaticMarkup(<DayLine day="MON · 24 AUG 2026" cols={[]} group={eng!} />);
+    expect(unit).toContain('class="lb-sep u"');
+    expect(unit).toContain('<span class="sh"></span><span class="sh">RPM</span>');
   });
 
   /**

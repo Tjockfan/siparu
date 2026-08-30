@@ -1336,6 +1336,9 @@ body {
   color: var(--chrome-text); background: var(--ink-band);
   padding: 6px var(--lb-pad); border-bottom: 1px solid var(--hair);
 }
+/* The heads the line carries are for paper (see the print block); the screen has its own head
+   row standing over the scroll, and the date is the whole line here. */
+.swiss .lb-sep .sh { display: none; }
 .swiss .lbp-n,
 .swiss .lbp-s {
   font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
@@ -1672,7 +1675,8 @@ body {
    does not clip, so it overprinted rather than being cut. Both halves of the pair are spent
    together or neither is drawn, which fitColumns decides; this only spends what it was given. */
 .swiss .lb-cols span.w2,
-.swiss .lb-row .v.w2 { grid-column: span 2; }
+.swiss .lb-row .v.w2,
+.swiss .lb-sep .sh.w2 { grid-column: span 2; }
 /* A figure set for a phone, left at that size on a desk. A lane at its ceiling is 176px wide
  * and was carrying a four-character number 31px across, so the eye crossed 145px of nothing
  * between one reading and the next and the table read as a scatter rather than as columns. The
@@ -3283,6 +3287,24 @@ body {
       repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane))) !important;
   }
   .swiss .lb-row { padding: 4px 8px; }
+  /* The day line is a row of the table on paper: the date in the hour's lane, running on into
+     the lane beside it, and a head over every lane after, set to the figures' own edge. The
+     one head row at the top repeats on no later sheet; these do. */
+  .swiss .lb-sep {
+    display: grid; gap: 0; padding-inline: 8px;
+    grid-template-columns:
+      var(--lb-tm-print) repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane))) !important;
+  }
+  .swiss .lb-sep.u {
+    grid-template-columns:
+      var(--lb-tm-print) var(--lb-unit-print)
+      repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane))) !important;
+  }
+  .swiss .lb-sep .sd { white-space: nowrap; }
+  .swiss .lb-sep .sh {
+    display: block; text-align: right; padding-inline: 6px;
+    font-family: var(--sp-font); font-size: 6.8px; font-weight: 700; letter-spacing: 0.06em;
+  }
   .swiss .lb-row .tm { font-size: 10px !important; }
   .swiss .lb-row .v { font-size: 9.5px !important; white-space: nowrap; }
   .swiss .lb-row .v.dim { font-size: 9.5px !important; }

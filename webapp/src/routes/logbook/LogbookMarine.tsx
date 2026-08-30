@@ -926,8 +926,8 @@ function LiveView({
       {saveErr && <div className="lb-err">{saveErr}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
         <PrintHead book={book} window={GRAN_LABEL[shownGran]} interval={INTERVAL_NAME[shownGran]} />
-        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[shownGran]}</span><b>{snaps.length}</b></div>
+        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
         {!busy && !err && snaps.length === 0 ? (
           <NoRows what={`Nothing was logged in this window (${GRAN_LABEL[shownGran].toLowerCase()}).`} />
@@ -1039,8 +1039,8 @@ function DayView({
       {saveErr && <div className="lb-err">{saveErr}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
         <PrintHead book={book} window={dayLabel} interval={INTERVAL_NAME["1h"]} />
-        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
+        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
         {!busy && snaps.length === 0 ? (
           <NoRows what="No telemetry was logged for this day." />
@@ -1268,11 +1268,11 @@ function RangeView({
       {saveErr && <div className="lb-err">{saveErr}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
         <PrintHead book={book} window={label} interval={interval} />
-        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         <div className="lb-day" style={laneVar(drawn)}>
           <span>{label} · {interval}</span>
           <b>{truncated ? `${snaps.length} of more` : snaps.length}</b>
         </div>
+        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
         {dropped.length > 0 && (
           <div className="lb-note">{summaryNote(figure, dropped, snaps)}</div>
@@ -1318,7 +1318,7 @@ function Rows({
     if (dated) {
       const day = utcDayLine(s.ts);
       if (day !== prevDay) {
-        items.push(<div className="lb-sep" key={`sep-${s.ts}`}>{day}</div>);
+        items.push(<DayLine key={`sep-${s.ts}`} day={day} cols={cols} group={group} />);
         prevDay = day;
       }
     }
@@ -1341,6 +1341,33 @@ function Rows({
  * ink: three lines carrying the same four digits read as three readings until you notice they
  * are one. The lines are held together by the rule above the block rather than by repetition.
  */
+/**
+ * The dated line where the UTC day turns, and on paper the heads again beside it.
+ *
+ * The screen has one head row and it stays in place while the rows scroll under it. Paper has
+ * no such row: a grid repeats its heads on no page but the first, and a reader three sheets in
+ * was holding a column of bare figures against a head he had to turn back for. The day line
+ * is already written at every turn of the day, so it carries the names too, one per lane, set
+ * over the figures they name. On screen the names are hidden; the date is the whole line.
+ */
+export function DayLine({ day, cols, group }: { day: string; cols: LogColumn[]; group: UnitGroup | null }) {
+  const named = group !== null && group.units.length > 1;
+  const heads = group
+    ? group.metrics.map((m) => ({ key: m.key, head: m.head, cls: "" }))
+    : cols.slice(1).map((c) => ({ key: c.key, head: c.head, cls: laneClass(c).trim() }));
+  return (
+    <div className={`lb-sep${named ? " u" : ""}`}>
+      <span className="sd">{day}</span>
+      {named && <span className="sh" />}
+      {heads.map((h) => (
+        <span key={h.key} className={h.cls ? `sh ${h.cls}` : "sh"}>
+          {h.head}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function UnitBlock({ s, group }: { s: Snapshot; group: UnitGroup }) {
   const named = group.units.length > 1;
   return (
