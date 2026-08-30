@@ -15,6 +15,11 @@ export default defineConfig({
       // plain node environment as everything above. This line is why they run at all - the .ts
       // glob above does not match .tsx, and a component test outside it is a test nobody runs.
       'webapp/src/routes/**/*.test.tsx',
+      // The same, for what the shell draws rather than what a route does: a component shared by
+      // several screens lives in components/, and the glob above stops at routes/. This line
+      // was added the day one such test was written and silently never ran - the runner said
+      // "no test files found", which is a sentence easy to read as "nothing to do here".
+      'webapp/src/components/**/*.test.tsx',
       'ui/src/**/*.test.ts'
     ],
     // Fixture-backed IO tests run slowly on constrained CI runners (Windows fs,

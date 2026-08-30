@@ -9,11 +9,18 @@ import { useNow } from "../lib/useNow";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { dur, ease } from "siparu-ui";
 import { cacheTimestamp } from "../lib/prefetchCache";
+import { SecurityNotice } from "./SecurityWarning";
+import { api, type PairScreen } from "../lib/api";
+import { usePolling } from "../lib/usePolling";
 
 // A wide screen carries a left rail instead of the top header + bottom tab bar; below this the
 // phone keeps both. Matches the board threshold in BridgeMarine, so the dashboard opens up at the
 // same width the chrome moves to the side.
 const RAIL_QUERY = "(min-width: 1000px)";
+
+/** A standing condition, not an event: the slow poll is the honest cadence for one. Matches
+ *  the instruments' own, which asks the same endpoint for the same reason. */
+const SECURITY_POLL_MS = 30_000;
 
 /** App shell (Swiss) - flex column:
  *  header (persistent) → animated outlet → bottom tab bar.
@@ -88,6 +95,7 @@ export default function Layout() {
     location.pathname === "/" && liveTs !== null && now - liveTs > 10_000;
 
   const wide = useMediaQuery(RAIL_QUERY);
+  const { data: pair } = usePolling<PairScreen>(() => api.pair.status(), SECURITY_POLL_MS, []);
 
   return (
     <div className={`swiss sp-screen${wide ? " sp-wide" : ""}`}>
@@ -139,6 +147,13 @@ export default function Layout() {
       </main>
 
       {!wide && <BridgeTabBar />}
+
+      {/* Mounted by the shell rather than by a screen: an open server belongs to the boat, not
+          to whichever tab the app happened to open on, and an owner who lands on the logbook has
+          the same open door as one who lands on the instruments. Asked once per launch (the
+          dialog itself only opens if a month has passed since it was last acknowledged), so this
+          poll is slow: it is here to notice a condition, not to watch one. */}
+      <SecurityNotice on={pair?.security_off} locked={pair?.pairing_locked === true} />
     </div>
   );
 }

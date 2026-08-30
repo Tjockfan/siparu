@@ -3369,3 +3369,90 @@ body {
      white page the grid rules the rows instead, as a ledger is ruled. */
   html.pdf-screen .swiss .lb-row:nth-child(even) { background: #171a1e; }
 }
+
+/* ============================================================
+   SIGNAL K SECURITY - the mark, the dialog and the page behind them
+   ============================================================ */
+/* What is left on screen once the dialog has been read: one line, not four.
+ * The banner it replaces was measured at 93px on a 390px phone - 12.7% of the screen an owner
+ * looks at all day, spent on a sentence he read weeks ago. The condition is standing and has to
+ * stay visible, so what stays is the smallest thing that can still say it and still be pressed:
+ * a mark, the condition in words, and the way out. */
+.swiss .sec-flag {
+  flex: none;
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 7px 14px; background: var(--cell); border: none;
+  border-top: 2px solid var(--alarm); cursor: pointer; text-align: left;
+  font-family: var(--sp-font);
+}
+.swiss .sec-flag .sf-mark {
+  flex: none; width: 17px; height: 17px; display: inline-flex;
+  align-items: center; justify-content: center;
+  background: var(--alarm); color: var(--on-accent);
+  font-size: 11px; font-weight: 700; line-height: 1;
+}
+.swiss .sec-flag .sf-t {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted);
+}
+/* Pushed to the far end, so the line reads condition-first and the way out sits where an
+   action sits. Hidden on a phone, where the whole line is the button and the room it takes
+   would come off the condition's own words. */
+.swiss .sec-flag .sf-go {
+  margin-left: auto; flex: none;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent);
+}
+@media (max-width: 560px) {
+  .swiss .sec-flag .sf-go { display: none; }
+}
+@media (hover: hover) {
+  .swiss .sec-flag:hover .sf-t { color: var(--text); }
+}
+.swiss .sn-p { font-family: var(--sp-font); font-size: 13.5px; line-height: 1.6; color: var(--text); }
+.swiss .sn-p.quiet { color: var(--muted); font-size: 12.5px; }
+
+/* The page that says what to do. A column of prose, given the measure the voyage record has -
+ * a line, not a grid, and the same one whether it is read on a phone at the helm or on the
+ * desk monitor the boat is wired to. */
+.swiss .doc {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--cluster-gap); background: transparent;
+}
+.swiss .doc-in {
+  width: 100%; max-width: 640px; margin: 0 auto;
+  background: var(--pane); border: 1px solid var(--pane-edge);
+  backdrop-filter: blur(var(--pane-blur)) saturate(155%);
+  padding: 34px 30px;
+}
+.swiss .doc-eyebrow {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.13em;
+  text-transform: uppercase; color: var(--accent);
+}
+.swiss .doc-h {
+  font-family: var(--sp-font); font-size: 27px; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--text); margin: 6px 0 0;
+}
+.swiss .doc-h2 {
+  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.13em;
+  text-transform: uppercase; color: var(--muted); margin: 28px 0 10px;
+}
+.swiss .doc-lead, .swiss .doc-p {
+  font-family: var(--sp-font); font-size: 14px; line-height: 1.65; color: var(--text); margin: 14px 0 0;
+}
+.swiss .doc-p { color: var(--muted); }
+.swiss .doc-steps {
+  margin: 0; padding-left: 20px;
+  font-family: var(--sp-font); font-size: 14px; line-height: 1.65; color: var(--muted);
+}
+.swiss .doc-steps li { margin-bottom: 13px; }
+.swiss .doc-steps li:last-child { margin-bottom: 0; }
+.swiss .doc-steps b { color: var(--text); font-weight: 700; }
+.swiss .doc a { color: var(--accent); }
+.swiss .doc-back { margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--rule); }
+.swiss .doc-go {
+  display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
+}

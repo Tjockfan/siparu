@@ -5,6 +5,7 @@
  * the composition is pinned here: the real panel over a stubbed poll, read as markup.
  */
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { PairScreen, SealingStatus } from "../../lib/api";
 
@@ -16,10 +17,17 @@ vi.mock("../../lib/usePolling", () => ({
   usePolling: () => ({ data: status, refresh: () => {}, error: null, loading: false }),
 }));
 
+// In a router, because the panel is: the open-door mark it can draw is a way into the page
+// that explains the condition, and a mark that named a page without being able to reach it
+// would be a dead end drawn over a live warning.
 async function draw(s: PairScreen | null, sealing: SealingStatus | null = null): Promise<string> {
   status = s;
   const { default: RemotePanel } = await import("./RemotePanel");
-  return renderToStaticMarkup(<RemotePanel sealing={sealing} />);
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <RemotePanel sealing={sealing} />
+    </MemoryRouter>,
+  );
 }
 
 const paired: PairScreen = {

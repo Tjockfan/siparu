@@ -13,6 +13,9 @@ const Logbook = lazy(() => import("./routes/Logbook"));
 const Voyage = lazy(() => import("./routes/Voyage"));
 const MapView = lazy(() => import("./routes/Map"));
 const Remote = lazy(() => import("./routes/Remote"));
+// Reached from the open-door notice and from the mark it leaves behind, never from the nav:
+// it is a page about a condition, and a boat whose server is secured has no use for it.
+const SecurityHelp = lazy(() => import("./routes/SecurityHelp"));
 
 export default function App() {
   // On a Signal K security 401, the whole tree is swapped out for AuthGate - as the
@@ -40,6 +43,7 @@ export default function App() {
             <Route path="/voyage" element={<Voyage />} />
             <Route path="/map" element={<MapView />} />
             <Route path="/remote" element={<Remote />} />
+            <Route path="/security" element={<SecurityHelp />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
