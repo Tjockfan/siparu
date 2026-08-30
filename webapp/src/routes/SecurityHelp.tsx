@@ -50,31 +50,36 @@ export default function SecurityHelp() {
             There is no reset from ashore.
           </li>
           <li>
-            <b>Decide about "Allow readonly access".</b> Ticked, anyone on the network can still
-            read the boat and use this app without logging in, and only the controls that change
-            something ask for the password. Unticked, everything asks. Signal K's own note is that
-            readonly access exposes your data on the local network and potentially the public
-            internet, so leave it off on a shared crew or marina network and on only where you
-            know who is on the wire.
+            <b>Press Enable, then Restart.</b> Signal K writes the account down but keeps running
+            open until it is restarted; it says so in red under the form. The Restart button is at
+            the top of its admin pages. Log in when it comes back.
           </li>
           <li>
-            <b>Press Enable.</b> Signal K restarts into its secured mode.
+            <b>Decide about "Allow Readonly Access".</b> It is under Security, then Settings, and
+            newer servers also ask on the form you just filled in. Ticked, anyone on the network
+            can still read the boat and use this app without logging in, and only the controls
+            that change something ask for the password. Unticked, everything asks. Signal K's own
+            note is that readonly access exposes your data on the local network and potentially
+            the public internet, so leave it off on a shared crew or marina network and on only
+            where you know who is on the wire.
           </li>
         </ol>
 
         <h2 className="doc-h2">After that</h2>
         <p className="doc-p">
-          This notice stops. It follows whether the server asks for an account at all, not who is
-          allowed in, so it clears whichever way you answered the readonly question. Siparu's
-          locked writes unlock for anyone logged in with admin rights.
+          This notice stops once the server is back up and asking for an account. It follows
+          whether the server asks at all, not who is allowed in, so it clears whichever way you
+          answer the readonly question. Siparu's locked writes unlock for anyone logged in with
+          admin rights.
         </p>
 
         <h2 className="doc-h2">If the network really is yours</h2>
         <p className="doc-p">
           On a boat with nothing else on her wire, you can leave the server open and tell the
           plugin you have decided so: the setting is in Signal K under Apps &amp; Plugins, in
-          Siparu's own configuration. The writes unlock and this notice stops. It is the weaker
-          answer of the two, and it is not the one to pick because the password is a nuisance.
+          Siparu's own configuration. The writes unlock. The notice stays, because it reports the
+          door and not the decision: the server is still open. It is the weaker answer of the two,
+          and it is not the one to pick because the password is a nuisance.
           An open server also lets anything on that network install code, which no setting of
           ours can hold shut.
         </p>
