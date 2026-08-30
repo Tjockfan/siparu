@@ -1536,7 +1536,16 @@ body {
      allows, and a transition between two calc values spends most of its time outside the
      visible range - which reads as a snap. The script animates between the two rendered
      widths instead. */
-  background: var(--pane);
+  /* Ink under the pane, which the dashboard's panels do not take.
+     The screen's ground carries the accent low and to starboard, and a pane at 5.5% white lets
+     it through: measured on the log table's own pixels, a row at the bottom right ran 22 levels
+     redder than the same row's figures at the top left. On a board of gauges that is the glass
+     doing its job - each cell is its own surface and nothing is being compared across them. A
+     log is one surface and the eye reads down it, and on this product a red cast is a thing
+     that means something. So the ground is mostly absorbed here and nowhere else.
+     Mostly, not wholly: color-mix carries the alpha too, so this lands at 0.735 and the pane
+     still blurs what is behind it. Measured after: the swing falls to 6 in night and 2 in day. */
+  background: color-mix(in srgb, var(--ink-band) 72%, var(--pane));
   border: 1px solid var(--pane-edge);
   backdrop-filter: blur(var(--pane-blur)) saturate(155%);
 }

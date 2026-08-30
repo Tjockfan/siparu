@@ -534,3 +534,40 @@ describe("the unit over a logbook column", () => {
     expect(body).toMatch(/letter-spacing:\s*0/);
   });
 });
+
+/**
+ * The log table takes ink under its pane where the dashboard's panels do not.
+ *
+ * The screen's ground carries the accent low and to starboard, and a pane at 5.5% white lets it
+ * through. Measured on the table's own pixels, a row at the bottom right ran 22 levels redder
+ * than the same row's figures at the top left. On a board of gauges that is the glass doing its
+ * job - each cell is its own surface, nothing is compared across them. A log is one surface, the
+ * eye reads down it, and on this product a red cast means something.
+ *
+ * The pane is what a test can see; the pixels are not. So what is pinned is that this window
+ * mixes ink into its own background and that the dashboard's panels still do not - the moment
+ * both take it, the distinction the mix was made for is gone and every screen is flat.
+ */
+describe("the ground under the log table", () => {
+  it("mixes ink into the table window's pane, and keeps the blur behind it", () => {
+    const found = rules().find(([s]) => s.includes(".swiss .lb-frame") && s.includes(".swiss .lb-ctrl"));
+    expect(found, "the log window's own rule").toBeDefined();
+    const body = (found as [string, string])[1];
+    expect(body).toMatch(/background:\s*color-mix\(in srgb,\s*var\(--ink-band\)/);
+    // color-mix carries the alpha, so a partial mix stays translucent and the pane still blurs.
+    // A full one would be an opaque sheet with a blur behind it that reaches nothing.
+    const pct = /var\(--ink-band\)\s*(\d+)%/.exec(body);
+    expect(pct, "the mix states its share").not.toBeNull();
+    expect(Number((pct as RegExpExecArray)[1])).toBeLessThan(100);
+    expect(body).toContain("backdrop-filter");
+  });
+
+  it("leaves the dashboard's own panels on the plain pane", () => {
+    // .sp-sec is the board's panel. If it ever takes the same mix, the two surfaces stop
+    // saying different things and this rule has quietly become the theme.
+    const panels = rules().filter(
+      ([sel, body]) => /--ink-band\) \d+%/.test(body) && !sel.includes(".lb-frame"),
+    );
+    expect(panels.map(([s]) => s), "only the log window mixes ink into a pane").toEqual([]);
+  });
+});
