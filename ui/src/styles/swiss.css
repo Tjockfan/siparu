@@ -3250,9 +3250,12 @@ body {
   html:not(.pdf-screen) .swiss .lb-row { align-items: stretch; border-bottom: 1px solid #ccc; padding-block: 0; }
   html:not(.pdf-screen) .swiss .lb-row > * { padding-block: 4px; }
   html:not(.pdf-screen) .swiss .lb-cols { border-bottom: 1.5px solid #000; }
+  /* Room on both sides of the rule. The figures sit to the right, so a pad on the left alone
+     put every figure hard against the rule of the lane after it while the rule of its own lane
+     stood 6px off: the same rule looked glued to one number and clear of the next. */
   html:not(.pdf-screen) .swiss .lb-row > :not(:first-child),
   html:not(.pdf-screen) .swiss .lb-cols > :not(:first-child) {
-    border-left: 1px solid #ccc; padding-left: 6px;
+    border-left: 1px solid #ccc; padding-inline: 6px;
   }
   /* The masthead is the page's heading; the app's own bar over it printed the lockup twice
      and a clock that means nothing on paper. Logbook pages only - the voyage record keeps
