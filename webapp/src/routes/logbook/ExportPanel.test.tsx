@@ -25,6 +25,12 @@ function dates(html: string): string[] {
   return [...html.matchAll(/type="date"[^>]*value="([^"]*)"/g)].map((m) => m[1] as string);
 }
 
+/** The View and Save buttons alone: the chips that take no press in the lit format are disabled
+ *  too, and a count over the whole panel would count them. */
+function actions(html: string): string {
+  return /<div class="lbp-act">[\s\S]*$/.exec(html)![0];
+}
+
 describe("the export window", () => {
   it("opens on a week ending today, which is the window nobody has to fill in", () => {
     const [from, to] = dates(render());
@@ -51,13 +57,13 @@ describe("the export window", () => {
     expect(html).toContain("ends before it begins");
     // Both verbs, not just the one that writes a file: viewing it would draw an empty table
     // that a quiet week is indistinguishable from.
-    expect([...html.matchAll(/<button[^>]*disabled/g)]).toHaveLength(2);
+    expect([...actions(html).matchAll(/<button[^>]*disabled/g)]).toHaveLength(2);
   });
 
   it("lets a single day through, which is a window of one day and not an error", () => {
     const html = render({ from: "2026-08-19", to: "2026-08-19" });
     expect(html).not.toContain("ends before it begins");
-    expect([...html.matchAll(/<button[^>]*disabled/g)]).toHaveLength(0);
+    expect([...actions(html).matchAll(/<button[^>]*disabled/g)]).toHaveLength(0);
   });
 });
 
@@ -78,6 +84,20 @@ describe("the figures a window can be exported with", () => {
     expect(html).toContain("Distance");
   });
 
+  /**
+   * The style is a page's; a file has no ink to choose. The group stays on the panel for the
+   * file all the same, quiet, so pressing PDF does not grow the panel and move every group
+   * under the reader's hand.
+   */
+  it("keeps the style group in place for a file, and lets it take no press", () => {
+    const csv = render({ ...base, gran: "1h", format: "csv" });
+    expect(csv).toContain("Style");
+    expect(csv).toContain("a file carries none");
+    expect(csv).toMatch(/<button class="lbp-c on" disabled="">Screen</);
+    const pdf = render({ ...base, gran: "1h", format: "pdf" });
+    expect(pdf).toMatch(/<button class="lbp-c on">Screen</);
+  });
+
   it("does not offer them for minutes, which are samples rather than windows", () => {
     expect(render({ ...base, gran: "1m", format: "csv" })).not.toContain("Figures");
   });
@@ -92,9 +112,10 @@ describe("the figures a window can be exported with", () => {
     const html = render({ ...base, gran: "1h", format: "pdf" });
     expect(html).toContain("Figures");
     expect(html).toContain("Average");
-    // A page is one table: the window's own numbers are columns in a file and have no cell here.
-    expect(html).not.toContain("Distance");
-    expect(html).not.toContain("Samples");
+    // A page is one table: the window's own numbers are columns in a file and have no cell
+    // here. The two chips keep their place so the panel does not rearrange, and take no press.
+    expect(html).toMatch(/<button class="lbp-c" disabled="">Distance</);
+    expect(html).toMatch(/<button class="lbp-c" disabled="">Samples</);
     // Exactly one figure lit. Counted inside the figures block: every other group in this
     // panel lights one of its own, and a count over the whole panel would pass at four.
     const figs = /<div class="lbp-book lbp-figs">[\s\S]*?<\/div><\/div>/.exec(html);
@@ -148,6 +169,6 @@ describe("the figures a window can be exported with", () => {
     const html = render({ ...base, gran: "1h", format: "csv", stats: [] });
     expect(html).toContain("at least one figure");
     // Save is held; View is not, because the screen has its own answer to show.
-    expect([...html.matchAll(/<button[^>]*disabled/g)]).toHaveLength(1);
+    expect([...actions(html).matchAll(/<button[^>]*disabled/g)]).toHaveLength(1);
   });
 });

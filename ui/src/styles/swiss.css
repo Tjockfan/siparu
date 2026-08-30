@@ -1376,6 +1376,11 @@ body {
 }
 .swiss .lbp-c.on { color: var(--text); }
 .swiss .lbp-c.on::before { background: var(--accent); border-color: var(--accent); }
+/* A chip that takes no press in the format that is lit keeps its place and its choice, and
+   goes quiet: the panel does not rearrange itself when the format changes. */
+.swiss .lbp-c:disabled { opacity: 0.4; cursor: default; }
+.swiss .lbp-book.off .lbp-n,
+.swiss .lbp-book.off .lbp-s { opacity: 0.55; }
 .swiss .lbp-act { display: flex; justify-content: flex-end; gap: 8px; }
 .swiss .lbp-act button {
   font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;

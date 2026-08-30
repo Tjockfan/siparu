@@ -209,27 +209,33 @@ export default function ExportPanel({
             ))}
           </div>
         </div>
-        {format === "pdf" && (
-          <div className="lbp-book">
-            <div className="lbp-h">
-              <span className="lbp-n">Style</span>
-              <span className="lbp-s">
-                {style === "screen" ? "the app's own dark ink" : "white, for a printer"}
-              </span>
-            </div>
-            <div className="lbp-chips">
-              {STYLES.map((s) => (
-                <button
-                  key={s.v}
-                  className={`lbp-c${style === s.v ? " on" : ""}`}
-                  onClick={() => setStyle(s.v)}
-                >
-                  {s.name}
-                </button>
-              ))}
-            </div>
+        {/* Always on the panel, live only for a page. Every group keeps its place whichever
+            format is lit: a panel that grew a group and moved the rest when PDF was pressed
+            read as a different panel, and the reader lost the chip he was about to press. */}
+        <div className={`lbp-book${oneFigure ? "" : " off"}`}>
+          <div className="lbp-h">
+            <span className="lbp-n">Style</span>
+            <span className="lbp-s">
+              {!oneFigure
+                ? "the page's ink; a file carries none"
+                : style === "screen"
+                  ? "the app's own dark ink"
+                  : "white, for a printer"}
+            </span>
           </div>
-        )}
+          <div className="lbp-chips">
+            {STYLES.map((s) => (
+              <button
+                key={s.v}
+                className={`lbp-c${style === s.v ? " on" : ""}`}
+                disabled={!oneFigure}
+                onClick={() => setStyle(s.v)}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       {summarised && (
         <div className="lbp-book lbp-figs">
@@ -252,23 +258,22 @@ export default function ExportPanel({
               </button>
             ))}
             {/* A window's own numbers, not a reading of it. They are columns in a file; on the
-                page the masthead and the band already say what window this is. */}
-            {!oneFigure && (
-              <>
-                <button
-                  className={`lbp-c${distance ? " on" : ""}`}
-                  onClick={() => setDistance(!distance)}
-                >
-                  Distance
-                </button>
-                <button
-                  className={`lbp-c${samples ? " on" : ""}`}
-                  onClick={() => setSamples(!samples)}
-                >
-                  Samples
-                </button>
-              </>
-            )}
+                page the masthead and the band already say what window this is, so for a page
+                the two stand where they are and take no press. */}
+            <button
+              className={`lbp-c${distance ? " on" : ""}`}
+              disabled={oneFigure}
+              onClick={() => setDistance(!distance)}
+            >
+              Distance
+            </button>
+            <button
+              className={`lbp-c${samples ? " on" : ""}`}
+              disabled={oneFigure}
+              onClick={() => setSamples(!samples)}
+            >
+              Samples
+            </button>
           </div>
         </div>
       )}
