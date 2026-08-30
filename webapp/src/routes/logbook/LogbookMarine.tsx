@@ -1,7 +1,7 @@
 /* Logbook - snapshot history (Swiss redesign).
  * Brutalist data table: Live|Day + granularity, UTC·SOG·HDG·TWS·BARO·DEP rows.
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api, type Snapshot } from "../../lib/api";
 import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
 import { bucketHours, bucketRow, type BucketGran } from "../../lib/buckets";
@@ -77,6 +77,13 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   const scene = useMemo(() => ({ book, mode, gran, family }), [book, mode, gran, family]);
   const [shown, leaving] = useCrossFade(scene, FADE_MS);
   const { book: shownBook, mode: shownMode, gran: shownGran, family: shownFamily } = shown;
+  // The window control - the interval chips in Live, the date group in Day - names the window
+  // the table is drawing, so it belongs to the table and leaves with it. Swapped on the frame
+  // the mode is pressed it was rebuilt underneath a table that was still fading, which is one
+  // half of what read as a flicker in that row.
+  // On a change of MODE alone, not on `leaving`: that is also true when the interval or the
+  // family changed, and fading the chips then would take away the one that had just lit.
+  const modeLeaving = mode !== shownMode;
 
   // Wind unit: knots <-> Beaufort. Toggles on header tap, the selection persists.
   const [windUnit, setWindUnit] = useState<WindUnit>(
@@ -89,6 +96,18 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
       return n;
     });
 
+  // The families the boat has, held across a window that names none.
+  //
+  // They are read off the paths her rows carry, so a window holding no rows names no families
+  // and the tabs go - and a window holding no rows is an ordinary one: Day opens on today, and
+  // shortly after a UTC midnight today is empty until the hour that just closed has been rolled
+  // up. A boat does not stop having generators at one in the morning. The control left the bar,
+  // and the bar is centred, so everything else in it moved to close the gap - measured at 38px,
+  // which is the shift this bar was squared up to stop.
+  // For the tabs alone. What the table is made of still comes from the window's own rows: an
+  // empty day draws an empty day, under the tabs of the boat that is keeping the log.
+  const groupsHold = useRef<UnitGroup[]>([]);
+
   // Which columns are drawn, and the panel that changes them. Held here rather than in each
   // view so switching Live/Day does not reopen the picker or forget the choice. Per book, and
   // re-read when the book changes: the two pages are two decisions. Keyed to the book on
@@ -98,6 +117,8 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   if (pageBook !== shownBook) {
     setPageBook(shownBook);
     setSelection(loadSelection(shownBook));
+    // The other book's families are not this one's, and the bridge keeps none at all.
+    groupsHold.current = [];
   }
   const [picking, setPicking] = useState(false);
   const applySelection = (sel: ColumnSelection) => {
@@ -250,7 +271,9 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     setFamily,
     shownFamily,
     leaving,
+    modeLeaving,
     lanesHold,
+    groupsHold,
     windUnit,
     toggleWind,
     selection,
@@ -303,8 +326,12 @@ interface ViewProps {
   shownFamily: string | null;
   /** The old table is on its way out; whatever arrives next arrives under the fade. */
   leaving: boolean;
+  /** The mode itself is changing, so the window control leaves with the table it names. */
+  modeLeaving: boolean;
   /** The lane count last drawn, kept across views so an empty beat holds its room. */
   lanesHold: { current: number | null };
+  /** The boat.s families, held across a window that names none - see where it is declared. */
+  groupsHold: { current: UnitGroup[] };
   windUnit: WindUnit;
   toggleWind: () => void;
   selection: ColumnSelection;
@@ -338,6 +365,24 @@ function ModeSeg({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) 
       <button className={mode === "day" ? "on" : ""} onClick={() => setMode("day")}>Day</button>
     </div>
   );
+}
+
+/**
+ * The one place in the bar that names the window, whichever mode names it.
+ *
+ * Live names it with interval chips, Day with a date and its arrows, Range with the two dates
+ * it was given. Left to their own widths those three are 134px, 210px and whatever a label
+ * comes to, and a centred bar re-centres on every one of them: measured, the mode segment slid
+ * 38px left and the two buttons on the right slid 38px the other way each time the reader
+ * pressed Day. A slot with a floor under its width holds all three, so nothing beside it moves
+ * and the reader's next press is where his eye left it. The floor is a minimum, not a size -
+ * a long range label still grows past it, and on a phone the slot gives way rather than
+ * pushing the bar wider than the screen.
+ *
+ * It fades with the table when the mode changes, for the reason in `modeLeaving`.
+ */
+function WindowSlot({ leaving, children }: { leaving: boolean; children: ReactNode }) {
+  return <div className={`lb-win${leaving ? " leaving" : ""}`}>{children}</div>;
 }
 
 /**
@@ -513,13 +558,20 @@ function tableShape(
   width: number | null,
   family: string | null,
   hold: { current: number | null },
+  /** The boat's families, kept across a window that names none. Read the note where it is
+   *  declared: it dresses the tabs only, never the table. */
+  familyHold: { current: UnitGroup[] },
   /** False in the range view: a closed window is a document, and a document carries every
    *  column the reader chose - the lanes shrink instead, the way the CSV already refuses to
    *  drop what the screen has no room for. */
   fit = true,
 ): TableShape {
-  const groups = book === "engine" ? unitGroups(snaps) : [];
-  const chosen = groups.find((g) => g.tab === family) ?? groups[0];
+  const named = book === "engine" ? unitGroups(snaps) : [];
+  if (named.length > 0) familyHold.current = named;
+  // The tabs the bar offers: this window's families, or the last window's when this one names
+  // none. Everything below reads `named`, so the table is still only ever this window's.
+  const groups = named.length > 0 ? named : familyHold.current;
+  const chosen = named.find((g) => g.tab === family) ?? named[0];
   // Turning a family on its side is what buys a wide table back, and a family of one machine
   // has no width to buy: her twelve gauges fit as twelve columns, headed by the readings alone
   // (one machine has no initial worth repeating down the header). Rows there would print her
@@ -676,7 +728,9 @@ function LiveView({
   setFamily,
   shownFamily,
   leaving,
+  modeLeaving,
   lanesHold,
+  groupsHold,
   windUnit,
   toggleWind,
   selection,
@@ -693,25 +747,29 @@ function LiveView({
 }: ViewProps) {
   const { snaps, err, busy, hasMore, loadMore } = useLogbookLive(shownGran);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily, lanesHold,
+    snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold,
   );
   return (
     <>
       <div className={`lb-ctrl${cls}`} style={block}>
         <ModeSeg mode={mode} setMode={setMode} />
-        <div className="seg">
-          {GRANS.map((g) => (
-            <button key={g} className={gran === g ? "on" : ""} onClick={() => setGran(g)}>{g}</button>
-          ))}
-        </div>
+        <WindowSlot leaving={modeLeaving}>
+          <div className="seg">
+            {GRANS.map((g) => (
+              <button key={g} className={gran === g ? "on" : ""} onClick={() => setGran(g)}>{g}</button>
+            ))}
+          </div>
+        </WindowSlot>
         <FamilySeg groups={groups} family={family} setFamily={setFamily} />
-        <ColumnsButton
-          shown={btn.shown}
-          chosen={btn.chosen}
-          open={picking}
-          onOpen={() => setPicking(!picking)}
-        />
-        <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
+        <div className="lb-acts">
+          <ColumnsButton
+            shown={btn.shown}
+            chosen={btn.chosen}
+            open={picking}
+            onOpen={() => setPicking(!picking)}
+          />
+          <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
+        </div>
       </div>
       <Reveal open={picking} style={block} cls={cls}>
         <ColumnPicker
@@ -765,7 +823,9 @@ function DayView({
   setFamily,
   shownFamily,
   leaving,
+  modeLeaving,
   lanesHold,
+  groupsHold,
   windUnit,
   toggleWind,
   selection,
@@ -782,7 +842,7 @@ function DayView({
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    snaps, book, windUnit, selection, width, shownFamily, lanesHold,
+    snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold,
   );
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
@@ -796,27 +856,30 @@ function DayView({
     <>
       <div className={`lb-ctrl${cls}`} style={block}>
         <ModeSeg mode={mode} setMode={setMode} />
-        <div className="lb-date">
-          <button onClick={prevDay} aria-label="Previous day">‹</button>
-          <input
-            type="date"
-            className="dt"
-            value={dateStr}
-            max={dateToInput()}
-            onChange={(e) => setDateStr(e.target.value)}
-            style={{ border: "1.5px solid var(--rule)", background: "var(--cell)", color: "var(--text)", fontFamily: "var(--sp-font)", fontSize: 12, padding: "5px 7px" }}
-          />
-          <button onClick={nextDay} disabled={isToday} aria-label="Next day">›</button>
-          <button onClick={goToday} disabled={isToday}>Now</button>
-        </div>
+        <WindowSlot leaving={modeLeaving}>
+          <div className="lb-date">
+            <button onClick={prevDay} aria-label="Previous day">‹</button>
+            <input
+              type="date"
+              className="dt"
+              value={dateStr}
+              max={dateToInput()}
+              onChange={(e) => setDateStr(e.target.value)}
+            />
+            <button onClick={nextDay} disabled={isToday} aria-label="Next day">›</button>
+            <button onClick={goToday} disabled={isToday}>Now</button>
+          </div>
+        </WindowSlot>
         <FamilySeg groups={groups} family={family} setFamily={setFamily} />
-        <ColumnsButton
-          shown={btn.shown}
-          chosen={btn.chosen}
-          open={picking}
-          onOpen={() => setPicking(!picking)}
-        />
-        <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
+        <div className="lb-acts">
+          <ColumnsButton
+            shown={btn.shown}
+            chosen={btn.chosen}
+            open={picking}
+            onOpen={() => setPicking(!picking)}
+          />
+          <ExportButton open={exporting} onOpen={() => setExporting(!exporting)} />
+        </div>
       </div>
       <Reveal open={picking} style={block} cls={cls}>
         <ColumnPicker
@@ -952,7 +1015,9 @@ function RangeView({
   setFamily,
   shownFamily,
   leaving,
+  modeLeaving,
   lanesHold,
+  groupsHold,
   windUnit,
   toggleWind,
   selection,
@@ -986,7 +1051,7 @@ function RangeView({
   // not move, and it is the page that goes to paper.
   const shown = useMemo(() => [...snaps].sort((a, b) => a.ts - b.ts), [snaps]);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    shown, book, windUnit, selection, width, shownFamily, lanesHold, false,
+    shown, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, false,
   );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
@@ -1010,16 +1075,20 @@ function RangeView({
     <>
       <div className={`lb-ctrl${cls}`} style={block}>
         <ModeSeg mode="range" setMode={setMode} />
-        <button className="lb-colbtn on" onClick={() => setExporting(!exporting)}>
-          {label} · <b>{interval}</b>
-        </button>
+        <WindowSlot leaving={modeLeaving}>
+          <button className="lb-colbtn on" onClick={() => setExporting(!exporting)}>
+            {label} · <b>{interval}</b>
+          </button>
+        </WindowSlot>
         <FamilySeg groups={groups} family={family} setFamily={setFamily} />
-        <ColumnsButton
-          shown={btn.shown}
-          chosen={btn.chosen}
-          open={picking}
-          onOpen={() => setPicking(!picking)}
-        />
+        <div className="lb-acts">
+          <ColumnsButton
+            shown={btn.shown}
+            chosen={btn.chosen}
+            open={picking}
+            onOpen={() => setPicking(!picking)}
+          />
+        </div>
       </div>
       <Reveal open={picking} style={block} cls={cls}>
         <ColumnPicker

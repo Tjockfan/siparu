@@ -1138,16 +1138,62 @@ body {
 .swiss .lb-ctrl {
   display: flex; align-items: center; justify-content: center; gap: 9px; padding: 11px 16px;
   flex-wrap: wrap;
+  /* One type and one height for everything standing in this bar. Three sizes used to share it -
+     the chips at 9.5px, the date field at 12px and its arrows at 13px - which is three things
+     the eye has to accept as one row of controls. The bar is also read at arm's length from a
+     chart table rather than at a desk, and 9.5px is a caption, not a control. */
+  --lb-ctrl-fs: 13px;
+  --lb-ctrl-h: 32px;
 }
-.swiss .seg { display: flex; border: 1.5px solid var(--rule); }
+/* The group carries the height, not its buttons: a segment's own border sits outside them, and
+   buttons standing the bar's height made the group two pixels taller than the single buttons
+   beside it. */
+.swiss .seg {
+  display: flex; border: 1.5px solid var(--rule);
+  height: var(--lb-ctrl-h, 32px); box-sizing: border-box;
+}
 .swiss .seg button {
-  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase; padding: 6px 9px; background: var(--cell); color: var(--text);
+  font-family: var(--sp-font); font-size: var(--lb-ctrl-fs); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; background: var(--cell); color: var(--text);
   border: none; border-right: 1.5px solid var(--rule); cursor: pointer;
+  /* Height rather than padding: every control in the bar has to stand the same height whichever
+     mode drew it, or the bar changes height under the table and the table drops with it
+     (measured at 48px in Live against 52px in Day, and the table 4px with it). */
+  height: 100%; padding: 0 12px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .swiss .seg button:last-child { border-right: none; }
 .swiss .seg button.on { background: var(--text); color: var(--cell); }
 .swiss .seg button:disabled { opacity: 0.4; cursor: default; }
+/* The window control's berth in the bar (see WindowSlot in LogbookMarine). The floor is the
+   widest the three modes come to, measured; below it the bar re-centres on whichever mode is
+   up and everything either side of the slot slides. `min()` is what lets a phone out of it:
+   the floor is wider than the room a 390px screen has beside the mode segment, and a hard
+   min-width there would push the bar off the edge instead of wrapping it. */
+.swiss .lb-win {
+  display: flex; align-items: center; justify-content: center;
+  min-width: min(290px, 100%);
+  /* It leaves with the table it names, on the table's own clock. */
+  transition: opacity var(--lb-fade-in) cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* The bar's other berth: the buttons that open a panel.
+   What the columns button says is not a constant - "Columns · 12" on a wide screen, "Columns ·
+   5 of 11" on a phone that can only draw five of them, "Columns · 0" over a window with no rows
+   in it - and it came to 40px more on a phone than it did over an empty day. In a centred bar
+   that is the whole row shuffling 20px each way. Berthed and closed up to the end, the bar's
+   outer edge holds still and what moves is the dead glass in front of the pair. */
+.swiss .lb-acts {
+  display: flex; align-items: center; justify-content: flex-end; gap: 9px;
+  min-width: min(290px, 100%);
+}
+.swiss .lb-win.leaving {
+  opacity: 0;
+  transition-duration: var(--lb-fade-out);
+  transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .swiss .lb-win { transition-duration: 1ms; }
+}
 /* ============================================================
    COLUMN PICKER  (.lb-pick) - the two books
    ============================================================
@@ -1156,11 +1202,21 @@ body {
    fight nobody wins. Nothing in here reaches the table until the button at the foot is
    pressed. */
 .swiss .lb-colbtn {
-  font-family: var(--sp-font); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase; padding: 6px 9px; background: var(--cell); color: var(--text);
+  font-family: var(--sp-font); font-size: var(--lb-ctrl-fs, 13px); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; background: var(--cell); color: var(--text);
   border: 1.5px solid var(--rule); cursor: pointer;
+  height: var(--lb-ctrl-h, 32px); padding: 0 12px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.swiss .lb-colbtn b { color: var(--accent); font-weight: 700; }
+/* The count keeps a two-figure berth whether it is holding one figure or two. A boat's column
+   count runs from nothing to the high teens over the course of a day's reading, and the button
+   grew and shrank 8.5px under it - which, in a centred bar, is everything to its left and right
+   moving 4px each time the number crossed ten. */
+.swiss .lb-colbtn b {
+  color: var(--accent); font-weight: 700;
+  display: inline-block; min-width: 2ch; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .swiss .lb-colbtn.on { background: var(--text); color: var(--cell); }
 .swiss .lb-colbtn.on b { color: var(--cell); }
 /* A panel opens the way a drawer slides out: the sheet is uncovered from its top edge down,
@@ -1352,12 +1408,20 @@ body {
  * reader switched to Day - the only bar on the page that was not centred. */
 .swiss .lb-date { display: flex; align-items: center; gap: 6px; }
 .swiss .lb-date .dt {
-  font-family: var(--sp-font); font-size: 12px; font-weight: 600; color: var(--text);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--sp-font); font-size: var(--lb-ctrl-fs, 13px); font-weight: 700;
+  letter-spacing: 0.06em; color: var(--text); font-variant-numeric: tabular-nums;
+  height: var(--lb-ctrl-h, 32px); padding: 0 9px; box-sizing: border-box;
+  border: 1.5px solid var(--rule); background: var(--cell);
 }
+/* The arrows are square and the word is not. Both were drawn as a 28px box, which fits "‹" and
+   does not fit "Now": measured, 32px of text in a 28px box, spilling its own border. A floor
+   under the width keeps the arrows square and lets the word take the room it needs. */
 .swiss .lb-date button {
-  width: 28px; height: 28px; border: 1.5px solid var(--rule); background: var(--cell);
-  color: var(--text); cursor: pointer; display: grid; place-items: center; font-size: 13px;
+  min-width: var(--lb-ctrl-h, 32px); height: var(--lb-ctrl-h, 32px); padding: 0 9px;
+  border: 1.5px solid var(--rule); background: var(--cell); color: var(--text); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--sp-font); font-size: var(--lb-ctrl-fs, 13px); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
 }
 .swiss .lb-date button:disabled { opacity: 0.4; cursor: default; }
 /* The track count is the boat's: a bare boat reporting a speed and a heading gets two columns,

@@ -271,3 +271,96 @@ describe("the measure the voyage record is set to", () => {
     expect(rules().some(([s]) => s === ".swiss .vy > *")).toBe(true);
   });
 });
+
+/**
+ * The bar of controls over the logbook table, which has to be the same bar whichever mode drew
+ * it.
+ *
+ * Three things were measured wrong there, and each of them is a rule below. The bar is centred,
+ * so its contents decide where its contents sit: the interval chips come to 179px and the date
+ * group to 266px, and swapping one for the other slid the mode segment 38px left, the two
+ * buttons on its right 38px the other way, and dropped the table 4px with the bar's own height.
+ * "Now" was drawn in the 28px square meant for "<" and spilled its own border. And the bar
+ * carried three type sizes - the chips at 9.5px, the date field at 12px, its arrows at 13px -
+ * which is three things the eye has to take as one row of controls.
+ *
+ * What is pinned here is that the answers stay written once. The geometry itself is measured in
+ * a browser (dev/verify/logbook_bar.py), because a stylesheet read as text cannot say where a
+ * button landed.
+ */
+describe("the logbook's bar of controls", () => {
+  /** The rules that dress something standing in that bar. */
+  const CONTROLS = [
+    ".swiss .seg button",
+    ".swiss .lb-colbtn",
+    ".swiss .lb-date button",
+    ".swiss .lb-date .dt",
+  ];
+  const bodyOf = (selector: string): string => {
+    const found = rules().find(([s]) => s === selector);
+    expect(found, selector).toBeDefined();
+    return (found as [string, string])[1];
+  };
+
+  it("declares the bar's type and height once, on the bar", () => {
+    const [fsSelector] = ruleDeclaring("--lb-ctrl-fs");
+    const [hSelector] = ruleDeclaring("--lb-ctrl-h");
+    expect(fsSelector).toBe(".swiss .lb-ctrl");
+    expect(hSelector).toBe(".swiss .lb-ctrl");
+  });
+
+  it("sets no control's type or height in figures of its own", () => {
+    for (const selector of CONTROLS) {
+      const body = bodyOf(selector);
+      expect(body, `${selector} font-size`).not.toMatch(/font-size:\s*[\d.]+px/);
+      expect(body, `${selector} height`).not.toMatch(/[;{\s]height:\s*[\d.]+px/);
+      expect(body, `${selector} reads the bar's type`).toContain("--lb-ctrl-fs");
+    }
+  });
+
+  /** The group carries the bar's height so that its own border does not stand outside it. */
+  it("gives the segmented groups the height and their buttons the whole of it", () => {
+    expect(bodyOf(".swiss .seg")).toContain("height: var(--lb-ctrl-h, 32px)");
+    expect(bodyOf(".swiss .seg")).toContain("box-sizing: border-box");
+    expect(bodyOf(".swiss .seg button")).toContain("height: 100%");
+  });
+
+  /** A floor, never a fixed width: the arrows are square and the word is not. */
+  it("lets the date group's word take the room it needs", () => {
+    const body = bodyOf(".swiss .lb-date button");
+    expect(body).toContain("min-width: var(--lb-ctrl-h, 32px)");
+    expect(body, "a fixed width is what clipped Now").not.toMatch(/[;{\s]width:\s*[\d.]+px/);
+  });
+
+  /**
+   * The window slot's floor, which is what keeps the bar from re-centring on whichever mode is
+   * up. It is a floor and not a width - a long range label still grows past it - and it gives
+   * way at 100%, because on a phone the floor is wider than the room beside the mode segment
+   * and a hard minimum there would push the bar off the edge instead of wrapping it.
+   */
+  it("holds the window slot to a floor that gives way on a narrow screen", () => {
+    const body = bodyOf(".swiss .lb-win");
+    expect(body).toMatch(/min-width:\s*min\([\d.]+px,\s*100%\)/);
+    expect(body, "it leaves on the table's clock").toContain("var(--lb-fade-in)");
+    expect(bodyOf(".swiss .lb-win.leaving")).toContain("var(--lb-fade-out)");
+  });
+
+  /**
+   * The other berth, and the reason it is one. What the columns button says depends on the
+   * screen it is read on and on what the window holds - "Columns · 12", "Columns · 5 of 11",
+   * "Columns · 0" - so the pair it belongs to is given room and closed up to the bar's edge.
+   * Without that the row shuffled 20px each way whenever the sentence changed length.
+   */
+  it("berths the buttons that open a panel, closed up to the bar's edge", () => {
+    const body = bodyOf(".swiss .lb-acts");
+    expect(body).toMatch(/min-width:\s*min\([\d.]+px,\s*100%\)/);
+    expect(body).toContain("justify-content: flex-end");
+  });
+
+  /** Inside the button, the same idea one size down: a figure keeps its room across ten. */
+  it("gives the count a berth of its own", () => {
+    const body = bodyOf(".swiss .lb-colbtn b");
+    expect(body).toContain("min-width: 2ch");
+    expect(body).toContain("tabular-nums");
+  });
+});
