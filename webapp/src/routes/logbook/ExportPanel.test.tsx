@@ -53,7 +53,7 @@ describe("the export window", () => {
   });
 
   it("refuses a window that ends before it begins, and says so", () => {
-    const html = render({ from: "2026-08-26", to: "2026-08-19" });
+    const html = render({ from: "2026-08-26", to: "2026-08-19", format: "pdf" });
     expect(html).toContain("ends before it begins");
     // Both verbs, not just the one that writes a file: viewing it would draw an empty table
     // that a quiet week is indistinguishable from.
@@ -61,9 +61,19 @@ describe("the export window", () => {
   });
 
   it("lets a single day through, which is a window of one day and not an error", () => {
-    const html = render({ from: "2026-08-19", to: "2026-08-19" });
+    const html = render({ from: "2026-08-19", to: "2026-08-19", format: "pdf" });
     expect(html).not.toContain("ends before it begins");
     expect([...actions(html).matchAll(/<button[^>]*disabled/g)]).toHaveLength(0);
+  });
+
+  /**
+   * A file can carry several figures side by side and the screen cannot, so View is the page's
+   * verb: offered with PDF, where the one figure ticked is the one drawn, and not with CSV,
+   * where it drew the first of several without a word about which.
+   */
+  it("offers View with the page and not with the file", () => {
+    expect(actions(render({ format: "pdf" }))).toContain(">View<");
+    expect(actions(render({ format: "csv" }))).not.toContain(">View<");
   });
 });
 
@@ -168,7 +178,7 @@ describe("the figures a window can be exported with", () => {
   it("refuses to write a file with nothing in the rows", () => {
     const html = render({ ...base, gran: "1h", format: "csv", stats: [] });
     expect(html).toContain("at least one figure");
-    // Save is held; View is not, because the screen has its own answer to show.
+    // Save is held. (View is not on a file's panel at all.)
     expect([...actions(html).matchAll(/<button[^>]*disabled/g)]).toHaveLength(1);
   });
 });

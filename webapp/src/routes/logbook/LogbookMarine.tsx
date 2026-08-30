@@ -718,27 +718,10 @@ function laneClass(c: LogColumn): string {
  * "Last" needs no word: the reading that stood when the window closed is what a logbook page
  * has always held, and naming it would suggest the others were the ordinary case.
  */
-export function windowInterval(gran: Granularity, figure: Stat, others = 0): string {
-  // "Last" goes unnamed only when it is the one figure asked for. A reader who ticked several
-  // and is shown one has to be told which one, and "Last" is then as much a name as the rest.
-  return figure === "last" && others === 0
+export function windowInterval(gran: Granularity, figure: Stat): string {
+  return figure === "last"
     ? INTERVAL_NAME[gran]
     : `${INTERVAL_NAME[gran]} · ${STAT_LABEL[figure]}`;
-}
-
-/**
- * What the screen is NOT showing when several figures were ticked.
- *
- * The file takes as many figures as the reader ticks, a block of columns each; the screen is one
- * table and holds one. Pressing View with four ticked drew the first of them and said nothing,
- * and a page of hourly figures does not say on its face whether they are means or extremes.
- */
-export function figuresNote(stats: Stat[]): string | null {
-  if (stats.length < 2) return null;
-  const shown = STAT_LABEL[stats[0]!];
-  const names = stats.map((s) => STAT_LABEL[s]);
-  const all = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `The screen holds one figure, and this is ${shown}. The file will carry ${all}, a column each.`;
 }
 
 /**
@@ -813,7 +796,7 @@ function ColumnsButton({
 function ExportButton({ open, onOpen }: { open: boolean; onOpen: () => void }) {
   return (
     <button className={`lb-colbtn${open ? " on" : ""}`} onClick={onOpen}>
-      Export · <b>{"\u2026"}</b>
+      View · <b>{"\u2026"}</b>
     </button>
   );
 }
@@ -1259,7 +1242,7 @@ function RangeView({
   useEffect(() => () => document.documentElement.classList.remove("pdf-screen"), []);
 
   const label = windowLabel(r.from, r.to);
-  const interval = windowInterval(r.gran, figure, r.stats.length - 1);
+  const interval = windowInterval(r.gran, figure);
   // Which of the reader's columns the figure cannot carry, asked of the rows rather than kept
   // as a list: the same window read both ways, and the difference is the answer. See the note
   // over `plain` in useLogbookData, and `summaryNote` for why the page has to say it.
@@ -1316,7 +1299,6 @@ function RangeView({
         </div>
         <Cols cols={drawn} group={group} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
-        {figuresNote(r.stats) && <div className="lb-note">{figuresNote(r.stats)}</div>}
         {borrowed.length > 0 && (
           <div className="lb-note">{summaryNote(figure, borrowed, snaps)}</div>
         )}

@@ -8,8 +8,11 @@
  *
  * Two verbs, because they are two different intentions and a reader knows which one he has.
  * View puts the window on the screen he is already looking at, where he can read it, scroll it
- * and change his mind about the columns. Save writes it out. Neither is a preview of the other:
- * what View draws and what Save writes are the same rows, drawn by the same table.
+ * and change his mind about the columns. Save writes it out. For a page the two are the same
+ * rows drawn by the same table, so View is offered with the page; a file can carry several
+ * figures side by side and the screen cannot, so View is not offered with the file - the screen
+ * for a file is the page, one format button away, and offering it here drew one figure of the
+ * several ticked without a word about which.
  *
  * The format decides what Save means, and the difference is worth stating plainly because it is
  * visible to the reader. CSV is a file, made here and handed to the browser. PDF is the page
@@ -281,9 +284,11 @@ export default function ExportPanel({
       {empty && <div className="lbe-warn">Choose at least one figure to put in the file.</div>}
       <div className="lbp-act">
         <button onClick={onCancel}>Cancel</button>
-        <button disabled={backwards} onClick={() => onView(req)}>
-          View
-        </button>
+        {oneFigure && (
+          <button disabled={backwards} onClick={() => onView(req)}>
+            View
+          </button>
+        )}
         <button className="lbp-go" disabled={backwards || empty} onClick={() => onSave(req)}>
           Save {format.toUpperCase()}
         </button>
