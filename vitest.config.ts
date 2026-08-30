@@ -19,8 +19,8 @@ export default defineConfig({
       // several screens lives in components/, and the glob above stops at routes/. This line
       // was added the day one such test was written and silently never ran - the runner said
       // "no test files found", which is a sentence easy to read as "nothing to do here".
-      'webapp/src/components/**/*.test.tsx',
-      'ui/src/**/*.test.ts'
+      'webapp/src/components/**/*.test.{ts,tsx}',
+      'ui/src/**/*.test.{ts,tsx}'
     ],
     // Fixture-backed IO tests run slowly on constrained CI runners (Windows fs,
     // armv7 under QEMU), so the ceiling is generous; local runs are unaffected.
