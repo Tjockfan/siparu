@@ -903,7 +903,7 @@ function DayView({
         <ModeSeg mode={mode} setMode={setMode} />
         <WindowSlot leaving={modeLeaving}>
           <div className="lb-date">
-            <button onClick={prevDay} aria-label="Previous day">‹</button>
+            <button className="lb-step" onClick={prevDay} aria-label="Previous day">‹</button>
             <input
               type="date"
               className="dt"
@@ -911,7 +911,7 @@ function DayView({
               max={dateToInput()}
               onChange={(e) => setDateStr(e.target.value)}
             />
-            <button onClick={nextDay} disabled={isToday} aria-label="Next day">›</button>
+            <button className="lb-step" onClick={nextDay} disabled={isToday} aria-label="Next day">›</button>
             <button onClick={goToday} disabled={isToday}>Now</button>
           </div>
         </WindowSlot>

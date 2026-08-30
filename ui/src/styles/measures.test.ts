@@ -305,11 +305,36 @@ describe("the logbook's bar of controls", () => {
   const allOf = (selector: string): string[] =>
     rules().filter(([s]) => s === selector).map(([, body]) => body);
 
-  it("declares the bar's type and height once, on the bar", () => {
-    const [fsSelector] = ruleDeclaring("--lb-ctrl-fs");
-    const [hSelector] = ruleDeclaring("--lb-ctrl-h");
-    expect(fsSelector).toBe(".swiss .lb-ctrl");
-    expect(hSelector).toBe(".swiss .lb-ctrl");
+  /**
+   * On the bar, and only ever on the bar. A phone steps all three down a size, which is a
+   * second declaration of each - but of the row's own figures, not of any one control's. The
+   * moment a control starts carrying its own, the row stops being one row.
+   */
+  it("declares the bar's type, height and inset on the bar, wherever it declares them", () => {
+    for (const token of ["--lb-ctrl-fs", "--lb-ctrl-h", "--lb-ctrl-pad"]) {
+      const where = rules()
+        .filter(([, body]) => new RegExp(`(^|[;{\\s])${token}\\s*:`).test(body))
+        .map(([sel]) => sel);
+      expect(where.length, `${token} is declared somewhere`).toBeGreaterThan(0);
+      expect(new Set(where), token).toEqual(new Set([".swiss .lb-ctrl"]));
+    }
+  });
+
+  /**
+   * What a phone does differently, and the shape of it: it steps the row's figures, and it
+   * takes away one control. Measured, the type step alone is worth six pixels of bar - the
+   * height is set by how many rows the group wraps into, and the date group is what decides
+   * that. Without the two day arrows it fits beside the mode segment and a whole row goes:
+   * 138px to 93 on the bridge book, 179 to 132 on the engineer's. Neither does it alone.
+   */
+  it("steps the row down on a phone, and drops the day arrows there", () => {
+    const stepped = rules().filter(
+      ([sel, body]) => sel === ".swiss .lb-ctrl" && /--lb-ctrl-fs/.test(body),
+    );
+    expect(stepped.length, "a base size and a phone's").toBe(2);
+    const sizes = stepped.map(([, b]) => Number(/--lb-ctrl-fs:\s*([\d.]+)px/.exec(b)?.[1]));
+    expect(sizes[1], "the phone's is the smaller").toBeLessThan(sizes[0] as number);
+    expect(bodyOf(".swiss .lb-date .lb-step")).toContain("display: none");
   });
 
   it("sets no control's type, height or inset in figures of its own", () => {
