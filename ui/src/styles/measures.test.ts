@@ -474,3 +474,24 @@ describe("the barometer cell's layout", () => {
     expect(body, "a ceiling here undoes the width the cell just gave it").not.toMatch(/max-width/);
   });
 });
+
+/**
+ * The two cards at the logbook door.
+ *
+ * They are stretched to a common height and stand side by side, so the eye reads across them.
+ * What they hold is two sentences of different lengths - the deck book's runs to three lines,
+ * the engine book's to two - and the verb under them was spaced off the sentence with a fixed
+ * margin, which put the two verbs 21.6px apart. The one thing both cards say in the same words
+ * was the one thing out of line. The sheet's own comment said the verb was "kept to the foot of
+ * the card"; a comment that states a condition is a test, and this is it.
+ */
+describe("the logbook door's cards", () => {
+  it("keeps the verb at the foot, so both cards say it at the same height", () => {
+    const found = rules().find(([s]) => s === ".swiss .lbd-go");
+    expect(found, ".swiss .lbd-go").toBeDefined();
+    const body = (found as [string, string])[1];
+    expect(body, "a figure here follows the sentence above it, not the card").toMatch(
+      /margin-top:\s*auto/,
+    );
+  });
+});

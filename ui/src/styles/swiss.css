@@ -1727,9 +1727,16 @@ body {
   font-family: var(--sp-font); font-size: 13.5px; line-height: 1.6; color: var(--muted);
   max-width: 34ch;
 }
-/* The verb, kept to the foot of the card. The whole card is the link; this says so. */
+/* The verb, kept to the foot of the card. The whole card is the link; this says so.
+ * `auto` and not a figure: the cards are stretched to a common height and stand side by side,
+ * but what they hold is two sentences of different lengths, so a fixed margin put the two verbs
+ * at two heights - measured 21.6px apart, the deck book's blurb running to three lines and the
+ * engine book's to two. The eye reads across the pair, and the one thing both cards say in the
+ * same words is the one thing that was not in line. The spare depth now falls above the verb
+ * rather than below it. */
 .swiss .lbd-go {
-  margin-top: 10px;
+  margin-top: auto;
+  padding-top: 10px;
   display: inline-flex; align-items: center; gap: 7px;
   font-family: var(--sp-font); font-size: 10px; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
