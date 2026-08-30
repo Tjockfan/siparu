@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api, type Snapshot } from "../../lib/api";
 import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
-import { bucketHours, bucketRow, type BucketGran } from "../../lib/buckets";
+import { bucketHours, bucketRow, STAT_LABEL, type BucketGran, type Stat } from "../../lib/buckets";
 import { unitCell, unitGroups, type UnitGroup } from "./unitRows";
 import { useCrossFade } from "./useCrossFade";
 import { dateInputToMs, dateToInput } from "../../lib/format";
@@ -482,6 +482,37 @@ function minutesNote(minutesFrom: number | null, r: ExportRequest, snaps: Snapsh
  * boat has been logging all along. "Nothing was logged between these dates" is a statement
  * about the boat, and saying it there would be a lie the reader has no way to catch.
  */
+/**
+ * What a summary page is NOT showing, said on the page itself.
+ *
+ * A figure narrows the table without being asked to. There is no mean of a heading and none of
+ * "motoring", so an average page simply has no COG, HDG or AWA column - and a reader who chose
+ * those columns watches three of them go, sees his count drop from eleven to eight, and opens
+ * a picker that now offers eight. Three surfaces telling him his selection shrank, and until
+ * this sentence, nothing telling him why. On paper it is worse: the bar is not printed, so all
+ * that is left of the difference is three columns that are not there.
+ *
+ * The names come from the rows, not from a list kept here: the same window read as readings
+ * and read as the figure, and the difference between the two sets of columns. A hand-written
+ * list is wrong the day a boat reports something nobody thought of.
+ *
+ * The position is its own half of the sentence. It is drawn on an average page and it is not
+ * an average - a mean of two fixes is a point in the water the boat was never at - so it is
+ * the fix the window closed on, and the masthead's "AVERAGE" would otherwise cover it too.
+ */
+function summaryNote(figure: Stat, dropped: string[], snaps: Snapshot[]): string {
+  const word = STAT_LABEL[figure].toLowerCase();
+  const list =
+    dropped.length === 1
+      ? dropped[0]
+      : `${dropped.slice(0, -1).join(", ")} and ${dropped[dropped.length - 1]}`;
+  const hasFix = snaps.some((s) => s.lat !== null && s.lon !== null);
+  const fix = hasFix ? " The position on each row is the fix that window closed on." : "";
+  return `${list} ${dropped.length === 1 ? "has" : "have"} no ${word}, so ${
+    dropped.length === 1 ? "it is" : "they are"
+  } left off this page.${fix}`;
+}
+
 function emptyRangeNote(r: ExportRequest): string {
   const endsAhead = dateInputToMs(r.to) + 86400_000 - 1 >= Date.now();
   if (endsAhead && r.gran !== "1m")
@@ -574,6 +605,10 @@ function tableShape(
    *  column the reader chose - the lanes shrink instead, the way the CSV already refuses to
    *  drop what the screen has no room for. */
   fit = true,
+  /** True when the rows are a summary figure rather than readings. Such a window offers fewer
+   *  columns than the boat has - there is no mean of a heading - and that narrower count is
+   *  the figure's, not the reader's, so it is not what an empty window should fall back to. */
+  summarised = false,
 ): TableShape {
   const named = book === "engine" ? unitGroups(snaps) : [];
   if (named.length > 0) familyHold.current = named;
@@ -594,7 +629,7 @@ function tableShape(
     const metrics = fit ? fittedMetrics(kept, width, true) : kept;
     const group = { ...chosen, metrics };
     hold.current = Math.max(1, metrics.length);
-    if (kept.length > 0) chosenHold.current = kept.length;
+    if (kept.length > 0 && !summarised) chosenHold.current = kept.length;
     return {
       groups,
       group,
@@ -612,7 +647,7 @@ function tableShape(
   const cols = visibleColumns(earned, selection);
   const drawn = fit ? fittedColumns(cols, width) : cols;
   if (drawn.length > 1) hold.current = drawn.length - 1;
-  if (cols.length > 1) chosenHold.current = cols.length - 1;
+  if (cols.length > 1 && !summarised) chosenHold.current = cols.length - 1;
   return {
     groups,
     group: null,
@@ -644,6 +679,21 @@ function metricVar(group: UnitGroup): CSSProperties {
 
 function laneVar(cols: LogColumn[]): CSSProperties {
   return { "--lb-cols": cols.length - 1 } as CSSProperties;
+}
+
+/**
+ * What the page says it holds, over the rows and in the masthead that goes to paper.
+ *
+ * A table of means that does not say so is a table of readings as far as anyone reading it can
+ * tell - the numbers give nothing away, and the difference is the whole point of having asked
+ * for the figure. So the figure stands beside the interval wherever the interval is written.
+ * "Last" needs no word: the reading that stood when the window closed is what a logbook page
+ * has always held, and naming it would suggest the others were the ordinary case.
+ */
+export function windowInterval(gran: Granularity, figure: Stat): string {
+  return figure === "last"
+    ? INTERVAL_NAME[gran]
+    : `${INTERVAL_NAME[gran]} · ${STAT_LABEL[figure]}`;
 }
 
 /**
@@ -1092,13 +1142,20 @@ function RangeView({
     style: "screen",
   };
   const r = req ?? fallback;
-  const { snaps, err, busy, truncated, loaded, minutesFrom } = useLogbookRange(r.from, r.to, r.gran);
+  // The figure the page carries. The panel sends one for a page even when the reader has ticked
+  // several for a file, but a default here too: this view also draws before anything has been
+  // exported at all (the fallback above), and a table with no figure named is not a table.
+  const figure: Stat = r.stats[0] ?? "last";
+  const { snaps, err, busy, truncated, loaded, minutesFrom, plain } = useLogbookRange(
+    r.from, r.to, r.gran, figure,
+  );
   // Oldest first: a closed window is a document, and a document is read forwards. The live and
   // day views keep the newest on top because they follow a boat still logging; this one does
   // not move, and it is the page that goes to paper.
   const shown = useMemo(() => [...snaps].sort((a, b) => a.ts - b.ts), [snaps]);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
-    shown, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold, false,
+    shown, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold,
+    false, figure !== "last",
   );
 
   const finish = useCallback(() => donePrinting(), [donePrinting]);
@@ -1117,7 +1174,17 @@ function RangeView({
   useEffect(() => () => document.documentElement.classList.remove("pdf-screen"), []);
 
   const label = windowLabel(r.from, r.to);
-  const interval = INTERVAL_NAME[r.gran];
+  const interval = windowInterval(r.gran, figure);
+  // Which of the reader's columns a summary cannot carry, asked of the rows rather than kept
+  // as a list: the same window read both ways, and the difference is the answer. See the note
+  // over `plain` in useLogbookData, and `summaryNote` for why the page has to say it.
+  const dropped = useMemo(() => {
+    if (plain.length === 0) return [];
+    const heads = (rows: Snapshot[]) =>
+      visibleColumns(columnsFor(logbookColumns(rows, windUnit), book), selection).map((c) => c.head);
+    const drawn = new Set(heads(snaps));
+    return heads(plain).filter((h) => !drawn.has(h));
+  }, [plain, snaps, windUnit, book, selection]);
   return (
     <>
       <div className={`lb-ctrl${cls}`} style={block}>
@@ -1163,6 +1230,9 @@ function RangeView({
           <b>{truncated ? `${snaps.length} of more` : snaps.length}</b>
         </div>
         {err && <div className="lb-err">{err}</div>}
+        {dropped.length > 0 && (
+          <div className="lb-note">{summaryNote(figure, dropped, snaps)}</div>
+        )}
         {truncated && (
           <div className="lb-note">
             This window holds more than {RANGE_LIMIT} rows. The most recent {RANGE_LIMIT} are

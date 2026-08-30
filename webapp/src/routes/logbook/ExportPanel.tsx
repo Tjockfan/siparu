@@ -20,7 +20,7 @@
  */
 import { useState } from "react";
 import { dateToInput } from "../../lib/format";
-import type { Stat } from "../../lib/buckets";
+import { STAT_LABEL, type Stat } from "../../lib/buckets";
 import { INTERVAL_NAME, type Granularity } from "./useLogbookData";
 
 export type ExportFormat = "csv" | "pdf";
@@ -53,12 +53,30 @@ const STYLES: { v: PdfStyle; name: string }[] = [
  * Last stays the default, because it is what the file has always held and what the table
  * beside it shows.
  */
-const FIGURES: { v: Stat; name: string }[] = [
-  { v: "last", name: "Last" },
-  { v: "avg", name: "Average" },
-  { v: "min", name: "Minimum" },
-  { v: "max", name: "Maximum" },
-];
+const FIGURES: Stat[] = ["last", "avg", "min", "max"];
+
+/**
+ * How many figures a destination can hold, in the two places that have to agree about it.
+ *
+ * A file holds as many as the reader ticks: one block of columns each, side by side. A page
+ * holds one, because a page is one table and a table cell is one number. Both rules are here
+ * rather than inline because they are the same rule read twice - once when a chip is pressed
+ * and once when the request leaves - and a panel that lights two chips and exports one, or
+ * lights one and exports two, is lying in one direction or the other.
+ */
+export function toggleFigure(format: ExportFormat, current: Stat[], pressed: Stat): Stat[] {
+  if (format === "pdf") return [pressed];
+  return current.includes(pressed) ? current.filter((s) => s !== pressed) : [...current, pressed];
+}
+
+/**
+ * The figures that actually leave this panel. A reader who ticked Average and Maximum for a
+ * file and then asked for a page would otherwise hand the page two, and the page would quietly
+ * draw the first of them without saying which it chose.
+ */
+export function figuresFor(format: ExportFormat, stats: Stat[]): Stat[] {
+  return format === "pdf" ? [stats[0] ?? "last"] : stats;
+}
 
 /** A week back, which is the window somebody opens this to look at without saying so. */
 function weekAgo(): string {
@@ -103,16 +121,28 @@ export default function ExportPanel({
   // and it is worth catching here rather than as an empty table: an empty table is what a quiet
   // week looks like too, and the reader cannot tell the two apart.
   const backwards = to < from;
-  const req: ExportRequest = { from, to, gran, format, stats, distance, samples, style };
+  const req: ExportRequest = {
+    from, to, gran, format,
+    stats: figuresFor(format, stats),
+    distance, samples, style,
+  };
 
-  // A minute is a sample, not a window: it has no mean and no extremes, so there is nothing to
-  // choose and the choice is not shown. A PDF is the page itself, and the page is the table.
-  const summarised = gran !== "1m" && format === "csv";
+  // A minute is a sample, not a window: it has no mean and no extremes, so at that interval
+  // there is nothing to choose and the choice is not shown.
+  const summarised = gran !== "1m";
+  // A file can hold four figures side by side, a block of columns each. A page cannot: it is
+  // one table, and a table cell holds one number. So the page takes one figure and the file
+  // takes as many as the reader wants - and the figures themselves are the same figures, read
+  // out of the same summaries the boat keeps.
+  const oneFigure = format === "pdf";
   // Nothing to put in the rows. Held rather than written, for the same reason a backwards
   // window is: a file of timestamps and nothing else is not what anybody pressed this for.
-  const empty = summarised && stats.length === 0 && !distance && !samples;
-  const toggle = (v: Stat) =>
-    setStats((cur) => (cur.includes(v) ? cur.filter((s) => s !== v) : [...cur, v]));
+  const empty = summarised && !oneFigure && stats.length === 0 && !distance && !samples;
+  const toggle = (v: Stat) => setStats((cur) => toggleFigure(format, cur, v));
+  // What is lit is what would leave: a page lights the one figure it would carry, even when
+  // the reader ticked several for a file before switching.
+  const leaving = figuresFor(format, stats);
+  const chosen = (v: Stat) => leaving.includes(v);
 
   return (
     <div className="lb-pick lb-exp">
@@ -205,30 +235,36 @@ export default function ExportPanel({
         <div className="lbp-book lbp-figs">
           <div className="lbp-h">
             <span className="lbp-n">Figures</span>
-            <span className="lbp-s">what each row carries</span>
+            <span className="lbp-s">{oneFigure ? "what the page carries" : "what each row carries"}</span>
           </div>
           <div className="lbp-chips">
             {FIGURES.map((f) => (
               <button
-                key={f.v}
-                className={`lbp-c${stats.includes(f.v) ? " on" : ""}`}
-                onClick={() => toggle(f.v)}
+                key={f}
+                className={`lbp-c${chosen(f) ? " on" : ""}`}
+                onClick={() => toggle(f)}
               >
-                {f.name}
+                {STAT_LABEL[f]}
               </button>
             ))}
-            <button
-              className={`lbp-c${distance ? " on" : ""}`}
-              onClick={() => setDistance(!distance)}
-            >
-              Distance
-            </button>
-            <button
-              className={`lbp-c${samples ? " on" : ""}`}
-              onClick={() => setSamples(!samples)}
-            >
-              Samples
-            </button>
+            {/* A window's own numbers, not a reading of it. They are columns in a file; on the
+                page the masthead and the band already say what window this is. */}
+            {!oneFigure && (
+              <>
+                <button
+                  className={`lbp-c${distance ? " on" : ""}`}
+                  onClick={() => setDistance(!distance)}
+                >
+                  Distance
+                </button>
+                <button
+                  className={`lbp-c${samples ? " on" : ""}`}
+                  onClick={() => setSamples(!samples)}
+                >
+                  Samples
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

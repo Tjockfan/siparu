@@ -11,7 +11,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../lib/api";
-import { columnsCount } from "./LogbookMarine";
+import { columnsCount, windowInterval } from "./LogbookMarine";
 
 const page: Snapshot[] = [];
 
@@ -112,6 +112,21 @@ describe("the logbook table over a boat's own instruments", () => {
     const html = await draw([]);
     expect(html).toContain("No snapshots");
     expect(html).toMatch(/Nothing was logged in this window/i);
+  });
+
+  /**
+   * What a printed page says it is holding.
+   *
+   * The range view can draw any of the boat's four figures now, and nothing in the numbers
+   * tells a reader which one he is looking at: a column of hourly means and a column of hourly
+   * readings are both just numbers. The word is the only thing that separates them, so it goes
+   * wherever the interval goes - the band over the rows and the masthead that goes to paper.
+   */
+  it("names the figure a page carries, and leaves the plain reading unnamed", () => {
+    expect(windowInterval("1h", "last")).toBe("Hourly");
+    expect(windowInterval("1h", "avg")).toBe("Hourly · Average");
+    expect(windowInterval("6h", "min")).toBe("Six-hourly · Minimum");
+    expect(windowInterval("1d", "max")).toBe("Daily · Maximum");
   });
 
   /**

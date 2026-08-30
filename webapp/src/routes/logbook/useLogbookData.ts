@@ -2,6 +2,7 @@
  *  The marine / pastel / ios variants consume these hooks. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Snapshot } from "../../lib/api";
+import { bucketHours, bucketRow, type BucketGran, type Stat } from "../../lib/buckets";
 import { dateInputToMs, dateToInput } from "../../lib/format";
 import { startVisibleInterval } from "../../lib/visibleInterval";
 import { useNow } from "../../lib/useNow";
@@ -223,10 +224,31 @@ export interface LogbookRange {
    *  interval, where the question does not arise. Anything in the window before it arrived as
    *  one row per hour, and the page says so rather than letting it read as a fault. */
   minutesFrom: number | null;
+  /** The same windows read as plain readings, when the caller asked for a summary figure.
+   *
+   *  A summary cannot be taken of everything the boat logs - there is no mean of a heading and
+   *  none of "motoring" - so those columns are simply not there on an average page, and a
+   *  reader who chose them watches them go without being told why. Which ones went is not a
+   *  list anybody should keep by hand: it is the difference between these rows and the ones
+   *  above, and the caller works it out by asking both the same question. Costs no fetch; the
+   *  buckets are already in hand. Empty when the figure IS the reading. */
+  plain: Snapshot[];
 }
 
 /**
- * Every row in a window the reader chose, at the interval he chose.
+ * Every row in a window the reader chose, at the interval he chose, carrying the figure he
+ * asked for.
+ *
+ * The figure is why this reads the boat's own summaries rather than `/snapshots`. That endpoint
+ * hands back one value per bucket - the last one - which is a logbook page and nothing else; a
+ * page of hourly means cannot be built from it. The summaries carry min, max, mean and the
+ * sample count for every reading, and the CSV export has been reading them since it learned to
+ * offer figures. This is the same source, so a window written to a file and the same window on
+ * the page are the same numbers.
+ *
+ * Measured before it was moved: over a settled twelve hours, `/snapshots?bucket=60` and this
+ * path's "last" agree row for row and digit for digit, and both carry the same 52 gauges. So
+ * the page a reader has been printing did not change when its source did.
  *
  * Not polled. The other two views follow a boat that is still logging; a window with an end on
  * it is a closed question, and refreshing it every fifteen seconds would move the rows under a
@@ -238,13 +260,21 @@ export interface LogbookRange {
  * millisecond of that day rather than its start, which is the off-by-a-day this would
  * otherwise have.
  */
-export function useLogbookRange(fromStr: string, toStr: string, gran: Granularity): LogbookRange {
+export function useLogbookRange(
+  fromStr: string,
+  toStr: string,
+  gran: Granularity,
+  /** Which figure of each window the rows carry. A minute is a sample, not a window: it has no
+   *  mean and no extremes, so at that interval this is not read. */
+  stat: Stat = "last",
+): LogbookRange {
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [truncated, setTruncated] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [minutesFrom, setMinutesFrom] = useState<number | null>(null);
+  const [plain, setPlain] = useState<Snapshot[]>([]);
 
   const from = useMemo(() => dateInputToMs(fromStr), [fromStr]);
   const to = useMemo(() => dateInputToMs(toStr) + 86400_000 - 1, [toStr]);
@@ -253,6 +283,7 @@ export function useLogbookRange(fromStr: string, toStr: string, gran: Granularit
   const load = useCallback(async () => {
     if (Number.isNaN(from) || Number.isNaN(to) || to < from) {
       setSnaps([]);
+      setPlain([]);
       setTruncated(false);
       setErr(null);
       setLoaded(true);
@@ -262,18 +293,26 @@ export function useLogbookRange(fromStr: string, toStr: string, gran: Granularit
     setBusy(true);
     setErr(null);
     try {
-      // One more than the ceiling, so the count itself says whether anything was left behind.
-      const q = { from, to, limit: RANGE_LIMIT + 1, order: "desc" as const };
-      const rows =
-        bucket === 1
-          ? await api.logbook.minutes(q).then((r) => {
-              setMinutesFrom(r.minutesFrom);
-              return r.rows;
-            })
-          : await api.logbook.snapshots({ ...q, bucket }).then((r) => {
-              setMinutesFrom(null);
-              return r;
-            });
+      let rows: Snapshot[];
+      setPlain([]);
+      if (bucket === 1) {
+        // One more than the ceiling, so the count itself says whether anything was left behind.
+        const r = await api.logbook.minutes({ from, to, limit: RANGE_LIMIT + 1, order: "desc" });
+        setMinutesFrom(r.minutesFrom);
+        rows = r.rows;
+      } else {
+        const hours = await api.logbook.rollupHours(from, to);
+        setMinutesFrom(null);
+        // bucketHours returns oldest first; the ceiling keeps the newest, the way the desc
+        // fetch above does, because a window too long to draw is cut at its far end.
+        const buckets = bucketHours(hours, gran as BucketGran);
+        rows = buckets.map((b) => bucketRow(b, stat));
+        const keep = (r: Snapshot[]) => r.slice(Math.max(0, r.length - RANGE_LIMIT));
+        setTruncated(rows.length > RANGE_LIMIT);
+        setSnaps(keep(rows));
+        if (stat !== "last") setPlain(keep(buckets.map((b) => bucketRow(b, "last"))));
+        return;
+      }
       setTruncated(rows.length > RANGE_LIMIT);
       setSnaps(rows.slice(0, RANGE_LIMIT));
     } catch (e) {
@@ -282,12 +321,12 @@ export function useLogbookRange(fromStr: string, toStr: string, gran: Granularit
       setBusy(false);
       setLoaded(true);
     }
-  }, [from, to, bucket]);
+  }, [from, to, bucket, gran, stat]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
-  return { snaps, err, busy, truncated, loaded, minutesFrom };
+  return { snaps, err, busy, truncated, loaded, minutesFrom, plain };
 }

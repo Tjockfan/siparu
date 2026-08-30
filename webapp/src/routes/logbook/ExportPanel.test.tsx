@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import ExportPanel from "./ExportPanel";
+import ExportPanel, { figuresFor, toggleFigure } from "./ExportPanel";
 
 const noop = () => {};
 
@@ -65,8 +65,8 @@ describe("the export window", () => {
  * The figures, which are the difference between a logbook page and a data set.
  *
  * Two states have to be right or the panel offers something it cannot deliver: a minute has no
- * summary to choose from (it is the sample), and a PDF is the page itself, which shows one
- * reading per row whatever is ticked here.
+ * summary to choose from (it is the sample), and a page is one table, so it carries one figure
+ * where a file carries as many as the reader wants, side by side.
  */
 describe("the figures a window can be exported with", () => {
   const base = { from: "2026-06-01", to: "2026-08-31" } as const;
@@ -82,8 +82,50 @@ describe("the figures a window can be exported with", () => {
     expect(render({ ...base, gran: "1m", format: "csv" })).not.toContain("Figures");
   });
 
-  it("does not offer them for the printed page, which is the table as it stands", () => {
-    expect(render({ ...base, gran: "1h", format: "pdf" })).not.toContain("Figures");
+  /**
+   * The page used to be refused them altogether, on the grounds that it is the table as it
+   * stands. That was a limit of the range view rather than of paper: a season's fuel curve or
+   * the sea state a boat actually met is the summary, and the boat keeps it. So the page gets
+   * the figures too - one of them, because a table cell holds one number.
+   */
+  it("offers the page one figure, and the file as many as are ticked", () => {
+    const html = render({ ...base, gran: "1h", format: "pdf" });
+    expect(html).toContain("Figures");
+    expect(html).toContain("Average");
+    // A page is one table: the window's own numbers are columns in a file and have no cell here.
+    expect(html).not.toContain("Distance");
+    expect(html).not.toContain("Samples");
+    // Exactly one figure lit. Counted inside the figures block: every other group in this
+    // panel lights one of its own, and a count over the whole panel would pass at four.
+    const figs = /<div class="lbp-book lbp-figs">[\s\S]*?<\/div><\/div>/.exec(html);
+    expect(figs, "the figures block is on the page").not.toBeNull();
+    expect([...(figs as RegExpExecArray)[0].matchAll(/class="lbp-c on"/g)]).toHaveLength(1);
+  });
+
+  /**
+   * The two places that have to agree about how many figures a destination holds: what a press
+   * does, and what leaves. A panel that lights two chips and exports one is lying, and so is
+   * one that lights one and exports two.
+   */
+  it("lets a file take several and holds a page to one", () => {
+    expect(toggleFigure("csv", ["last"], "avg")).toEqual(["last", "avg"]);
+    expect(toggleFigure("csv", ["last", "avg"], "last")).toEqual(["avg"]);
+    expect(toggleFigure("pdf", ["last", "avg"], "max")).toEqual(["max"]);
+    expect(figuresFor("csv", ["avg", "max"])).toEqual(["avg", "max"]);
+    expect(figuresFor("pdf", ["avg", "max"])).toEqual(["avg"]);
+    // Nothing ticked at all, which the file's panel refuses and the page cannot.
+    expect(figuresFor("pdf", [])).toEqual(["last"]);
+  });
+
+  /** A reader who ticked two for a file and then asked for a page sees which one he is getting. */
+  it("lights the one figure a page would carry, not the two he chose for a file", () => {
+    const html = render({ ...base, gran: "1h", format: "pdf", stats: ["avg", "max"] });
+    const figs = /<div class="lbp-book lbp-figs">[\s\S]*?<\/div><\/div>/.exec(html);
+    expect(figs).not.toBeNull();
+    const block = (figs as RegExpExecArray)[0];
+    expect(block).toMatch(/class="lbp-c on"[^>]*>Average</);
+    expect(block).toMatch(/class="lbp-c"[^>]*>Maximum</);
+    expect([...block.matchAll(/class="lbp-c on"/g)]).toHaveLength(1);
   });
 
   it("opens on the last reading, which is what the file has always held", () => {

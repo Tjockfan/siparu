@@ -29,6 +29,19 @@ export type BucketGran = "1h" | "6h" | "1d";
  */
 export type Stat = "last" | "avg" | "min" | "max";
 
+/**
+ * What a figure is called where a person reads it: the chips in the export panel, and the
+ * masthead of a page that carries it. Named once, because a page of means that does not say
+ * so reads as a page of readings - and the panel and the page must not be able to disagree
+ * about which figure that was. STAT_NAME below is the file's short form and stays a file's.
+ */
+export const STAT_LABEL: Record<Stat, string> = {
+  last: "Last",
+  avg: "Average",
+  min: "Minimum",
+  max: "Maximum",
+};
+
 export const STAT_NAME: Record<Stat, string> = {
   last: "last",
   avg: "avg",
