@@ -105,6 +105,23 @@ describe("the measurements the logbook table is laid out from", () => {
     }
   });
 
+  /**
+   * A column that asked for two lanes has to be given two, in the head and in the rows alike.
+   *
+   * fitColumns decides that a position costs two lanes and reserves them; this rule is what
+   * actually spends them. Without it the reservation still holds - the table is a lane wider
+   * than it needs - but the position is drawn in the first of its two lanes and overprints the
+   * column beside it, which is the defect the pair was introduced to fix. A head that spans and
+   * rows that do not is worse still: every reading then sits under the wrong word.
+   */
+  it("spends the second lane in the head and the rows together", () => {
+    const spans = rules().filter(([, body]) => /grid-column:\s*span 2/.test(body));
+    expect(spans, "one rule spans two lanes").toHaveLength(1);
+    const [selector] = spans[0] as [string, string];
+    expect(selector).toContain(".swiss .lb-cols span.w2");
+    expect(selector).toContain(".swiss .lb-row .v.w2");
+  });
+
   /** Both grids read the declarations, so neither can drift from the width below. */
   it("draws the head and the rows from those declarations rather than from figures", () => {
     for (const selector of [".swiss .lb-cols", ".swiss .lb-row"]) {

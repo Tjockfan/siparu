@@ -5,7 +5,15 @@
  * lane minimum or the row padding drifts away from the stylesheet.
  */
 import { describe, expect, it } from "vitest";
-import { fittedColumns, lanesThatFit, LANE_GAP, MIN_LANE, SIDE_PAD, TIME_LANE } from "./fitColumns";
+import {
+  fittedColumns,
+  laneCount,
+  lanesThatFit,
+  LANE_GAP,
+  MIN_LANE,
+  SIDE_PAD,
+  TIME_LANE,
+} from "./fitColumns";
 import type { LogColumn } from "./columns";
 
 /** The width at which the nth lane first fits, from the same parts the rule is built from. */
@@ -18,7 +26,12 @@ const col = (key: string): LogColumn => ({
   cell: () => "-",
 });
 
+const wide = (key: string): LogColumn => ({ ...col(key), lanes: 2 });
+
 const deck = ["ts", "sog", "cog", "hdg", "tws", "awa", "baro", "air", "sea", "dep"].map(col);
+
+/** The real bridge deck leads with a position, which is what asks for two lanes. */
+const withPosition = [col("ts"), wide("lat"), wide("lon"), ...deck.slice(1)];
 
 /**
  * The half of the contract this side holds.
@@ -76,5 +89,39 @@ describe("fittedColumns", () => {
 
   it("survives a boat that earned no columns at all", () => {
     expect(fittedColumns([], 390)).toEqual([]);
+  });
+});
+
+/**
+ * A position is not a reading and does not fit in a reading's lane.
+ *
+ * Measured in the browser at both widths: a bridge row's widest position cell asks for 105px
+ * against a heading's 35px, and every lane was the same width, so the position was the one
+ * column drawn over its neighbour. On a 390px phone the latitude overran its lane by 30px and
+ * was painted straight across the longitude beside it - not clipped, so nothing that measured
+ * clipping ever saw it.
+ */
+describe("a column that asks for more than one lane", () => {
+  it("counts for what it asks, not for one", () => {
+    expect(laneCount(deck.slice(1))).toBe(9);
+    expect(laneCount([wide("lat"), wide("lon"), col("sog")])).toBe(5);
+  });
+
+  it("spends the phone's lanes on it rather than drawing it too narrow", () => {
+    // Five lanes at 390px: the position takes four of them and the speed the fifth.
+    expect(lanesThatFit(390)).toBe(5);
+    expect(fittedColumns(withPosition, 390).map((c) => c.key)).toEqual(["ts", "lat", "lon", "sog"]);
+  });
+
+  it("does not draw a wide column that only half fits", () => {
+    // Four lanes: the pair takes all four. A fifth column would need a lane that is not there.
+    expect(fittedColumns(withPosition, widthFor(4)).map((c) => c.key)).toEqual(["ts", "lat", "lon"]);
+    // Three lanes leave room for one half of the position and no more; the other half is held
+    // back whole rather than drawn in a lane it cannot be read in.
+    expect(fittedColumns(withPosition, widthFor(3)).map((c) => c.key)).toEqual(["ts", "lat"]);
+  });
+
+  it("holds nothing back on a desk", () => {
+    expect(fittedColumns(withPosition, 1456)).toEqual(withPosition);
   });
 });

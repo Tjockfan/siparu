@@ -84,6 +84,23 @@ describe("logbookColumns", () => {
     expect(keys([row({ heading_true: 2.0 })])).toContain("hdg");
   });
 
+  /**
+   * A position is written in degrees, minutes and a hemisphere, and that does not go in a lane
+   * sized for a four-figure reading.
+   *
+   * Measured in the browser on the demo boat: the widest longitude cell asks for 105px where a
+   * heading asks 35, and on a 390px phone the latitude overran its 50px lane by 30 and was
+   * painted across the longitude beside it. A row does not clip, so it overprinted rather than
+   * being cut, and no measurement of clipping ever saw it. The pair says what it needs here;
+   * fitColumns reserves it and the stylesheet spends it.
+   */
+  it("asks two lanes for each half of a position and one for every reading", () => {
+    const full = row({ lat: 43.5, lon: 7.02, sog: 4.1, heading_true: 1.9, depth: 18.2 });
+    const cols = logbookColumns([full], "kn");
+    expect(cols.filter((c) => (c.lanes ?? 1) > 1).map((c) => c.key)).toEqual(["lat", "lon"]);
+    for (const c of cols) expect(c.lanes ?? 1, c.key).toBe(c.key === "lat" || c.key === "lon" ? 2 : 1);
+  });
+
   it("names the wind column after the unit in force", () => {
     const windy = [row({ wind_speed_true: 6.0 })];
     expect(logbookColumns(windy, "kn").find((c) => c.key === "wind")?.head).toBe("TWS");

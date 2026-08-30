@@ -13,7 +13,7 @@ import ColumnPicker from "./ColumnPicker";
 import ExportPanel, { type ExportRequest } from "./ExportPanel";
 import Reveal from "./Reveal";
 import { columnsFor, hhmm, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
-import { fittedColumns, lanesThatFit, fittedMetrics } from "./fitColumns";
+import { fittedColumns, laneCount, lanesThatFit, fittedMetrics } from "./fitColumns";
 import { BrandMark } from "siparu-ui";
 import {
   isOn,
@@ -677,8 +677,14 @@ function metricVar(group: UnitGroup): CSSProperties {
   return { "--lb-cols": Math.max(1, group.metrics.length) } as CSSProperties;
 }
 
+/** Lanes, not columns: a position asks for two of them (see LogColumn.lanes). */
 function laneVar(cols: LogColumn[]): CSSProperties {
-  return { "--lb-cols": cols.length - 1 } as CSSProperties;
+  return { "--lb-cols": laneCount(cols.slice(1)) } as CSSProperties;
+}
+
+/** The class that spends a column's extra lanes. One lane needs none. */
+function laneClass(c: LogColumn): string {
+  return (c.lanes ?? 1) > 1 ? ` w${c.lanes}` : "";
 }
 
 /**
@@ -798,11 +804,18 @@ function Cols({
     <div className="lb-cols" style={laneVar(cols)}>
       {cols.map((c) =>
         c.tappable ? (
-          <span key={c.key} className="tap" onClick={toggleWind} title="Tap: knots ⇄ Beaufort">
+          <span
+            key={c.key}
+            className={`tap${laneClass(c)}`}
+            onClick={toggleWind}
+            title="Tap: knots ⇄ Beaufort"
+          >
             {c.head}
           </span>
         ) : (
-          <span key={c.key}>{c.head}</span>
+          <span key={c.key} className={laneClass(c).trim()}>
+            {c.head}
+          </span>
         ),
       )}
     </div>
@@ -1323,7 +1336,10 @@ function Row({ s, cols }: { s: Snapshot; cols: LogColumn[] }) {
   return (
     <div className="lb-row">
       {cols.map((c, i) => (
-        <span key={c.key} className={i === 0 ? "tm" : c.dim ? "v dim" : "v"}>
+        <span
+          key={c.key}
+          className={i === 0 ? "tm" : `${c.dim ? "v dim" : "v"}${laneClass(c)}`}
+        >
           {c.cell(s)}
         </span>
       ))}

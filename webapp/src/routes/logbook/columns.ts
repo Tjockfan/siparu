@@ -52,6 +52,17 @@ export interface LogColumn {
   dim?: boolean;
   /** The wind head toggles knots and Beaufort on tap; nothing else does. */
   tappable?: boolean;
+  /**
+   * How many lanes this column needs. Absent means one, which is every reading: a lane is sized
+   * for a four-figure number and they all are.
+   *
+   * A position is not. Measured in the browser on the demo boat: the widest longitude cell asks
+   * for 105px where a heading asks for 35, and both were handed the same lane, so the position
+   * was drawn over the column beside it - by 13px on a phone, where the lane is 50px. Overflow
+   * is not clipped in a row, so nothing that measured clipping saw it; the reader saw
+   * "43°33.508007°01.241'".
+   */
+  lanes?: number;
 }
 
 /**
@@ -97,11 +108,23 @@ function candidates(windUnit: WindUnit): { col: LogColumn; has: (s: Snapshot) =>
     // The position leads the readings the way it leads a written log line: the entry says
     // where she was before it says how she was doing.
     {
-      col: { key: "lat", head: "LAT", book: "bridge", cell: (s) => fmtPos(s.lat, 2, "N", "S") },
+      col: {
+        key: "lat",
+        head: "LAT",
+        book: "bridge",
+        lanes: 2,
+        cell: (s) => fmtPos(s.lat, 2, "N", "S"),
+      },
       has: (s) => s.lat !== null,
     },
     {
-      col: { key: "lon", head: "LON", book: "bridge", cell: (s) => fmtPos(s.lon, 3, "E", "W") },
+      col: {
+        key: "lon",
+        head: "LON",
+        book: "bridge",
+        lanes: 2,
+        cell: (s) => fmtPos(s.lon, 3, "E", "W"),
+      },
       has: (s) => s.lon !== null,
     },
     {

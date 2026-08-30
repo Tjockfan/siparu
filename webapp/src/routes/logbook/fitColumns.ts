@@ -35,16 +35,33 @@ export function lanesThatFit(width: number): number {
   return Math.max(1, Math.floor(room / (MIN_LANE + LANE_GAP)));
 }
 
+/** The lanes a set of data columns occupies. Most readings take one; a position takes two. */
+export function laneCount(cols: LogColumn[]): number {
+  return cols.reduce((n, c) => n + (c.lanes ?? 1), 0);
+}
+
 /**
  * The columns actually drawn at this width.
  *
  * A null width means the table has not been measured yet - server-rendered, or a browser with
  * no ResizeObserver. That is deliberately not treated as "narrow": a table that cannot see its
  * own width draws everything rather than guessing which columns to hold back.
+ *
+ * Spent against a budget of lanes rather than counted off one per column, because a column can
+ * ask for more than one (see LogColumn.lanes). A column whose lanes do not all fit is held back
+ * whole: half a position, drawn in a lane sized for a heading, is the defect this replaced.
  */
 export function fittedColumns(cols: LogColumn[], width: number | null): LogColumn[] {
   if (width === null || cols.length === 0) return cols;
-  return cols.slice(0, 1 + lanesThatFit(width));
+  let left = lanesThatFit(width);
+  const drawn = cols.slice(0, 1);
+  for (const c of cols.slice(1)) {
+    const want = c.lanes ?? 1;
+    if (want > left) break;
+    left -= want;
+    drawn.push(c);
+  }
+  return drawn;
 }
 
 /**

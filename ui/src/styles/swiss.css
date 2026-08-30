@@ -1642,6 +1642,13 @@ body {
   font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--text);
 }
 .swiss .lb-row .v.dim { color: var(--muted); font-size: 13px; }
+/* A column that asked for two lanes takes them (see LogColumn.lanes). A lane is sized for a
+   four-figure reading, and a position is not one: the widest longitude asks for 105px against a
+   heading's 35, and handed the same lane it was drawn straight over the column beside it - a row
+   does not clip, so it overprinted rather than being cut. Both halves of the pair are spent
+   together or neither is drawn, which fitColumns decides; this only spends what it was given. */
+.swiss .lb-cols span.w2,
+.swiss .lb-row .v.w2 { grid-column: span 2; }
 /* A figure set for a phone, left at that size on a desk. A lane at its ceiling is 176px wide
  * and was carrying a four-character number 31px across, so the eye crossed 145px of nothing
  * between one reading and the next and the table read as a scatter rather than as columns. The
