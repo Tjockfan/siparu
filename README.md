@@ -138,9 +138,10 @@ code off the helm. A caller with no browser headers, curl or a script on her own
 is not affected. Neither is the reading surface above.
 
 The two voyage edits are reachable from the boat's own network only. What the
-shore can ask her is a closed set of five questions, all of them reads
-(`history`, `snapshots`, `voyages`, `track`, `phases`); nothing on that socket
-changes anything aboard, and the REST surface above is not proxied to it.
+shore can ask her is a closed set of ten questions, all of them reads
+(`history`, `snapshots`, `voyages`, `track`, `phases`, `rollups`, `stats`,
+`fuel`, `ais`, `health`); nothing on that socket changes anything aboard, and
+the REST surface above is not proxied to it.
 
 ### The uplink, when she is paired
 

@@ -14,6 +14,29 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+### Added
+
+- **Five more questions over the live socket.** A screen ashore may now ask the boat for
+  her hourly summaries over a window (`rollups`), the voyage figures (`stats`), which
+  engines feed voyage fuel (`fuel`), the vessels her receiver hears (`ais`) and her own
+  account of herself (`health`). Each is the socket's copy of a local GET route and is
+  answered from the same place, under the same rules as the five before it: the type tag
+  is the gate, a read that fails answers with a fixed reason, and a question that arrives
+  in the clear is refused by name. Nothing about the boat's own network changes.
+- **`/health` says whether the server's door stands open** (`security_off`,
+  `pairing_locked`), the same two facts `/pair/status` already carried, so a screen that
+  has no pairing to ask can show the same notice the helm shows.
+
+### Changed
+
+- **The dashboard's screens now live in the shared `siparu-ui` package** and read the boat
+  through a provider, so the same code draws them at the helm and ashore. The on-board app
+  is unchanged in what it shows; the eight-screen tour at two widths reports no
+  differences.
+- A slow poller tries a refused read once more after five seconds instead of waiting out
+  its whole interval, so a clock that missed its first read no longer sits on UTC for a
+  minute.
+
 ## [0.2.10] - 2026-08-17
 
 ### Fixed
