@@ -1,6 +1,6 @@
 {
   "name": "signalk-siparu",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Kept aboard, proven ashore. Position, wind, depth and voyage history, recorded on the boat and readable from anywhere: sealed to the devices you name, signed on the way out. A read-only Signal K plugin with a built-in dashboard.",
   "keywords": [
     "signalk-node-server-plugin",
