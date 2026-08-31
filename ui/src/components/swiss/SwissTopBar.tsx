@@ -30,7 +30,7 @@ function utc(nowMs: number): string {
  *  lazy) → DST-correct render ("16:23:45 CEST"). Falls back to UTC.
  *  Exported so the desktop side rail shows the same clock, driven by the same
  *  poll, rather than a second copy that could drift. */
-export function TopBarClock() {
+export function TopBarClock({ seconds = true }: { seconds?: boolean }) {
   const api = useApi();
   const now = useNow(1000);
   const { data: snap } = usePolling<LiveSnapshot>(api.live, 60_000, [], "bridge:live");
@@ -56,14 +56,14 @@ export function TopBarClock() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latKey, lonKey]);
 
-  let label = utc(now);
+  let label = seconds ? utc(now) : utc(now).replace(/:\d\d UTC$/, " UTC");
   if (tz) {
     try {
       label = new Intl.DateTimeFormat("en-GB", {
         timeZone: tz,
         hour: "2-digit",
         minute: "2-digit",
-        second: "2-digit",
+        ...(seconds ? { second: "2-digit" as const } : {}),
         hour12: false,
         timeZoneName: "short",
       }).format(now);
@@ -83,7 +83,7 @@ export default function SwissTopBar({ back, context, live, stale, clock }: Props
   };
 
   return (
-    <header className="head">
+    <header className={`head${context ? " has-ctx" : ""}`}>
       <div className="mkwrap">
         {back != null && back !== false && (
           <button type="button" className="back" onClick={onBack} aria-label="Back">
@@ -106,7 +106,9 @@ export default function SwissTopBar({ back, context, live, stale, clock }: Props
             {stale ? "STALE" : "LIVE"}
           </span>
         )}
-        {clock && <TopBarClock />}
+        {/* Without seconds beside a context tag: the name of the boat has the room a phone's
+            band can spare, and the seconds are the part of the clock nobody reads from ashore. */}
+        {clock && <TopBarClock seconds={!context} />}
         <button
           type="button"
           className="umenu-btn"

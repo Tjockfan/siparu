@@ -286,6 +286,20 @@ body {
   margin-left: 11px;
   flex: none;
 }
+/* A band carrying a context tag - the boat's name, when the screens sit under one boat of
+   several - has no room left for the wordmark on a phone: back, brand, name, LIVE, clock and
+   the theme toggle do not fit in 390px. The glyph stays and the word goes; the name is what
+   the reader needs on that band, and the tag truncates rather than riding over its neighbour. */
+.swiss .head.has-ctx .mk { display: none; }
+.swiss .head.has-ctx .ctx {
+  margin-left: 10px;
+  letter-spacing: 0.08em;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .swiss .head .r { display: flex; align-items: center; gap: 11px; flex: none; }
 .swiss .head .live {
   display: inline-flex;
@@ -408,6 +422,38 @@ body {
   padding: calc(16px + env(safe-area-inset-top)) 0 16px;
 }
 .swiss .sp-rail .sp-brand { font-size: 19px; padding: 0 18px 22px; }
+/* Where the screens sit inside a larger app: the way back stands above the brand, in the
+   rail's own small capitals, and the boat's name sits under it as a plain line, the one
+   thing on the rail that is not a destination. Neither is drawn at her own helm. */
+.swiss .sp-rail .rback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 14px;
+  color: #79817f;
+  text-decoration: none;
+  font-family: var(--sp-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.swiss .sp-rail .rback svg { width: 13px; height: 13px; }
+.swiss .sp-rail .rback:hover { color: var(--chrome-text); }
+.swiss .sp-rail .rctx {
+  display: block;
+  padding: 0 18px 18px;
+  margin-top: -10px;
+  color: var(--chrome-text);
+  font-family: var(--sp-font);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .swiss .sp-rail .mk {
   font-family: var(--sp-font);
   font-weight: 800;
