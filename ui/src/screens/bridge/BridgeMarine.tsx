@@ -35,13 +35,54 @@ import { quietFor, quietSince } from "../../lib/age";
 import type { MetricField } from "../../data/api";
 import { useBridgeData, bridgeHasReading, type BridgeData, type GustHours } from "./useBridgeData";
 import { useMediaQuery } from "../../data/useMediaQuery";
-import BaroPopup from "./BaroPopup";
+import TrendPopup from "./TrendPopup";
 import PairAlerts from "./PairAlerts";
 import TripComputer from "./TripComputer";
 import { usePolling } from "../../data/usePolling";
 import { useApi, type Voyage } from "../../data/api";
 
 const GUST_WINDOWS: GustHours[] = [1, 6, 12, 24];
+
+/** Which of the two readings that keep a past the bridge is showing the past of. */
+type Detail = "baro" | "gust";
+
+/**
+ * The detail chart behind a cell, which is the same chart either way: what differs is the field
+ * it reads, the words above it and the colour of its line.
+ */
+function TrendDetail({ of, d, onClose }: { of: Detail; d: BridgeData; onClose: () => void }) {
+  const api = useApi();
+  if (of === "gust") {
+    return (
+      <TrendPopup
+        title="Gust"
+        eyebrow="kn · peak true wind"
+        unit="kn"
+        decimals={1}
+        reading={d.gustMax?.kn ?? null}
+        note={`peak of the last ${d.gustHours}h`}
+        tone="gust"
+        floor={6}
+        load={api.tools.gustSeries}
+        onClose={onClose}
+      />
+    );
+  }
+  const t = baroTrend(d.baroDelta);
+  return (
+    <TrendPopup
+      title="Barometer"
+      eyebrow="hPa · pressure"
+      unit="hPa"
+      reading={d.baroHPa}
+      note={t.txt}
+      tone="baro"
+      floor={6}
+      load={api.tools.baroSeries}
+      onClose={onClose}
+    />
+  );
+}
 
 // A wide screen shows the whole dashboard at once (the board); below this it shows one panel with
 // a tab row. Same threshold as the side rail in Layout, so the chrome and the content switch shape
@@ -112,7 +153,7 @@ function QuietAge({ s }: { s: number | null }) {
 
 // The band and matrix for the bridge tab, built from what the boat is saying. Pulled out of the
 // panel so the same instruments render in the phone's tab and in the wide board's bridge section.
-export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => void }) {
+export function BridgeInstruments({ d, onDetail }: { d: BridgeData; onDetail: (of: Detail) => void }) {
   const loading = d.snap === null;
   const trend = baroTrend(d.baroDelta);
   const lat = d.snap?.lat ?? null;
@@ -237,13 +278,29 @@ export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => 
   // wind does - there is nothing else to ask.
   if (has(d.twsKn)) {
     matrix.push(
-      <div className="c c-gust" key="gust">
-        <div className="t">Gust</div>
-        <Sparkline className="spark" data={d.gustSeries} color="var(--spark-gust)" fill peak height={42} />
-        <div className="lab">
-          {d.gustMax ? <>GUST <b>{d.gustMax.kn.toFixed(1)} kn</b> · {formatTimeShort(d.gustMax.ts)}</> : "GUST -"}
+      <div
+        className="c c-gust tap"
+        key="gust"
+        onClick={() => onDetail("gust")}
+        role="button"
+        aria-label="Gust detail"
+      >
+        <div className="t">
+          Gust · <span className="sub">Peak kn</span>
+          <span className="zoom" aria-hidden="true">⤢</span>
         </div>
-        <div className="gustseg" role="group" aria-label="Gust window">
+        {/* The peak is the reading, set like every other figure on the bridge. It was a caption
+            in a monospace line under the sparkline, which made the one cell on here that answers
+            "how hard did it blow" the only one whose answer had to be read rather than seen. */}
+        <div className="gust-read">
+          <div className={`n${loading ? " skel" : ""}`}>
+            {d.gustMax ? d.gustMax.kn.toFixed(1) : "·"}<span className="u">kn</span>
+          </div>
+          <div className="gust-at">{d.gustMax ? `at ${formatTimeShort(d.gustMax.ts)}` : "no peak recorded"}</div>
+        </div>
+        <Sparkline className="spark" data={d.gustSeries} color="var(--spark-gust)" fill peak height={38} top={4} />
+        {/* The window belongs to the cell, so a tap on it must not also open the detail. */}
+        <div className="winseg" role="group" aria-label="Gust window" onClick={(e) => e.stopPropagation()}>
           {GUST_WINDOWS.map((h) => (
             <button key={h} className={d.gustHours === h ? "on" : ""} onClick={() => d.setGustHours(h)}>
               {h}h
@@ -271,7 +328,7 @@ export function BridgeInstruments({ d, onBaro }: { d: BridgeData; onBaro: () => 
   const qBaro = quiet("air_pressure_pa");
   if (has(d.baroHPa)) {
     matrix.push(
-      <div className={`${cell("c-baro", qBaro)} tap`} key="baro" onClick={onBaro} role="button" aria-label="Barometer detail">
+      <div className={`${cell("c-baro", qBaro)} tap`} key="baro" onClick={() => onDetail("baro")} role="button" aria-label="Barometer detail">
         <div className="t">
           Baro · <span className="sub">hPa</span>
           {/* The one mark that says the cell opens. It replaces a caption reading "3-hour trend
@@ -362,7 +419,7 @@ function DashPanel({
   d,
   voyage,
   onTab,
-  onBaro,
+  onDetail,
   clusters,
 }: {
   tab: string;
@@ -370,7 +427,7 @@ function DashPanel({
   d: BridgeData;
   voyage: Voyage | null;
   onTab: (key: string) => void;
-  onBaro: () => void;
+  onDetail: (of: Detail) => void;
   clusters: ReturnType<typeof systemClusters>;
 }) {
   return (
@@ -391,7 +448,7 @@ function DashPanel({
         </nav>
       )}
       {tab === "bridge" ? (
-        <BridgeInstruments d={d} onBaro={onBaro} />
+        <BridgeInstruments d={d} onDetail={onDetail} />
       ) : tab === "trip" ? (
         <TripComputer voyage={voyage} now={d.now} />
       ) : (
@@ -406,10 +463,9 @@ function DashPanel({
 export default function BridgeMarine() {
   const api = useApi();
   const d = useBridgeData();
-  const [baroOpen, setBaroOpen] = useState(false);
+  const [detail, setDetail] = useState<Detail | null>(null);
   const [params, setParams] = useSearchParams();
   const wide = useMediaQuery(WIDE_QUERY);
-  const openBaro = () => setBaroOpen(true);
 
   // The sections this boat justifies, worked out from what she is saying. The systems come from
   // the plugin's own path families; the bridge is one more section on the same footing, present
@@ -447,7 +503,7 @@ export default function BridgeMarine() {
               <h2 className="sp-sec-h">
                 <span className="sp-sec-n">Bridge</span>
               </h2>
-              <BridgeInstruments d={d} onBaro={openBaro} />
+              <BridgeInstruments d={d} onDetail={setDetail} />
             </section>
           )}
           {(clusters.length > 0 || onPassage) && (
@@ -466,7 +522,7 @@ export default function BridgeMarine() {
             </div>
           )}
         </div>
-        {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
+        {detail && <TrendDetail of={detail} d={d} onClose={() => setDetail(null)} />}
       </>
     );
   }
@@ -498,10 +554,10 @@ export default function BridgeMarine() {
           voyage={voyage}
           clusters={clusters}
           onTab={setTab}
-          onBaro={openBaro}
+          onDetail={setDetail}
         />
       </div>
-      {baroOpen && <BaroPopup onClose={() => setBaroOpen(false)} current={d.baroHPa} delta={d.baroDelta} />}
+      {detail && <TrendDetail of={detail} d={d} onClose={() => setDetail(null)} />}
     </>
   );
 }

@@ -127,6 +127,7 @@ export const api: ScreenApi = {
   tools: {
     baroTrend: reads.baroTrend,
     baroSeries: reads.baroSeries,
+    gustSeries: reads.gustSeries,
   },
 
   ais: {

@@ -65,6 +65,9 @@ export type MinutesResult = { rows: Snapshot[]; minutesFrom: number };
 
 export type TimeSeriesPoint = { ts: number; value: number | null };
 
+/** A reading a chart can draw: the moment, and a value that is there. */
+export type SeriesPoint = { ts: number; value: number };
+
 export type BaroTrend = {
   current_hpa: number | null;
   delta_3h_hpa: number | null;
@@ -320,7 +323,9 @@ export interface ScreenApi {
 
   tools: {
     baroTrend(hours?: number): Promise<BaroTrend>;
-    baroSeries(q: { from: number; to: number; points?: number }): Promise<{ ts: number; hpa: number }[]>;
+    /** Pressure in hPa, and the peak true wind in knots, over a window a chart can pan. */
+    baroSeries(q: { from: number; to: number; points?: number }): Promise<SeriesPoint[]>;
+    gustSeries(q: { from: number; to: number; points?: number }): Promise<SeriesPoint[]>;
   };
 
   /** Her AIS receiver. Absent where the app has no way to read it. */
@@ -361,7 +366,7 @@ function refusing(): WholeApi {
     logbook: { snapshots: refuse, minutes: refuse, snapshotLatest: refuse, rollupHours: refuse },
     voyage: { list: refuse, stats: refuse, current: refuse, track: refuse, edits: refuse, mergePrevious: refuse, undoMerge: refuse },
     config: { fuelPaths: refuse, setFuelPaths: refuse },
-    tools: { baroTrend: refuse, baroSeries: refuse },
+    tools: { baroTrend: refuse, baroSeries: refuse, gustSeries: refuse },
     ais: { targets: refuse },
     pair: { status: refuse, start: refuse, approve: refuse, deny: refuse, reset: refuse },
   };

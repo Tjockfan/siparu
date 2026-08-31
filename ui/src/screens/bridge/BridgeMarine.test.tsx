@@ -78,7 +78,7 @@ function bridge(over: Partial<BridgeData> = {}, snapOver: Partial<LiveSnapshot> 
   } as unknown as BridgeData;
 }
 
-const draw = (d: BridgeData) => renderToStaticMarkup(<BridgeInstruments d={d} onBaro={() => {}} />);
+const draw = (d: BridgeData) => renderToStaticMarkup(<BridgeInstruments d={d} onDetail={() => {}} />);
 
 /**
  * The depth cell follows the same rule as every other: drawn when the boat puts a value behind

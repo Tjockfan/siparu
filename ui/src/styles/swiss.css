@@ -1032,30 +1032,41 @@ body {
      everything else, and min() stops it laying a 316px cell into a 200px pane. */
   flex: 2 1 min(316px, 100%);
 }
-.swiss .c-gust .lab {
-  font-family: var(--sp-mono); font-size: 10px; color: var(--accent-soft); letter-spacing: 0.03em;
+.swiss .c-gust { flex-direction: column; gap: 9px; }
+.swiss .c-gust .t { display: flex; align-items: baseline; }
+.swiss .c-gust .t .zoom { margin-left: auto; letter-spacing: 0; color: var(--muted); }
+/* The peak and the moment it blew, on one line, the way the barometer reads its trend. */
+.swiss .c-gust .gust-read { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.swiss .c-gust .gust-at {
+  font-family: var(--sp-mono); font-size: 11px; color: var(--muted); font-weight: 500;
 }
-.swiss .c-gust .lab b { color: var(--text); }
-.swiss .spark { display: block; width: 100%; max-width: 220px; height: 42px; }
+.swiss .c-gust.tap { cursor: pointer; }
+/* No ceiling on the line: the cell's width is what a gust line is for. It used to stop at 220px
+   and sit above the reading, which left the strongest wind of the day drawn in a third of the
+   cell with a caption where the figure should have been. */
+.swiss .spark { display: block; width: 100%; height: 38px; margin-top: auto; }
 
 @media (max-width: 410px) {
   /* The state is not stepped down here: it is sized to its cell and its own word above, which
      already gives a narrow screen a smaller figure than a wide one, and a flat size at this
      width would overrule that and split the longer states. */
   .swiss .grid .c-pos .coords { font-size: 13.5px; white-space: nowrap; }
-  .swiss .spark { max-width: 150px; }
-  .swiss .gustseg button { padding: 4px 7px; font-size: 9px; }
+  .swiss .winseg button { font-size: 9px; }
 }
 
-/* gust window selector (1/6/12/24h) - segmented, on dark band */
-.swiss .gustseg { display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.2); }
-.swiss .gustseg button {
-  font-family: var(--sp-font); font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; padding: 4px 7px; background: none; border: none;
-  color: var(--band-muted); cursor: pointer;
+/* The window selector: the gust cell's 1/6/12/24h, and the same control over a detail chart's
+   ranges. Every button is a quarter of the strip, so the strip is a row of equal targets and
+   there is no dead border past the last one - which is what the old inline-flex left behind
+   when the column it sat in stretched it to the cell's width. */
+.swiss .winseg { display: flex; border: 1px solid var(--rule); align-self: stretch; }
+.swiss .winseg button {
+  flex: 1 1 0; min-width: 0;
+  font-family: var(--sp-font); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 5px 4px; background: none; border: none;
+  color: var(--muted); cursor: pointer;
 }
-.swiss .gustseg button + button { border-left: 1px solid rgba(255, 255, 255, 0.16); }
-.swiss .gustseg button.on { background: var(--accent); color: var(--on-accent); }
+.swiss .winseg button + button { border-left: 1px solid var(--hair); }
+.swiss .winseg button.on { background: var(--accent); color: var(--on-accent); }
 
 /* baro - reading over a three-hour trend line.
  * It runs down the cell, the way the gust cell beside it does, rather than across it in two
@@ -1080,32 +1091,52 @@ body {
 .swiss .spark-b { display: block; width: 100%; height: 38px; margin-top: auto; }
 .swiss .c-baro.tap { cursor: pointer; }
 
-/* Baro detail popup (BaroPopup.tsx) - large pannable chart inside the Sheet body */
-.swiss .baro-pop { display: flex; flex-direction: column; gap: 14px; }
-.swiss .bp-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.swiss .bp-now {
-  font-family: var(--sp-font); font-weight: 600; font-size: 34px; color: var(--accent);
-  font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1;
+/* The detail chart behind a bridge cell (TrendPopup.tsx): a pannable line in the Sheet body.
+ *
+ * It reads as the board does and not as a thing of its own. It used to be outlined in the accent
+ * colour, head and all, with the reading set in accent bold and the range on white pill buttons -
+ * three loud decisions on a screen whose whole language is hairlines, one accent and a light
+ * figure. The line keeps the colour of the sparkline in the cell it opened from, because that is
+ * the one place colour is carrying meaning here. */
+.swiss .trend-pop { display: flex; flex-direction: column; gap: 16px; }
+.swiss .tp-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+/* The reading, set as the cell sets it: light, tabular, in the text colour. */
+.swiss .tp-now {
+  font-family: var(--sp-font); font-weight: 300; font-size: 40px; color: var(--text);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.04em; line-height: 0.9;
 }
-.swiss .bp-now .bp-u { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 4px; }
-.swiss .bp-delta { font-family: var(--sp-mono); font-size: 12px; color: var(--muted); }
-.swiss .bp-seg { margin-left: auto; }
-.swiss .bp-chart {
+.swiss .tp-now .tp-u {
+  font-family: var(--sp-font); font-size: 13px; font-weight: 600; color: var(--muted);
+  letter-spacing: 0.04em; margin-left: 5px;
+}
+.swiss .tp-note { font-family: var(--sp-mono); font-size: 11px; color: var(--muted); }
+/* The range control sizes to its three labels rather than stretching across the head. */
+.swiss .tp-seg { margin-left: auto; align-self: center; flex: 0 0 auto; min-width: 168px; }
+.swiss .tp-chart {
   display: block; width: 100%; height: auto; touch-action: none; user-select: none;
-  -webkit-user-select: none; overflow: hidden;
+  -webkit-user-select: none; overflow: hidden; cursor: grab;
 }
-.swiss .bp-grid { stroke: var(--hair); stroke-width: 1; }
-.swiss .bp-ylab, .swiss .bp-xlab {
+.swiss .tp-chart:active { cursor: grabbing; }
+.swiss .tp-grid { stroke: var(--hair); stroke-width: 1; }
+.swiss .tp-ylab, .swiss .tp-xlab {
   fill: var(--muted); font-family: var(--sp-mono); font-size: 9px;
 }
-.swiss .bp-ylab { text-anchor: end; }
-/* .bp-area fill uses an inline url(#bp-grad) gradient - no CSS fill so it isn't overridden */
-.swiss .bp-line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
-.swiss .bp-dot { fill: var(--accent); }
-.swiss .bp-msg { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; }
-/* Baro popup frame uses the accent color (this popup only - scoped via :has) */
-.swiss .sheet:has(.baro-pop) { border-color: var(--accent); }
-.swiss .sheet:has(.baro-pop) .sheet-head { border-bottom-color: var(--accent); }
+.swiss .tp-ylab { text-anchor: end; }
+/* .tp-area is filled by an inline gradient (url(#tp-grad-*)), so no fill is set here. The two
+   stops take the line's colour from the tone, which is what makes one chart draw both. */
+.swiss .trend-pop { --tp-line: var(--spark-baro); }
+.swiss .trend-pop.tone-gust { --tp-line: var(--spark-gust); }
+.swiss .tp-stop-a { stop-color: var(--tp-line); stop-opacity: 0.22; }
+.swiss .tp-stop-b { stop-color: var(--tp-line); stop-opacity: 0; }
+.swiss .tp-line {
+  fill: none; stroke: var(--tp-line); stroke-width: 1.8;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.swiss .tp-dot { fill: var(--tp-line); }
+.swiss .tp-msg { padding: 46px 0; text-align: center; color: var(--muted); font-size: 13px; }
+/* A chart wants width. The sheet's own 380px is set for a form; here it is the reason the line
+   was being read in a column narrower than the cell that opened it. */
+.swiss .sheet:has(.trend-pop) { max-width: min(620px, 100%); }
 
 /* position */
 .swiss .c-pos { flex-direction: row; align-items: center; gap: 16px; }

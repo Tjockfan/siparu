@@ -9,10 +9,12 @@
  * two primitives. The barometer's trend is derived from the same rows and lives here for the
  * same reason.
  */
+import { msToKnots } from "../lib/format";
 import type {
   BaroTrend,
   MinutesResult,
   RollupHour,
+  SeriesPoint,
   Snapshot,
   SnapshotsQuery,
   SnapshotsResult,
@@ -173,11 +175,21 @@ export function sharedReads(raw: RawReads) {
     };
   }
 
-  async function baroSeries(q: { from: number; to: number; points?: number }): Promise<{ ts: number; hpa: number }[]> {
+  /**
+   * One reading over a window, thinned to what a chart can draw.
+   *
+   * The two charts that pan over the past - pressure and gust - differ in the field they read
+   * and in nothing else, so the window, the split across raw and rollup rows and the thinning
+   * are written once. A row the boat has no reading for is dropped rather than drawn as zero.
+   */
+  async function windowSeries(
+    q: { from: number; to: number; points?: number },
+    read: (r: Snapshot) => number | null,
+  ): Promise<SeriesPoint[]> {
     const rows = await snapshots({ from: q.from, to: q.to, order: "asc", limit: 5000 });
     let series = rows
-      .map((r) => ({ ts: r.ts, hpa: hpa(r.air_pressure_pa) }))
-      .filter((p): p is { ts: number; hpa: number } => p.hpa !== null);
+      .map((r) => ({ ts: r.ts, value: read(r) }))
+      .filter((p): p is SeriesPoint => p.value !== null);
     const points = q.points ?? 160;
     if (series.length > points) {
       const step = (series.length - 1) / (points - 1);
@@ -186,5 +198,19 @@ export function sharedReads(raw: RawReads) {
     return series;
   }
 
-  return { snapshots, minutes, baroTrend, baroSeries };
+  const baroSeries = (q: { from: number; to: number; points?: number }): Promise<SeriesPoint[]> =>
+    windowSeries(q, (r) => hpa(r.air_pressure_pa));
+
+  /**
+   * The gust line, in knots.
+   *
+   * `wind_gust` is the plugin's max-hold between snapshots and an hourly rollup carries the
+   * hour's peak in it, so this reads the same quantity at either resolution. Rows written
+   * before the field existed carry null and fall back to the instantaneous true wind, which is
+   * what the cell on the bridge does with them.
+   */
+  const gustSeries = (q: { from: number; to: number; points?: number }): Promise<SeriesPoint[]> =>
+    windowSeries(q, (r) => msToKnots(r.wind_gust ?? r.wind_speed_true));
+
+  return { snapshots, minutes, baroTrend, baroSeries, gustSeries };
 }
