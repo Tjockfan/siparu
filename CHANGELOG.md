@@ -14,6 +14,8 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-08-31
+
 ### Added
 
 - **Five more questions over the live socket.** A screen ashore may now ask the boat for
