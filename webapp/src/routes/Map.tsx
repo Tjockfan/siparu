@@ -1,6 +1,5 @@
-/** Map screen - single surface. The MapLibre engine lives in map/useMapEngine.ts.
- *  The legacy theme dispatcher has been removed (DESIGN-SYSTEM.md Phase 5). */
-import MapMarine from "./map/MapMarine";
+/** Map screen - single surface. The MapLibre engine lives with the shared screen. */
+import MapMarine from "siparu-ui/screens/map";
 
 export default function Map() {
   return <MapMarine />;

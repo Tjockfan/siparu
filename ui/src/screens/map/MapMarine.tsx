@@ -1,0 +1,232 @@
+/* Map - chart + AIS (Swiss redesign; MapLibre port).
+ * Engine + AIS logic preserved; the basemap now uses its own PMTiles stack
+ * (style.ts factory, night/day brand flavors). The overlays are designed
+ * in-house. */
+import { useState } from "react";
+import { type Snapshot, type AisTarget } from "../../data/api";
+import { fmtCoordDM, fmtNum, formatTs, radToDeg, sogKnFiltered } from "../../lib/format";
+import { makeBoatIcon, makeAisIcon, relativeAgo, type BoatPalette } from "../../map/boatIcon";
+import { useMapEngine } from "./useMapEngine";
+import AisFilterPopover from "./AisFilterPopover";
+
+/**
+ * Which corner of the chart the zoom control stands in.
+ *
+ * Named rather than typed into the engine's options, because the note stack in swiss.css has
+ * to stay out of whichever corner this is, and the two are in different files. The top of the
+ * chart is the coordinate strip's, so the zoom cannot go there.
+ */
+export const ZOOM_CORNER = "bottom-left" as const;
+
+export const MAP_CSS = `
+.mp .maplibregl-map { background: var(--map-sea); font-family: var(--sp-font); font-size: 11px; outline: none; }
+.mp .maplibregl-canvas { outline: none; }
+
+/* Zoom control - brutalist */
+.mp .maplibregl-ctrl-group { background: var(--cell); border: 1.5px solid var(--rule); border-radius: 0; box-shadow: none; }
+.mp .maplibregl-ctrl-group button {
+  background: var(--cell); border-bottom: 1px solid var(--rule);
+  width: 30px; height: 30px; border-radius: 0;
+}
+.mp .maplibregl-ctrl-group button:last-child { border-bottom: none; }
+.mp .maplibregl-ctrl-group button:disabled { opacity: 0.4; }
+.mp .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
+.mp .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon { filter: var(--ctrl-icon-filter); }
+.mp .maplibregl-ctrl-bottom-left { margin: 0 0 30px 12px; } /* zoom, above the attribution strip */
+
+/* Attribution - always visible as required by ODbL; a full-width strip
+   separate from the controls (design note: must not overlap the RANGE pill,
+   and contrast must not drop) */
+.mp .maplibregl-ctrl-bottom-right { left: 0; right: 0; margin: 0; display: flex; justify-content: center; }
+.mp .maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--cell) 90%, transparent);
+  font-family: var(--sp-font); font-size: 9px; letter-spacing: 0.02em;
+  color: var(--text); opacity: 0.85; padding: 2px 8px; border-radius: 0; margin: 0;
+}
+.mp .maplibregl-ctrl-attrib a { color: var(--text); text-decoration: none; }
+
+/* Popup - brutalist card */
+.mp .maplibregl-popup-content { background: var(--cell); color: var(--text); border: 1.5px solid var(--rule); border-radius: 0; box-shadow: none; padding: 11px 13px; font-family: var(--sp-font); }
+.mp .maplibregl-popup-tip { display: none; }
+.mp .maplibregl-popup-close-button { color: var(--muted); font-family: var(--sp-font); font-size: 16px; right: 4px; top: 2px; }
+.sp-boat-marker { z-index: 3; }
+.sp-ais-marker { z-index: 2; cursor: pointer; }
+
+/* AIS filter panel - brutalist, and part of the control stack rather than a layer over it.
+   It used to be positioned above the button that opens it, which is where the AIS switch
+   stands: measured with the panel open, it covered the whole of that switch - the one control
+   that answers "is anybody out there", which the stack below refuses to hide even when the
+   count falls to zero. Opening to the left instead only moved the problem, onto the zoom
+   control on a phone. In the stack it covers nothing: the column is anchored at the bottom, so
+   the panel grows upward over chart and the two buttons do not move. */
+.mp .ais-filter { width: 232px; padding: 14px; background: var(--cell); border: 1.5px solid var(--rule); color: var(--text); }
+.mp .ais-filter .aisf-row { margin-bottom: 14px; }
+.mp .ais-filter .aisf-row:last-child { margin-bottom: 0; }
+.mp .ais-filter .aisf-label > span:first-child { font-family: var(--sp-font); font-size: 9px; letter-spacing: 0.16em; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+.mp .ais-filter .aisf-label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.mp .ais-filter .aisf-value { font-family: var(--sp-mono); font-size: 11px; color: var(--text); font-variant-numeric: tabular-nums; }
+.mp .ais-filter input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; cursor: pointer; }
+.mp .ais-filter input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: var(--rule); }
+.mp .ais-filter input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -6px; background: var(--accent); }
+.mp .ais-filter input[type="range"]::-moz-range-track { height: 2px; background: var(--rule); }
+.mp .ais-filter input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: none; background: var(--accent); }
+`;
+
+// DivIcon SVG cannot resolve CSS vars - fixed accent. Bright fill + deep stroke
+// carry both cases (dark sea / light sea).
+const ACCENT_BOAT: BoatPalette = {
+  fill: "#f2f3f5",
+  stroke: "#e5484d",
+  glow: "rgba(229,72,77,0.45)",
+  dot: "#e5484d",
+};
+
+const KEY = "color: var(--muted); font-family: var(--sp-font); font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase;";
+const VAL = "color: var(--text); font-family: var(--sp-font); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;";
+const TITLE = "color: var(--text); font-family: var(--sp-font); font-weight: 600; font-size: 14px; margin-bottom: 8px;";
+const TAG = "font-family: var(--sp-font); font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #fff; background: var(--map-ais-hi); padding: 3px 5px;";
+
+// Popups are passed to MapLibre Popup.setHTML as a RAW HTML string; vessel
+// name/ship_type/nav_state from the AIS feed may be attacker-controlled. They
+// must be HTML-escaped before reaching innerHTML (otherwise an <img onerror>
+// could steal the JWT in localStorage).
+const esc = (s: string): string =>
+  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+function popupHtml(s: Snapshot, nowMs: number, boatName: string): string {
+  const sogKn = sogKnFiltered(s.sog);
+  const cogDeg = sogKn !== null ? radToDeg(s.cog) : null;
+  const hdgDeg = radToDeg(s.heading_true);
+  const navState = (s.nav_state ?? "·").toUpperCase();
+  return `
+    <div style="${TITLE}">${esc(boatName)}</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:4px;align-items:baseline;">
+      <span style="${KEY}">POS</span><span style="${VAL}">${fmtCoordDM(s.lat, ["N", "S"], 2)} · ${fmtCoordDM(s.lon, ["E", "W"], 3)}</span>
+      <span style="${KEY}">SOG</span><span style="${VAL}">${fmtNum(sogKn, 1, " kt")}</span>
+      <span style="${KEY}">COG</span><span style="${VAL}">${cogDeg === null ? "·" : fmtNum(cogDeg, 0, "°")}</span>
+      <span style="${KEY}">HDG</span><span style="${VAL}">${hdgDeg === null ? "·" : fmtNum(hdgDeg, 0, "°")}</span>
+      <span style="${KEY}">NAV</span><span style="${VAL}">${esc(navState)}</span>
+      <span style="${KEY}">UPD</span><span style="${VAL}">${relativeAgo(s.ts, nowMs)} <span style="color:var(--muted)">(${formatTs(s.ts).slice(11, 19)})</span></span>
+    </div>
+  `;
+}
+
+function aisPopupHtml(t: AisTarget): string {
+  const title = t.name || `MMSI ${t.mmsi}`;
+  const sog = t.sog_kn === null ? "·" : `${t.sog_kn.toFixed(1)} kt`;
+  const cog = t.cog_deg === null ? "·" : `${String(Math.round(t.cog_deg)).padStart(3, "0")}°`;
+  const dist = t.distance_nm === null ? "·" : `${t.distance_nm.toFixed(1)} NM`;
+  const loa = t.length_m === null ? "·" : `${Math.round(t.length_m)} m`;
+  const meta = [t.ship_type, t.ais_class ? `Class ${t.ais_class}` : null].filter(Boolean).join(" · ") || "·";
+  return `
+    <div style="${TITLE}; display:flex; justify-content:space-between; gap:10px; align-items:center;">${esc(title)} <span style="${TAG}">AIS</span></div>
+    <div style="display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:4px;align-items:baseline;">
+      <span style="${KEY}">TYPE</span><span style="${VAL}">${esc(meta)}</span>
+      <span style="${KEY}">LOA</span><span style="${VAL}">${loa}</span>
+      <span style="${KEY}">SOG</span><span style="${VAL}">${sog}</span>
+      <span style="${KEY}">COG</span><span style="${VAL}">${cog}</span>
+      <span style="${KEY}">DIST</span><span style="${VAL}">${dist}</span>
+      <span style="${KEY}">NAV</span><span style="${VAL}">${esc((t.nav_state ?? "·").toUpperCase())}</span>
+    </div>
+  `;
+}
+
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+export default function MapMarine() {
+  const {
+    containerRef, aisOn, setAisOn, aisCount, aisMaxNm, setAisMaxNm, aisLimit, setAisLimit, latest,
+    chartNote, aisAvailable, boatName,
+  } = useMapEngine({
+    track: { color: "#c23a3f", width: 1.8, dash: [2.8, 2.2] },
+    zoomPosition: ZOOM_CORNER,
+    popupHtml: (s, now) => popupHtml(s, now, boatName ?? "This vessel"),
+    aisPopupHtml,
+    makeBoat: (h) => makeBoatIcon(h, ACCENT_BOAT),
+    makeAis: (c) => makeAisIcon(c, "#7a8a86"),
+  });
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  const hdgDeg = latest ? radToDeg(latest.heading_true) : null;
+  const sogKn = latest ? sogKnFiltered(latest.sog) : null;
+  const navState = latest?.nav_state ? titleCase(latest.nav_state) : null;
+  const hasFix = latest?.lat != null && latest?.lon != null;
+  const coords = hasFix
+    ? `${fmtCoordDM(latest!.lat!, ["N", "S"], 2)}  ${fmtCoordDM(latest!.lon!, ["E", "W"], 3)}`
+    : "·";
+
+  /**
+   * Why the chart is showing what it is showing, when that is not the boat.
+   *
+   * With no fix the map opens on its default centre, which is a stretch of the Mediterranean
+   * the boat has probably never seen, and said nothing at all about it. A chart with no vessel
+   * on it and no explanation reads as a broken map, or worse, as a boat somewhere off Monaco.
+   * The note is only raised once a frame has actually arrived: before that the screen does not
+   * know whether there is a fix, and "awaiting fix" would be a guess about a boat it has not
+   * heard from yet.
+   *
+   * Two notes can stand at once - no fix and no chart tiles are independent failures - so they
+   * are a list rather than a slot, and neither hides the other.
+   */
+  const notes = [
+    latest && !hasFix ? "Awaiting fix - the boat is not on this chart yet" : null,
+    chartNote,
+  ].filter((n): n is string => n !== null);
+
+  return (
+    <div className="mp">
+      <style>{MAP_CSS}</style>
+      <div ref={containerRef} className="mp-canvas" />
+
+      <div className="mp-strip">
+        <span className="co">{coords}</span>
+        <span className="vec">
+          <b>{hdgDeg !== null ? `${Math.round(hdgDeg)}°` : "·"}</b> · <b>{sogKn !== null ? sogKn.toFixed(1) : "·"}</b>kn
+        </span>
+        {navState && <span className="navp">{navState}</span>}
+      </div>
+
+      {notes.length > 0 && (
+        <div className="mp-notes">
+          {notes.map((n) => (
+            <div className="mp-chartnote" key={n}>{n}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Both controls belong to AIS, so both are absent on a boat that has never carried a
+          receiver - the same rule the instruments keep for a sensor she does not have. What
+          they are NOT hidden by is an empty horizon: a switch that vanishes when the count
+          falls to zero is a switch that leaves at sea, where it is the only way to ask
+          whether anybody is around. */}
+      {aisAvailable && (
+        <div className="mp-ctrl">
+          {/* First in the stack, so opening it pushes nothing and covers nothing: the column is
+              anchored at the bottom of the chart and grows upward over open water. */}
+          <AisFilterPopover
+            open={filterOpen}
+            onClose={() => setFilterOpen(false)}
+            maxNm={aisMaxNm}
+            setMaxNm={setAisMaxNm}
+            limit={aisLimit}
+            setLimit={setAisLimit}
+            variant="marine"
+          />
+          {/* The count was computed and returned by the engine and never asked for here, so
+              "AIS on, nothing within range" and "AIS on, four ships around us" were the same
+              button. It is shown only while AIS is on: a zero beside a switch that is off is
+              not a reading, it is the switch saying it is off twice. */}
+          <button className={`mp-btn${aisOn ? " on" : ""}`} onClick={() => setAisOn(!aisOn)}>
+            AIS
+            {aisOn && <span className="n">{aisCount}</span>}
+          </button>
+          <button className="mp-btn" onClick={() => setFilterOpen((v) => !v)}>
+            Range · <span className="n">{aisMaxNm}</span> Nm
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

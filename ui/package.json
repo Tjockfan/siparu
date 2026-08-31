@@ -2,7 +2,7 @@
   "name": "siparu-ui",
   "version": "0.0.1",
   "private": true,
-  "description": "Shared Siparu design system: Swiss theme tokens and UI primitives.",
+  "description": "Shared Siparu design system and screens: Swiss theme tokens, UI primitives, and the bridge screens both the on-board dashboard and the portal draw.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -10,19 +10,41 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./swiss.css": "./src/styles/swiss.css"
+    "./swiss.css": "./src/styles/swiss.css",
+    "./data": "./src/data/index.ts",
+    "./lib": "./src/lib/index.ts",
+    "./shell": "./src/components/index.ts",
+    "./screens/bridge": "./src/screens/bridge/index.ts",
+    "./screens/logbook": "./src/screens/logbook/index.ts",
+    "./screens/voyage": "./src/screens/voyage/index.ts",
+    "./screens/map": "./src/screens/map/index.ts",
+    "./screens/remote": "./src/screens/remote/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
+    "@protomaps/basemaps": "^5.7.2",
+    "maplibre-gl": "^5.24.0",
     "motion": "^12.0.0",
-    "react": "^19.0.0"
+    "pmtiles": "^4.4.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0",
+    "tz-lookup": "^6.1.25"
   },
   "devDependencies": {
+    "@protomaps/basemaps": "^5.7.2",
+    "@types/geojson": "^7946.0.16",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "maplibre-gl": "^5.24.0",
     "motion": "^12.42.0",
-    "typescript": "^5.9.0"
+    "pmtiles": "^4.4.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.18.0",
+    "typescript": "^5.9.0",
+    "tz-lookup": "^6.1.25"
   }
 }

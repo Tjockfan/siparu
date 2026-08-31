@@ -13,8 +13,9 @@ export default defineConfig({
   resolve: {
     // siparu-ui is a file: link resolved to its real path outside node_modules,
     // so bare imports from its sources must land on this app's copies, never on
-    // the link's own devDependency copies (two Reacts break hooks at runtime).
-    dedupe: ['react', 'react-dom', 'motion']
+    // the link's own devDependency copies (two Reacts break hooks at runtime; two
+    // MapLibres register the pmtiles protocol on the one the map does not use).
+    dedupe: ['react', 'react-dom', 'motion', 'react-router-dom', 'maplibre-gl', 'pmtiles', '@protomaps/basemaps', 'tz-lookup']
   },
   server: {
     host: '127.0.0.1',

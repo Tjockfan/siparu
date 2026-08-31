@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
-import { applyInitialTheme } from "./lib/theme";
+import { applyInitialTheme } from "siparu-ui/data";
 // Self-hosted fonts: the boat may have no internet, so nothing loads from a CDN.
 // Subsets on purpose. Archivo carries UI text (boat and port names, so latin plus
 // latin-ext for European accents); the mono is digits and coordinates only, where
@@ -24,6 +24,9 @@ import "@fontsource/jetbrains-mono/latin-300.css";
 import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-500.css";
 import "@fontsource/jetbrains-mono/latin-600.css";
+// MapLibre's stylesheet is imported here, not inside the lazily loaded map, so that it always
+// lands BEFORE ours. Loaded from the lazy chunk it arrived last and won every tie.
+import "maplibre-gl/dist/maplibre-gl.css";
 import "siparu-ui/swiss.css";
 
 applyInitialTheme();

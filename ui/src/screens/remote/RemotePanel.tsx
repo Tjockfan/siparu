@@ -1,0 +1,487 @@
+/* Remote - the boat's half of the link ashore, and its own screen.
+ *
+ * This used to live under the instruments, on the argument that pairing happens once in a
+ * vessel's life and a tab for it would sit there dead afterwards. What actually sat there was
+ * the pairing band itself, under every reading on the busiest screen in the product, carrying
+ * an account's address and a list of key fingerprints below the fold. The link is not a
+ * reading and it is not glanced at; it is looked up, on the day somebody changes a phone or
+ * wonders who can see the boat. So it has a page, and the instruments got their room back.
+ *
+ * What did NOT move is the noticing. A condition an owner must act on is announced on the
+ * screen he is already looking at (see bridge/PairAlerts), and the detail waits here. A page
+ * nobody visits is a fine place for a list of fingerprints and a poor one for an alarm.
+ *
+ * The approval state is the one that matters and it gets the loudest treatment on the panel.
+ * Anyone can photograph a code off a screen at a boat show or through an open saloon door;
+ * nobody can tap Approve without standing at this screen, on the boat's own network. That tap
+ * is the whole security model, so it is not allowed to look like a notification.
+ */
+import { useEffect, useState, type ReactNode } from "react";
+import { REFUSING, useApi, type PairScreen, type SealingStatus, type UplinkStatus } from "../../data/api";
+import { ageOf } from "../../lib/age";
+import { screenRefusals, sealingNotice } from "../../lib/sealing";
+import { usePolling } from "../../data/usePolling";
+import SecurityWarning from "../../components/SecurityWarning";
+
+/*
+ * The address a person reads off this screen and types into a phone or a laptop, so it has
+ * to be the one that ends on the page with the box for this code. The portal used to have a
+ * subdomain of its own; that name is retired and now redirects to the site root, which is
+ * the marketing page and has nowhere to put a code. Somebody following the old line landed
+ * one page short of the only thing this band is asking them to do.
+ */
+const PORTAL = "siparu.app/app";
+
+function minutesLeft(expiresAt: string): number {
+  return Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 60_000));
+}
+
+/**
+ * Spelled out rather than abbreviated: this one lands inside a sentence a person reads
+ * once, at the helm, to find out whether the link is working.
+ *
+ * What this line can actually say is bounded by the cadence it reads, which is worth
+ * knowing before reading anything into a number here. The timestamp is refreshed every
+ * two seconds while the socket is up and every sixty by the POST that stands in when it
+ * is not, and a refresh that fails takes uplinkLine to a different branch entirely. So
+ * this counts seconds and the first minute or so, and the tiers above that are the
+ * ladder's, not this screen's.
+ *
+ * The first minute is the part that had to be right and was not: this used to round, so
+ * it printed "89s ago" and then jumped to "2 min ago" without ever saying one. Against a
+ * sixty second interval that made the minute tier meaningless - "2 min" arrived while she
+ * was still on schedule - where now "1 min" is a little late and "2 min" is a frame she
+ * missed.
+ */
+function ago(ts: number): string {
+  const { value, unit } = ageOf((Date.now() - ts) / 1000);
+  return `${value}${unit === "s" ? "s" : ` ${unit}`} ago`;
+}
+
+/**
+ * "On" is not the same as "getting through", and the gap between them is the quietest
+ * way this product can fail: the boat says she is paired, the owner ashore watches a
+ * screen that has not moved since Tuesday, and nobody is told why. So the boat says
+ * whether her frames are landing, in the same breath as saying she is linked.
+ */
+export function uplinkLine(up: UplinkStatus | undefined): string {
+  if (!up) return "Checking the link…";
+  // Ahead of the failure count on purpose, and it has no failures to be ahead of: a refused
+  // account is not a link that keeps missing, it is a link that is not being offered. The
+  // sentence comes from the boat so this screen and the plugin's log say the same thing.
+  if (up.unentitled) return up.lastError ?? "Remote watching is not active on this account.";
+  if (up.rejected || up.failures > 0) return up.lastError ?? "Not reaching Siparu.";
+  if (up.lastSentTs) return `Sending · last frame ${ago(up.lastSentTs)}`;
+  return "Waiting to send the first frame.";
+}
+
+export default function RemotePanel({ sealing }: { sealing?: SealingStatus | null }) {
+  const api = useApi();
+  // This page is the pairing; it is mounted at her helm and nowhere else. Should an app without
+  // pairing mount it anyway, every read below refuses rather than reaching a boat that is not there.
+  const pair = api.pair ?? REFUSING.pair;
+  const [fast, setFast] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
+
+  // A code on screen means the relay is being polled every 5s. A paired boat means
+  // nothing changes for months - poll it like it.
+  const { data, refresh } = usePolling<PairScreen>(() => pair.status(), fast ? 5_000 : 30_000, []);
+
+  useEffect(() => {
+    const s = data?.state;
+    setFast(s === "showing_code" || s === "awaiting_approval");
+  }, [data?.state]);
+
+  async function act(fn: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await fn();
+    } catch {
+      // The plugin remembers why it failed and /pair/status reports it on the next
+      // tick. Inventing a second error message here would only compete with the
+      // real one.
+    } finally {
+      setBusy(false);
+      setConfirmOff(false);
+      refresh();
+    }
+  }
+
+  // Silence has to be reported whatever the pairing screen is doing, so it is read before
+  // the guard below and rendered on its own: a boat that cannot seal to anybody is refusing
+  // to send while /pair/status still calls her linked and well, which is precisely the pair
+  // of facts that makes this failure invisible.
+  const silent = sealingNotice(sealing);
+  // Marked down the edge like the security warning rather than styled as an error, and for
+  // the same reason: this is a standing condition somebody has to go and fix, not an event
+  // that has just happened and can be dismissed.
+  const silence = silent ? (
+    <div className="pair warn">
+      <div className="pl">
+        <div className="t">{silent.title}</div>
+        <div className="s">{silent.detail}</div>
+      </div>
+    </div>
+  ) : null;
+
+  /*
+   * The screens she seals to, named by fingerprint.
+   *
+   * A device her owner adds ashore reaches her as a public key passed along by the relay, and
+   * she cannot tell one that came from his phone from one the relay substituted for its own.
+   * The specification names that plainly and names the antidote: a person aboard comparing this
+   * list with the line his phone shows him. This screen is on the boat's own network, which is
+   * what makes the comparison worth anything - it is the one exchange in the product the server
+   * has no part in.
+   *
+   * Offered rather than demanded. Nothing here blocks or warns; an owner who never looks is in
+   * the position he was in before, and one who wants to check can, without a trip through a
+   * settings page he would have to be told about first.
+   */
+  const screens = sealing?.screens ?? [];
+  const fingerprints =
+    screens.length > 0 ? (
+      <div className="pair">
+        <div className="pl">
+          {/* No title of its own: the cluster heading above names the list, and the badge
+              beside it counts it. */}
+          <div className="fps">
+            {screens.map((fp, i) => (
+              <span className="fp" key={`${fp}-${i}`}>
+                {fp}
+              </span>
+            ))}
+          </div>
+          <div className="s">
+            Every screen that can open her reports has a line here. If the line on your phone is
+            missing, she is not sealing to it; if a line here is not one of yours, it can read her.
+          </div>
+        </div>
+      </div>
+    ) : null;
+
+  /*
+   * What she is refusing, which is the other half of the list above and the more urgent one.
+   *
+   * The list above says who may read her. This says who asked and was turned away, and one of
+   * those two is the alarm: a key on her list that nothing she trusts vouched for is what
+   * somebody adding a reader of their own looks like from the helm. It has no screen anywhere
+   * else in the product - ashore, the party that would have to report it is the party it would
+   * be reporting - so if it is not here, nobody ever sees it.
+   *
+   * The unpinned line is not an alarm and is not dressed as one. A boat paired before approvals
+   * existed is doing exactly what she was built to do, and the only thing worth telling her
+   * owner is what she cannot check and how to give her the ability.
+   */
+  const refusals = screenRefusals(sealing);
+  const refused = refusals ? (
+    <>
+      {refusals.unapproved.length > 0 ? (
+        <div className="pair warn">
+          <div className="pl">
+            <div className="t">She will not seal to these screens</div>
+            <div className="s">
+              Nothing she trusts has vouched for them, so they receive nothing at all. A line here
+              you did not add is somebody else's key on your list: remove it from the boat's page
+              ashore, and if you cannot account for it, pair her again from this screen.
+            </div>
+            <div className="fps">
+              {refusals.unapproved.map((r) => (
+                <span className="fp" key={r.kid}>
+                  {r.kid} · {r.reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {refusals.unwrapped.length > 0 ? (
+        <div className="pair warn">
+          <div className="pl">
+            <div className="t">Authorised, and still receiving nothing</div>
+            <div className="s">
+              These screens are on her list and she could not wrap her last report to them. From
+              ashore that looks exactly like a boat gone quiet, which is why it is named here.
+            </div>
+            <div className="fps">
+              {refusals.unwrapped.map((r) => (
+                <span className="fp" key={r.kid}>
+                  {r.kid} · {r.reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {refusals.unpinned ? (
+        <div className="pair">
+          <div className="pl">
+            <div className="t">Her screens are not pinned</div>
+            <div className="s">
+              She was paired before screens could vouch for one another, so she checks that a key
+              is well formed and nothing about who put it on her list. She still seals every
+              report. Pair her again from this screen to pin the first one, and every later screen
+              will have to chain to it.
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  ) : null;
+
+  /*
+   * The page is composed the way the dashboard is: clusters under the heading band the
+   * systems wear, their contents as cells on one glass sheet. The link is one cluster and
+   * the screens are the other, because they answer two different questions - "is she
+   * linked and getting through" and "who can read her" - and a reader arrives with one of
+   * them, not both.
+   */
+  const screensRefused = (refusals?.unapproved.length ?? 0) + (refusals?.unwrapped.length ?? 0);
+  const screensSection =
+    fingerprints || refused ? (
+      <section className="sp-sec">
+        <h2 className="sp-sec-h">
+          <span className="sp-sec-n">Screens</span>
+          {/* Counted off the same list the cells below print, so the badge cannot say
+              one thing and the sheet another. Refusals take it in red: a key she turned
+              away is the one line on this page that can mean somebody else's reader. */}
+          <span className={`sp-sec-badge${screensRefused > 0 ? " quiet" : ""}`}>
+            {screensRefused > 0
+              ? `${screensRefused} refused`
+              : `${screens.length} sealed`}
+          </span>
+        </h2>
+        <div className="sp-glass">
+          {fingerprints}
+          {refused}
+        </div>
+      </section>
+    ) : null;
+
+  const linkSection = (badge: { text: string; quiet?: boolean; live?: boolean } | null, cells: ReactNode) => (
+    <section className="sp-sec">
+      <h2 className="sp-sec-h">
+        <span className="sp-sec-n">Link ashore</span>
+        {/* Absent until the first status lands, the way the bridge clusters open without a
+            badge: a CHECKING badge over a "Checking the link…" cell said one thing twice. */}
+        {badge ? (
+          <span className={`sp-sec-badge${badge.quiet ? " quiet" : ""}`}>
+            {/* The dot the rail's LIVE lamp wears, for the one state where frames are
+                actually leaving her: "on" and "getting through" are different claims, and
+                only the second one earns a pulse. */}
+            {badge.live ? <span className="rm-dot" aria-hidden="true" /> : null}
+            {badge.text}
+          </span>
+        ) : null}
+      </h2>
+      <div className="sp-glass">{cells}</div>
+    </section>
+  );
+
+  // Nothing until the first status lands: a band that appears and then changes shape
+  // would shove the grid around on every boot. The fingerprints are not part of that shape -
+  // they come from the health poll, not from this one, and a boat whose pairing status is slow
+  // to arrive is still a boat whose owner may be standing here to check a key.
+  if (!data)
+    return (
+      <>
+        {linkSection(null, silence ?? <div className="pair"><div className="pl"><div className="s">Checking the link…</div></div></div>)}
+        {screensSection}
+      </>
+    );
+
+  const btn = (label: string, onClick: () => void, tone?: "accent" | "ghost") => (
+    <button className={`pbtn${tone ? ` ${tone}` : ""}`} disabled={busy} onClick={onClick}>
+      {label}
+    </button>
+  );
+
+  // The warning stands above whatever the band shows, in every state: it is about the
+  // server's door, not about where in the pairing flow she happens to be. When the
+  // door is open AND unanswered-for, the plugin refuses the writes (pairing_locked),
+  // and the buttons below disappear rather than fail: a locked button the screen
+  // cannot explain is worse than no button, which is why the same warning the
+  // instruments carry is repeated here rather than left one tab away.
+  const locked = data.pairing_locked === true;
+  const warning = <SecurityWarning on={data.security_off} locked={locked} />;
+
+  // "Off on this boat, still revoking ashore" is a different truth from plain "off".
+  // The plugin retries by itself; this only keeps the screen from flattening it.
+  const revoking = data.revoke_pending ? (
+    <div className="pair warn">
+      <div className="pl">
+        <div className="t">Still revoking the old key</div>
+        <div className="s">
+          Remote watching is off on this boat, but Siparu could not be reached to revoke
+          its copy of the key. It will keep trying whenever the boat is online.
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const band = (() => {
+    switch (data.state) {
+        case "idle":
+      case "expired":
+        return (
+          <div className="pair">
+            <div className="pl">
+              <div className="t">Remote watching</div>
+              <div className="s">
+                {data.state === "expired"
+                  ? "The code expired. Nothing was linked."
+                  : "Off - this boat is not linked to an account."}
+              </div>
+            </div>
+            {!locked && btn(data.state === "expired" ? "New code" : "Turn on", () => act(pair.start))}
+          </div>
+        );
+
+      case "showing_code":
+        return (
+          <div className="pair">
+            <div className="pl">
+              <div className="t">Remote watching</div>
+              <div className="code">{data.userCode}</div>
+              <div className="s">
+                Enter this at <b>{PORTAL}</b> · {minutesLeft(data.expiresAt)} min left
+              </div>
+            </div>
+            {btn("Cancel", () => act(pair.deny), "ghost")}
+          </div>
+        );
+
+      case "awaiting_approval":
+        return (
+          <div className="pair asking">
+            <div className="pl">
+              <div className="t">Someone wants to pair</div>
+              <div className="who">{data.email ?? "an account we cannot name"}</div>
+              {/*
+               * The screen doing the asking, named the same way every other screen on this
+               * page is. This one earns its place more than the rest: approving roots
+               * everything she will trust afterwards in this key, and the relay is standing
+               * between the two devices at this exact moment. Comparing the line with the
+               * one on the phone is the only check that catches a swap, and it is offered
+               * here rather than demanded - an owner in a hurry taps Approve and is no worse
+               * off than he was before any of this existed.
+               */}
+              {data.device ? (
+                <div className="fps">
+                  <span className="fp">{data.device.fingerprint}</span>
+                </div>
+              ) : null}
+              <div className="s">
+                {data.device
+                  ? "Approve only if this is you, and only if that line matches the one on your phone. They will see where this boat is."
+                  : "Approve only if this is you. They will see where this boat is."}
+              </div>
+            </div>
+            <div className="acts">
+              {btn("Deny", () => act(pair.deny), "ghost")}
+              {!locked && btn("Approve", () => act(pair.approve), "accent")}
+            </div>
+          </div>
+        );
+
+      case "paired":
+        return (
+          // A rejected token is not a state to report calmly: the owner is watching a
+          // dead screen and only someone standing here can fix it.
+          <div className={`pair${data.uplink?.rejected ? " err" : ""}`}>
+            <div className="pl">
+              {/* The state moved to the cluster badge - "paused" when nothing ashore is
+                  allowed to watch, never "on" then - so the cell says what the link IS and
+                  the heading says how it is doing, once each. */}
+              <div className="t">Remote watching</div>
+              <div className="who">{data.email ?? "linked account"}</div>
+              {/* Silent because she cannot seal: the uplink is fine and its own line would
+                  say "Sending" under a band that has just said nothing is getting through.
+                  The band above is the truer of the two, so it speaks alone. */}
+              {!confirmOff && !silent && <div className="s">{uplinkLine(data.uplink)}</div>}
+            </div>
+            {locked ? null : confirmOff ? (
+              <div className="acts">
+                {btn("Keep", () => setConfirmOff(false), "ghost")}
+                {btn("Unlink", () => act(pair.reset), "accent")}
+              </div>
+            ) : (
+              <div className="acts">
+                {/* Without this button the only way back to a fresh code was Turn off,
+                    and unlinking throws away the token that proves she is this boat -
+                    which is exactly how an owner ends up with duplicates of her own
+                    vessel. Pairing again keeps the proof, so she stays one boat. */}
+                {btn("Pair again", () => act(pair.start), "ghost")}
+                {/* Two taps, because this is the one that matters when a boat changes
+                    hands: it destroys the token and the previous owner stops seeing her. */}
+                {btn("Turn off", () => setConfirmOff(true), "ghost")}
+              </div>
+            )}
+          </div>
+        );
+
+      case "error":
+        return (
+          <div className="pair err">
+            <div className="pl">
+              <div className="t">Remote watching</div>
+              <div className="s">{data.message}</div>
+            </div>
+            {!locked && (
+              <div className="acts">
+                {btn("Dismiss", () => act(pair.reset), "ghost")}
+                {btn("Retry", () => act(pair.start))}
+              </div>
+            )}
+          </div>
+        );
+    }
+  })();
+
+  /*
+   * The badge is the cluster's one-word answer, in the register the systems badges use.
+   * Red is kept for the two states that want a person at this screen right now: someone
+   * asking to pair, and a link that is being refused - the same rule the quiet badge
+   * follows on the dashboard.
+   */
+  const badge = (() => {
+    switch (data.state) {
+      case "paired": {
+        // Read off the same fields the cell's own sentence reads (uplinkLine), in the same
+        // order - a badge computed from fewer facts than the line under it is how "ON" came
+        // to shine over "Not reaching Siparu." on the first review of this page.
+        const up = data.uplink;
+        if (up?.unentitled) return { text: "inactive" };
+        if (up?.rejected || silent) return { text: "not sending", quiet: true };
+        if (!up || up.failures > 0) return { text: "not reaching", quiet: true };
+        // Linked with no frame out yet: on, but the pulse waits for the first one to land.
+        if (!up.lastSentTs) return { text: "on" };
+        return { text: "on", live: true };
+      }
+      case "showing_code":
+        return { text: "waiting" };
+      case "awaiting_approval":
+        return { text: "asking", quiet: true };
+      case "error":
+        return { text: "error", quiet: true };
+      default:
+        return { text: "off" };
+    }
+  })();
+
+  return (
+    <>
+      {linkSection(
+        badge,
+        <>
+          {silence}
+          {warning}
+          {revoking}
+          {band}
+        </>
+      )}
+      {screensSection}
+    </>
+  );
+}

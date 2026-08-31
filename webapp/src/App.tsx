@@ -2,10 +2,11 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AuthGate from "./components/AuthGate";
-import BoatLoader from "./components/BoatLoader";
+import { BoatLoader } from "siparu-ui/shell";
+import { ApiProvider } from "siparu-ui/data";
 import Layout from "./components/Layout";
 import Bridge from "./routes/Bridge";
-import { AUTH_REQUIRED_EVENT } from "./lib/api";
+import { api, AUTH_REQUIRED_EVENT } from "./lib/api";
 
 // Code-splitting: heavy tabs get their own chunk (Map -> MapLibre). Telemetry is
 // eager - it's the entry screen and should appear instantly.
@@ -28,7 +29,10 @@ export default function App() {
   }, []);
 
   if (authRequired) return <AuthGate />;
+  // The screens are shared with the shore and read the boat through this provider: here she
+  // is the plugin's own routes, same-origin. The screens sit at the root, so no route base.
   return (
+    <ApiProvider api={api}>
     <ErrorBoundary>
       <Suspense fallback={<BoatLoader full />}>
         <Routes>
@@ -49,5 +53,6 @@ export default function App() {
         </Routes>
       </Suspense>
     </ErrorBoundary>
+    </ApiProvider>
   );
 }
