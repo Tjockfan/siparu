@@ -32,7 +32,22 @@ import type {
   VoyagesResponse,
   PhaseListResult,
   PhasesRequest,
-  PhasesResponse
+  PhasesResponse,
+  RollupsRequest,
+  RollupsResponse,
+  RollupsResult,
+  StatsRequest,
+  StatsResponse,
+  VoyageStatsResult,
+  FuelRequest,
+  FuelResponse,
+  FuelPathsView,
+  AisRequest,
+  AisResponse,
+  AisFeed,
+  HealthRequest,
+  HealthResponse,
+  HealthResult
 } from './contract'
 
 /**
@@ -245,6 +260,18 @@ export interface LiveDeps {
    * a boat wired without it simply never grows the ear.
    */
   onPhasesQuery?: (limit: number) => Promise<PhaseListResult>
+  /**
+   * Five more reads, added together when the helm's own screens began to be drawn from ashore:
+   * her hourly summaries over a window (what /rollups/hourly serves), the voyage figures
+   * (/voyages/stats), the fuel source (/config/fuel-paths, the read side only), the vessels she
+   * hears (/ais/targets) and her own account of herself (/health). Each is a read of her store
+   * or her state; none reaches Signal K, and none is a command.
+   */
+  onRollupsQuery?: (from: number, to: number) => Promise<RollupsResult>
+  onStatsQuery?: () => Promise<VoyageStatsResult>
+  onFuelQuery?: () => Promise<FuelPathsView>
+  onAisQuery?: (maxNm?: number, limit?: number) => Promise<AisFeed>
+  onHealthQuery?: () => Promise<HealthResult>
   /**
    * Told that a screen ashore has just started watching her.
    *
@@ -480,18 +507,7 @@ export class LiveUplink {
         }
         // Spelled out per type rather than widened, so the reply keeps the exact shape the
         // shore's own union expects: an answer has to match the question it belongs to.
-        this.refuse(
-          gen,
-          asked.type === 'history'
-            ? { type: 'history', id: asked.id, error: refusal }
-            : asked.type === 'snapshots'
-              ? { type: 'snapshots', id: asked.id, error: refusal }
-              : asked.type === 'voyages'
-                ? { type: 'voyages', id: asked.id, error: refusal }
-                : asked.type === 'track'
-                  ? { type: 'track', id: asked.id, error: refusal }
-                  : { type: 'phases', id: asked.id, error: refusal }
-        )
+        this.refuse(gen, errorReply(asked.type, asked.id, refusal))
       }
     })
 
@@ -554,6 +570,7 @@ export class LiveUplink {
     this.handleVoyages(gen, text)
     this.handleTrack(gen, text)
     this.handlePhases(gen, text)
+    this.handleMore(gen, text)
   }
 
   /**
@@ -796,6 +813,66 @@ export class LiveUplink {
   }
 
   /**
+   * The five reads added when the helm's screens were first drawn from ashore: her hourly
+   * summaries, the voyage figures, the fuel source, the vessels she hears, and her own account
+   * of herself. One gate for all of them, as narrow as the five above it: parse, act only on a
+   * well-formed request of a type that is wired in, read the store or her state, never Signal K.
+   * A type that is not wired is not answered, as with its siblings.
+   */
+  private handleMore(gen: number, data: string): void {
+    let msg: unknown
+    try {
+      msg = JSON.parse(data)
+    } catch {
+      return
+    }
+    const d = this.deps
+    if (isRollupsRequest(msg) && d.onRollupsQuery) {
+      const { id, from, to } = msg
+      d.onRollupsQuery(from, to).then(
+        (result) => this.reply(gen, { type: 'rollups', id, result }),
+        (err) => this.failedRead(gen, 'rollups', id, err)
+      )
+    } else if (isStatsRequest(msg) && d.onStatsQuery) {
+      const { id } = msg
+      d.onStatsQuery().then(
+        (result) => this.reply(gen, { type: 'stats', id, result }),
+        (err) => this.failedRead(gen, 'stats', id, err)
+      )
+    } else if (isFuelRequest(msg) && d.onFuelQuery) {
+      const { id } = msg
+      d.onFuelQuery().then(
+        (result) => this.reply(gen, { type: 'fuel', id, result }),
+        (err) => this.failedRead(gen, 'fuel', id, err)
+      )
+    } else if (isAisRequest(msg) && d.onAisQuery) {
+      const { id, maxNm, limit } = msg
+      d.onAisQuery(maxNm, limit).then(
+        (result) => this.reply(gen, { type: 'ais', id, result }),
+        (err) => this.failedRead(gen, 'ais', id, err)
+      )
+    } else if (isHealthRequest(msg) && d.onHealthQuery) {
+      const { id } = msg
+      d.onHealthQuery().then(
+        (result) => this.reply(gen, { type: 'health', id, result }),
+        (err) => this.failedRead(gen, 'health', id, err)
+      )
+    }
+  }
+
+  /**
+   * A read that could not be served, answered with a fixed reason. The caught text stays here
+   * in the debug log - it can hold a data-dir path - and the reply crosses the wire.
+   */
+  private failedRead(gen: number, type: MoreType, id: string, err: unknown): void {
+    this.deps.debug(`${type} query failed: ${String(err)}`)
+    this.reply(
+      gen,
+      errorReply(type, id, { code: `${type.toUpperCase()}_FAILED`, message: `${type} query failed` })
+    )
+  }
+
+  /**
    * Send a history, snapshots, voyages, track or phases answer, but only if it still belongs to
    * the socket that asked. A query reads the disk while the line may drop and redial underneath it;
    * the generation guard is what keeps a slow answer from landing on a fresh connection that
@@ -817,6 +894,11 @@ export class LiveUplink {
       | VoyagesResponse
       | TrackResponse
       | PhasesResponse
+      | RollupsResponse
+      | StatsResponse
+      | FuelResponse
+      | AisResponse
+      | HealthResponse
   ): void {
     if (gen !== this.gen || !this.sock) return
     try {
@@ -834,6 +916,11 @@ export class LiveUplink {
       | VoyagesResponse
       | TrackResponse
       | PhasesResponse
+      | RollupsResponse
+      | StatsResponse
+      | FuelResponse
+      | AisResponse
+      | HealthResponse
   ): void {
     if (gen !== this.gen || !this.sock) return
     try {
@@ -1033,6 +1120,94 @@ function isPhasesRequest(m: unknown): m is PhasesRequest {
   return o.type === 'phases' && typeof o.id === 'string' && typeof o.limit === 'number'
 }
 
+/** The five reads added together; the tag is the gate for each, as for the five above. */
+type MoreType = 'rollups' | 'stats' | 'fuel' | 'ais' | 'health'
+
+type AnyType = 'history' | 'snapshots' | 'voyages' | 'track' | 'phases' | MoreType
+
+type ErrorReply =
+  | HistoryResponse
+  | SnapshotsResponse
+  | VoyagesResponse
+  | TrackResponse
+  | PhasesResponse
+  | RollupsResponse
+  | StatsResponse
+  | FuelResponse
+  | AisResponse
+  | HealthResponse
+
+/**
+ * An error reply of the asked type. Spelled out per type rather than widened, so the reply
+ * keeps the exact shape the shore's own union expects: an answer has to match the question
+ * it belongs to, and the compiler holds each arm to that.
+ */
+function errorReply(type: AnyType, id: string, error: { code: string; message: string }): ErrorReply {
+  switch (type) {
+    case 'history':
+      return { type, id, error }
+    case 'snapshots':
+      return { type, id, error }
+    case 'voyages':
+      return { type, id, error }
+    case 'track':
+      return { type, id, error }
+    case 'phases':
+      return { type, id, error }
+    case 'rollups':
+      return { type, id, error }
+    case 'stats':
+      return { type, id, error }
+    case 'fuel':
+      return { type, id, error }
+    case 'ais':
+      return { type, id, error }
+    case 'health':
+      return { type, id, error }
+  }
+}
+
+function isRollupsRequest(m: unknown): m is RollupsRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return (
+    o.type === 'rollups' &&
+    typeof o.id === 'string' &&
+    typeof o.from === 'number' &&
+    typeof o.to === 'number'
+  )
+}
+
+function isStatsRequest(m: unknown): m is StatsRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return o.type === 'stats' && typeof o.id === 'string'
+}
+
+function isFuelRequest(m: unknown): m is FuelRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return o.type === 'fuel' && typeof o.id === 'string'
+}
+
+/** The radius and the count are optional, and the route clamps both before it reads. */
+function isAisRequest(m: unknown): m is AisRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return (
+    o.type === 'ais' &&
+    typeof o.id === 'string' &&
+    (o.maxNm === undefined || typeof o.maxNm === 'number') &&
+    (o.limit === undefined || typeof o.limit === 'number')
+  )
+}
+
+function isHealthRequest(m: unknown): m is HealthRequest {
+  if (typeof m !== 'object' || m === null) return false
+  const o = m as Record<string, unknown>
+  return o.type === 'health' && typeof o.id === 'string'
+}
+
 /**
  * The real socket.
  *
@@ -1079,7 +1254,7 @@ function wsConnect(url: string, token: string): LiveSocket {
 export function rpcEnvelope(
   data: string
 ): {
-  type: 'history' | 'snapshots' | 'voyages' | 'track' | 'phases'
+  type: 'history' | 'snapshots' | 'voyages' | 'track' | 'phases' | MoreType
   id: string
 } | null {
   let msg: unknown
@@ -1096,7 +1271,12 @@ export function rpcEnvelope(
     type === 'snapshots' ||
     type === 'voyages' ||
     type === 'track' ||
-    type === 'phases'
+    type === 'phases' ||
+    type === 'rollups' ||
+    type === 'stats' ||
+    type === 'fuel' ||
+    type === 'ais' ||
+    type === 'health'
   ) {
     return { type, id }
   }

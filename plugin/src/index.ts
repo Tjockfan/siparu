@@ -240,6 +240,21 @@ export = (app: ServerAPI): Plugin => {
     return s
   }
 
+  /**
+   * Which engine fuel-rate paths she reports, and which are counted toward voyage fuel. Read
+   * by the picker at her helm and by the voyage screen ashore; written at her helm only.
+   */
+  function fuelPathsView(): { available: string[]; selected: string[] } {
+    return {
+      available: state
+        ? Object.keys(state.dynamicPaths(Date.now())).filter(
+            (p) => p.startsWith('propulsion.') && p.endsWith('.fuel.rate')
+          )
+        : [],
+      selected: opts?.fuelRatePaths ?? []
+    }
+  }
+
   async function health(): Promise<HealthResult> {
     if (!state || !store || !rollups || !query) throw new Error('not started')
     const now = Date.now()
@@ -569,6 +584,19 @@ export = (app: ServerAPI): Plugin => {
             onPhasesQuery: async (limit) => ({
               phases: pl.list(Math.min(Math.max(1, limit || 50), 500))
             }),
+            // The five reads the helm's screens needed when they were first drawn from ashore,
+            // each the socket's copy of a local GET route and answered from the same place.
+            onRollupsQuery: async (from, to) => ({ rows: await ru.readHourly(from, to) }),
+            onStatsQuery: () => vl.stats(ru, Date.now()),
+            onFuelQuery: async () => fuelPathsView(),
+            onAisQuery: async (maxNm, limit) =>
+              buildAisFeed(
+                app.getPath('vessels'),
+                app.selfContext,
+                Date.now(),
+                clampAisQuery(maxNm, undefined, limit)
+              ),
+            onHealthQuery: () => health(),
             seal: (frame) => seal.seal(frame),
             // A screen ashore has opened, so the list of screens she seals to is worth
             // re-reading now rather than at the end of a five minute poll. That poll is what
@@ -727,14 +755,7 @@ export = (app: ServerAPI): Plugin => {
         app,
         acceptOpenNetwork: () => opts?.acceptOpenNetwork ?? false,
         getConfig: () => currentConfig,
-        fuelPathsView: () => ({
-          available: state
-            ? Object.keys(state.dynamicPaths(Date.now())).filter(
-                (p) => p.startsWith('propulsion.') && p.endsWith('.fuel.rate')
-              )
-            : [],
-          selected: opts?.fuelRatePaths ?? []
-        }),
+        fuelPathsView,
         // Apply through the server's restart (persist + stop + start), not
         // savePluginOptions, so a picker save takes effect at once. Null only
         // between stop() and start(), when there is no running plugin to restart.

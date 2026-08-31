@@ -19,11 +19,13 @@ import type {
   LiveResult,
   MetricField,
   RollupHour,
+  RollupsResult,
   Snapshot,
   SnapshotsResult,
+  VoyageStatsResult,
 } from "../../../plugin/src/contract";
 
-export type { MetricField, RollupHour, Snapshot, SnapshotsResult };
+export type { MetricField, RollupHour, RollupsResult, Snapshot, SnapshotsResult, VoyageStatsResult };
 
 /** The live frame, exactly as the plugin's /live returns it. */
 export type LiveSnapshot = LiveResult;

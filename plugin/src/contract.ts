@@ -667,3 +667,78 @@ export interface DevicePublicKey {
    */
   approvals?: DeviceApproval[]
 }
+
+/**
+ * Five more reads the screens ashore put to her, added as one family when the helm's own
+ * screens began to be drawn from ashore. Each is a read of her own store or her own state and
+ * reaches nothing near Signal K; each carries the id its answer comes back under. They are
+ * the socket's copies of five local GET routes: /rollups/hourly, /voyages/stats,
+ * /config/fuel-paths, /ais/targets and /health.
+ */
+
+/** Her hourly summaries over a window, unflattened - what an export of figures reads. */
+export interface RollupsRequest {
+  type: 'rollups'
+  id: string
+  from: number
+  to: number
+}
+
+export interface RollupsResult {
+  rows: RollupHour[]
+}
+
+export type RollupsResponse =
+  | { type: 'rollups'; id: string; result: RollupsResult }
+  | { type: 'rollups'; id: string; error: { code: string; message: string } }
+
+/** The voyage screen's four windows - today, yesterday, the week, the season (VoyageStatsResult). */
+export interface StatsRequest {
+  type: 'stats'
+  id: string
+}
+
+export type StatsResponse =
+  | { type: 'stats'; id: string; result: VoyageStatsResult }
+  | { type: 'stats'; id: string; error: { code: string; message: string } }
+
+/**
+ * Which engine fuel-rate paths feed the per-voyage fuel figure: the paths she reports, and the
+ * subset counted (empty means all of them). Read ashore so the voyage screen can say why a
+ * passage shows no fuel; the choice itself is written at her helm and nowhere else.
+ */
+export interface FuelPathsView {
+  available: string[]
+  selected: string[]
+}
+
+export interface FuelRequest {
+  type: 'fuel'
+  id: string
+}
+
+export type FuelResponse =
+  | { type: 'fuel'; id: string; result: FuelPathsView }
+  | { type: 'fuel'; id: string; error: { code: string; message: string } }
+
+/** The vessels her receiver hears, within a radius, the newest first. Clamped as the route is. */
+export interface AisRequest {
+  type: 'ais'
+  id: string
+  maxNm?: number
+  limit?: number
+}
+
+export type AisResponse =
+  | { type: 'ais'; id: string; result: AisFeed }
+  | { type: 'ais'; id: string; error: { code: string; message: string } }
+
+/** Her own account of herself: what the local /health serves, sealed like the rest. */
+export interface HealthRequest {
+  type: 'health'
+  id: string
+}
+
+export type HealthResponse =
+  | { type: 'health'; id: string; result: HealthResult }
+  | { type: 'health'; id: string; error: { code: string; message: string } }

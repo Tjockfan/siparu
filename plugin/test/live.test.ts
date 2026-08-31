@@ -1284,3 +1284,114 @@ describe('the fifth sibling the shore may say: asking for her phases', () => {
   })
 })
 
+
+describe('the five reads added when her screens were first drawn from ashore', () => {
+  const ROLLUPS = { rows: [{ hour: '2026-08-31T00', count: 60 }] }
+  const STATS = { today: { distance_nm: 1 }, yesterday: {}, rolling_7d: {}, season: {} }
+  const FUEL = { available: ['propulsion.port.fuel.rate'], selected: [] }
+  const AIS = { targets: [], own: null, count: 0 }
+  const HEALTH = { status: 'ok', boat_name: 'Demo' }
+
+  function wired() {
+    const onRollupsQuery = vi.fn().mockResolvedValue(ROLLUPS)
+    const onStatsQuery = vi.fn().mockResolvedValue(STATS)
+    const onFuelQuery = vi.fn().mockResolvedValue(FUEL)
+    const onAisQuery = vi.fn().mockResolvedValue(AIS)
+    const onHealthQuery = vi.fn().mockResolvedValue(HEALTH)
+    const u = uplink({ onRollupsQuery, onStatsQuery, onFuelQuery, onAisQuery, onHealthQuery } as never)
+    return { ...u, onRollupsQuery, onStatsQuery, onFuelQuery, onAisQuery, onHealthQuery }
+  }
+
+  it('answers each of them from the place its local route reads, under the id it was asked with', async () => {
+    const w = wired()
+    w.live.start()
+    w.last().open()
+
+    w.last().ask({ type: 'rollups', id: 'r1', from: 10, to: 20 })
+    w.last().ask({ type: 'stats', id: 's1' })
+    w.last().ask({ type: 'fuel', id: 'f1' })
+    w.last().ask({ type: 'ais', id: 'a1', maxNm: 5, limit: 30 })
+    w.last().ask({ type: 'health', id: 'h1' })
+    await flush()
+
+    expect(w.onRollupsQuery).toHaveBeenCalledWith(10, 20)
+    expect(w.onAisQuery).toHaveBeenCalledWith(5, 30)
+    expect(w.last().repliesOfType('rollups')).toEqual([{ type: 'rollups', id: 'r1', result: ROLLUPS }])
+    expect(w.last().repliesOfType('stats')).toEqual([{ type: 'stats', id: 's1', result: STATS }])
+    expect(w.last().repliesOfType('fuel')).toEqual([{ type: 'fuel', id: 'f1', result: FUEL }])
+    expect(w.last().repliesOfType('ais')).toEqual([{ type: 'ais', id: 'a1', result: AIS }])
+    expect(w.last().repliesOfType('health')).toEqual([{ type: 'health', id: 'h1', result: HEALTH }])
+    // None of them was mistaken for one of the five older questions.
+    expect(w.last().snapshotsReplies()).toHaveLength(0)
+    expect(w.last().historyReplies()).toHaveLength(0)
+
+    w.live.stop()
+  })
+
+  it('sends back a fixed reason when a read fails, never the caught text', async () => {
+    const onStatsQuery = vi.fn().mockRejectedValue(new Error('/Users/somebody/.signalk/rollups is gone'))
+    const { live, last } = uplink({ onStatsQuery } as never)
+    live.start()
+    last().open()
+
+    last().ask({ type: 'stats', id: 's2' })
+    await flush()
+
+    expect(last().repliesOfType('stats')).toEqual([
+      { type: 'stats', id: 's2', error: { code: 'STATS_FAILED', message: 'stats query failed' } }
+    ])
+
+    live.stop()
+  })
+
+  it('reads the tag as the gate: a rollups window without a type, or with a wrong one, is not read', async () => {
+    const w = wired()
+    w.live.start()
+    w.last().open()
+
+    w.last().ask({ id: 'x', from: 10, to: 20 })
+    w.last().ask({ type: 'put', id: 'x', from: 10, to: 20 })
+    // A rollups request without its window is not one either.
+    w.last().ask({ type: 'rollups', id: 'x' })
+    // An AIS radius that is not a number is refused at the gate, not clamped later.
+    w.last().ask({ type: 'ais', id: 'x', maxNm: '5' })
+    await flush()
+
+    expect(w.onRollupsQuery).not.toHaveBeenCalled()
+    expect(w.onAisQuery).not.toHaveBeenCalled()
+    expect(w.last().frames().filter((f) => (f as { type?: string }).type === 'answer')).toHaveLength(0)
+
+    w.live.stop()
+  })
+
+  it('does nothing with any of them when the feature is not wired', async () => {
+    const { live, last } = uplink()
+    live.start()
+    last().open()
+
+    last().ask({ type: 'rollups', id: 'r1', from: 10, to: 20 })
+    last().ask({ type: 'health', id: 'h1' })
+    await flush()
+
+    expect(last().repliesOfType('rollups')).toHaveLength(0)
+    expect(last().repliesOfType('health')).toHaveLength(0)
+
+    live.stop()
+  })
+
+  it('refuses each of them in the clear when it arrives in the clear, by its own type', async () => {
+    const w = wired()
+    w.live.start()
+    w.last().open()
+
+    // Straight onto the socket, not in a sealed envelope: the way an older screen asks.
+    w.last().say(JSON.stringify({ type: 'health', id: 'h9' }))
+    await flush()
+
+    const refusals = w.last().frames().filter((f) => (f as { id?: string }).id === 'h9')
+    expect(refusals).toEqual([{ type: 'health', id: 'h9', error: { code: 'SEALED', message: expect.any(String) } }])
+    expect(w.onHealthQuery).not.toHaveBeenCalled()
+
+    w.live.stop()
+  })
+})
