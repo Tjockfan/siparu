@@ -361,6 +361,14 @@ export interface InventoryResult {
 
 export interface HealthResult {
   status: 'ok' | 'degraded'
+  /**
+   * Whether Signal K is running without security, and whether the plugin is refusing its
+   * writes for it. The pairing status carries the same two facts for the helm; they ride here
+   * too so a screen ashore, which has no pairing to ask, can show the same notice. Optional:
+   * a plugin from before they were said sends neither.
+   */
+  security_off?: boolean
+  pairing_locked?: boolean
   now: number
   started_at: number
   version: string

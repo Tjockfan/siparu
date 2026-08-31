@@ -18,7 +18,8 @@
     "./screens/logbook": "./src/screens/logbook/index.ts",
     "./screens/voyage": "./src/screens/voyage/index.ts",
     "./screens/map": "./src/screens/map/index.ts",
-    "./screens/remote": "./src/screens/remote/index.ts"
+    "./screens/remote": "./src/screens/remote/index.ts",
+    "./screens/security": "./src/screens/security/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

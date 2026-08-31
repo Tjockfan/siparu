@@ -23,6 +23,9 @@ const RAIL_QUERY = "(min-width: 1000px)";
  *  the instruments' own, which asks the same endpoint for the same reason. */
 const SECURITY_POLL_MS = 30_000;
 
+/** The server's door: whether it stands open, and whether the plugin has locked its writes for it. */
+type Door = { open: boolean | undefined; locked: boolean };
+
 type Props = {
   /** The destinations, in order. The bridge set unless the app says otherwise. */
   tabs?: readonly TabSpec[];
@@ -118,10 +121,13 @@ export default function Layout({
   const stale = location.pathname === at("/") && liveTs !== null && now - liveTs > 10_000;
 
   const wide = useMediaQuery(RAIL_QUERY);
-  // The door is a fact about her server, asked at her helm. Where the app has no pairing (the
-  // shore), there is no door to ask about and the poll answers nothing.
-  const { data: pair } = usePolling<PairScreen | null>(
-    () => api.pair?.status() ?? Promise.resolve(null),
+  // The door is a fact about her server. At her helm the pairing status carries it; ashore
+  // there is no pairing to ask, and her own account of herself says the same two things.
+  const { data: door } = usePolling<Door | null>(
+    () =>
+      api.pair
+        ? api.pair.status().then((s: PairScreen) => ({ open: s.security_off, locked: s.pairing_locked === true }))
+        : api.health().then((h) => ({ open: h.security_off, locked: h.pairing_locked === true })),
     SECURITY_POLL_MS,
     [],
   );
@@ -182,7 +188,7 @@ export default function Layout({
           the same open door as one who lands on the instruments. Asked once per launch (the
           dialog itself only opens if a month has passed since it was last acknowledged), so this
           poll is slow: it is here to notice a condition, not to watch one. */}
-      <SecurityNotice on={pair?.security_off} locked={pair?.pairing_locked === true} />
+      <SecurityNotice on={door?.open} locked={door?.locked === true} />
     </div>
   );
 }

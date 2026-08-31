@@ -188,6 +188,13 @@ export type HealthResult = {
    * answers "is anybody out there". Absent in the earlier plugin.
    */
   ais?: { receiver_seen: boolean; first_seen_ts: number | null };
+  /**
+   * Whether Signal K is running without security, and whether the plugin is refusing its
+   * writes for it. Carried here as well as on the pairing status so a screen ashore, which has
+   * no pairing to ask, can show the same notice the helm shows. Absent in the earlier plugin.
+   */
+  security_off?: boolean;
+  pairing_locked?: boolean;
 };
 
 export type MapConfig = {

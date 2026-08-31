@@ -26,7 +26,7 @@ import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQue
 import { fingerprintOfEncoded } from './fingerprint'
 import { DYNAMIC_PREFIXES, MetricsState, SUBSCRIBED_PATHS } from './metrics'
 import { QueryService } from './query'
-import { registerPairRoutes, retryPendingUnlinks } from './pairing'
+import { registerPairRoutes, retryPendingUnlinks, securityOff } from './pairing'
 import { registerConfigRoutes } from './config-routes'
 import { registerVoyageEditRoutes } from './voyage-routes'
 import { RemoteLink, RemoteLinkStore } from './remotelink'
@@ -266,6 +266,11 @@ export = (app: ServerAPI): Plugin => {
       started_at: startedAt,
       version: packageVersion(),
       boat_name: opts.boatName || (app.getSelfPath('name') as string | undefined) || null,
+      // The server's door, said here as well as on the pairing status: a screen ashore has no
+      // pairing to ask and shows the same notice the helm shows. No request stands behind a
+      // question over the socket, so the strategy is asked about the server, not a caller.
+      security_off: securityOff(app, {}),
+      pairing_locked: securityOff(app, {}) && !(opts?.acceptOpenNetwork ?? false),
       last_delta_ts: state.lastDeltaTs,
       last_snapshot_ts: lastSnapshotTs,
       snapshots_today: snapshotsToday,
