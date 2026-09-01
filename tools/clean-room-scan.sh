@@ -88,5 +88,28 @@ if [ "$violations" -gt 0 ]; then
   exit 1
 fi
 
+# A second, narrower pass over the same file set: values known by name rather than by
+# shape. The list holds things like a residential address or an identity code, so it is not
+# in this repository and never can be - it is read from LEAK_INVENTORY, or from the machine's
+# own copy when that variable is unset.
+#
+# Unlike the pattern source above, a MISSING list here does not refuse the publish, and the
+# difference is deliberate. What npm uploads is built from this repository, and the
+# repository already has a gate that scans its whole history for these values and refuses
+# the push. A release runner that has no copy of the list is therefore not unguarded, it is
+# guarded one step earlier. Saying so out loud beats both a silent skip and a refusal that
+# would make the release depend on a secret it does not need.
+SCAN="${LEAK_SCAN:-$HOME/.claude/hooks/leak-scan.py}"
+if [ -x "$SCAN" ] && [ -r "${LEAK_INVENTORY:-$HOME/.claude/hooks/leak-inventory.txt}" ]; then
+  if ! printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 "$SCAN"; then
+    echo
+    red "private-value scan FAILED: a published file carries a value from the inventory."
+    echo "Locations are printed above, values are not. Fix the SOURCE and rebuild."
+    exit 1
+  fi
+else
+  echo "private-value inventory not available here; the repository's own gate covers it."
+fi
+
 green "clean-room scan passed: $count published files clean ($exempt vendor exemption(s))."
 exit 0
