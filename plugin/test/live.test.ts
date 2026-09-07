@@ -740,6 +740,21 @@ describe('a token the relay will not even let in', () => {
     expect(live.status().lastError).toMatch(/remote watching/i)
     expect(sockets[0].dead()).toBe(true)
 
+    // What the sentence has to get right, because it is the only thing an owner has to go on
+    // and it is read at the helm, hours from a shop.
+    const said = live.status().lastError ?? ''
+    // The portal, not the front door. The bare domain is the marketing page and somebody
+    // following it lands one page short of the account they were sent to look at - the same
+    // hole RemotePanel keeps PORTAL = 'siparu.app/app' to avoid.
+    expect(said).toContain('siparu.app/app')
+    expect(said).not.toMatch(/siparu\.app(?!\/app)/)
+    // Not "renew". This answer is given to every account without a running plan, and while
+    // nothing is on sale the only people who ever see it are the ones who never bought.
+    expect(said).not.toMatch(/renew/i)
+    // And it must not promise a quick recovery it cannot make: the stand-off is a quarter of
+    // an hour, so the sentence says so rather than implying the next frame.
+    expect(said).toMatch(/fifteen minutes/)
+
     // A door that opens on a payment does not open any sooner for being knocked on.
     vi.advanceTimersByTime(60_000)
     expect(sockets).toHaveLength(1)

@@ -997,7 +997,8 @@ export class LiveUplink {
       // something other than a retry is not opened any sooner by retrying.
       this.unentitled = true
       this.lastError =
-        'Remote watching is not active on this account. She is recording as usual, and starts sending again when it is.'
+        'Remote watching is not active on this account. She is recording as usual, and looks ' +
+          'again every fifteen minutes. Your account at siparu.app/app says where it stands.'
       this.deps.debug(`live uplink: ${this.lastError}`)
       this.redial(STAND_OFF_MS)
       return

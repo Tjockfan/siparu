@@ -294,7 +294,8 @@ export class Uplink {
       this.lastError = this.rejected
         ? 'Siparu no longer recognises this boat. Pair her again.'
         : this.unentitled
-          ? 'Remote watching is not active on this account. She is recording as usual, and starts sending again when it is.'
+          ? 'Remote watching is not active on this account. She is recording as usual, and looks ' +
+            'again every fifteen minutes. Your account at siparu.app/app says where it stands.'
           : `Relay refused the frame (${res.status}).`
       // A rejection is not noise: it means the owner is watching a screen that will
       // never update, and the only thing that fixes it happens on this boat.
