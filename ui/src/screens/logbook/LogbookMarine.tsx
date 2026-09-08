@@ -24,6 +24,7 @@ import {
   type PickItem,
 } from "./columnSelection";
 import {
+  minuteWindow,
   useLogbookLive,
   useLogbookDay,
   useLogbookRange,
@@ -195,6 +196,9 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   const [request, setRequest] = useState<ExportRequest | null>(null);
   const [printing, setPrinting] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  // Not a fault, so not an error: the file was written, and it stops where the ceiling
+  // does. The reader is told on the way out because the file cannot tell him on the way in.
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   // The panel stays open. View is the verb a reader presses more than once - a week at six
   // hours, then the same week daily, then a narrower window - and closing the panel each time
@@ -222,6 +226,7 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
   const onSave = async (r: ExportRequest) => {
     setExporting(false);
     setSaveErr(null);
+    setSaveNote(null);
     if (r.format === "pdf") {
       setRequest(r);
       setMode("range");
@@ -235,14 +240,17 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
         // A minute is the sample itself. There is nothing to summarise and no window to carry
         // a distance, so this is the page as it stands - the boat's own record, as far back as
         // she still keeps it, and her hourly summary for whatever lies before that.
-        const { rows } = await api.logbook.minutes({
-          from,
-          to,
-          limit: RANGE_LIMIT,
-          order: "desc",
-        });
+        const { rows, truncated } = await minuteWindow((q) => api.logbook.minutes(q), from, to);
         const cols = visibleColumns(columnsFor(logbookColumns(rows, windUnit), shownBook), selection);
-        downloadText(exportFilename(`logbook-${shownBook}`, from, "csv"), "text/csv", snapshotsCsv(rows, cols));
+        // A file that stopped short says so in the one thing that travels with it: its name.
+        // The note below is for whoever pressed Save; the name is for whoever opens it later.
+        const file = exportFilename(`logbook-${shownBook}`, from, "csv", truncated ? "-partial" : "");
+        downloadText(file, "text/csv", snapshotsCsv(rows, cols));
+        if (truncated) {
+          setSaveNote(
+            `That window holds more than ${RANGE_LIMIT} minutes, so the file stops at the most recent ${RANGE_LIMIT} and its name ends in -partial. A longer interval covers the same days in fewer rows.`,
+          );
+        }
         return;
       }
       // The boat's own summaries, one block of columns per figure asked for. Each block
@@ -297,6 +305,7 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
     onView,
     onSave,
     saveErr,
+    saveNote,
   };
   return (
     <div className="lb" ref={setRoot}>
@@ -360,6 +369,9 @@ interface ViewProps {
   onSave: (r: ExportRequest) => void;
   /** What went wrong writing a file out, which is not the same as what went wrong reading. */
   saveErr: string | null;
+  /** What a reader should know about a file that was written anyway: it was, and it stops
+   *  where the ceiling does. */
+  saveNote: string | null;
 }
 
 /**
@@ -899,6 +911,7 @@ function LiveView({
   onView,
   onSave,
   saveErr,
+  saveNote,
 }: ViewProps) {
   const { snaps, err, busy, hasMore, loadMore } = useLogbookLive(shownGran);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
@@ -944,6 +957,7 @@ function LiveView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
+      {saveNote && <div className="lb-note">{saveNote}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
         <PrintHead book={book} window={GRAN_LABEL[shownGran]} interval={INTERVAL_NAME[shownGran]} />
         <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[shownGran]}</span><b>{snaps.length}</b></div>
@@ -996,6 +1010,7 @@ function DayView({
   onView,
   onSave,
   saveErr,
+  saveNote,
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
@@ -1056,6 +1071,7 @@ function DayView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
+      {saveNote && <div className="lb-note">{saveNote}</div>}
       <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
         <PrintHead book={book} window={dayLabel} interval={INTERVAL_NAME["1h"]} />
         <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
@@ -1190,6 +1206,7 @@ function RangeView({
   onView,
   onSave,
   saveErr,
+  saveNote,
   printing,
   donePrinting,
 }: ViewProps & { req: ExportRequest | null; printing: boolean; donePrinting: () => void }) {
@@ -1289,6 +1306,7 @@ function RangeView({
         />
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
+      {saveNote && <div className="lb-note">{saveNote}</div>}
       <div className={`lb-frame dated${cls}${leaving ? " leaving" : ""}`} style={block}>
         <PrintHead book={book} window={label} interval={interval} />
         <div className="lb-day" style={laneVar(drawn)}>

@@ -242,9 +242,10 @@ export function downloadText(filename: string, mime: string, text: string): void
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-/** A filename that sorts by date and survives every filesystem. */
-export function exportFilename(prefix: string, ts: number, ext: string): string {
+/** A filename that sorts by date and survives every filesystem. Anything a file has to say
+ *  about itself goes in `suffix`, after the date, so saying it does not break that sort. */
+export function exportFilename(prefix: string, ts: number, ext: string, suffix = ""): string {
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${prefix}-${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}.${ext}`;
+  return `${prefix}-${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${suffix}.${ext}`;
 }

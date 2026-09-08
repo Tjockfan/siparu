@@ -58,8 +58,16 @@ export type SnapshotsQuery = {
   bucket?: number;
 };
 
-/** Minute rows over a window, and the instant the boat stops having them. */
-export type MinutesResult = { rows: Snapshot[]; minutesFrom: number };
+/**
+ * Minute rows over a window, the instant the boat stops having them, and whether the window
+ * came back narrower than it was asked for.
+ *
+ * `clamped` is the boat's own answer and cannot be worked out from the rows: she serves at
+ * most LIMIT_MAX of them, so a reader who asks for one past his own ceiling to see if there
+ * was more gets a full page either way. A week of minutes that came back as three days has to
+ * say so, on the screen and in the file both.
+ */
+export type MinutesResult = { rows: Snapshot[]; minutesFrom: number; clamped: boolean };
 
 // ===== Barometer =====
 

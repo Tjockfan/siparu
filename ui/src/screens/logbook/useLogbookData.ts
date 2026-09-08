@@ -1,7 +1,7 @@
 /** Data + logic layer for the logbook screen - independent of theme variants.
  *  The marine / pastel / ios variants consume these hooks. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useApi, type Snapshot } from "../../data/api";
+import { useApi, type MinutesResult, type Snapshot } from "../../data/api";
 import { bucketHours, bucketRow, type BucketGran, type Stat } from "../../lib/buckets";
 import { dateInputToMs, dateToInput } from "../../lib/format";
 import { startVisibleInterval } from "../../data/visibleInterval";
@@ -212,6 +212,29 @@ export function useLogbookDay(): LogbookDay {
  */
 export const RANGE_LIMIT = 5000;
 
+/**
+ * A window of minutes at the ceiling: the rows to show or write, where the boat's own minutes
+ * begin, and whether anything was left out of them.
+ *
+ * One row past the ceiling is asked for, which catches a window this side has to cut. It
+ * cannot catch one the boat cut, because her page is the same size: that half arrives in her
+ * flag, already read for what it means (see the shared read). Both the range view and the
+ * file go through here, so the rule for "there was more" is written once - a screen and a
+ * file disagreeing about the same window is a defect nobody would report.
+ */
+export async function minuteWindow(
+  minutes: (q: { from: number; to: number; limit: number; order: "desc" }) => Promise<MinutesResult>,
+  from: number,
+  to: number,
+): Promise<{ rows: Snapshot[]; truncated: boolean; minutesFrom: number }> {
+  const r = await minutes({ from, to, limit: RANGE_LIMIT + 1, order: "desc" });
+  return {
+    rows: r.rows.slice(0, RANGE_LIMIT),
+    truncated: r.clamped || r.rows.length > RANGE_LIMIT,
+    minutesFrom: r.minutesFrom,
+  };
+}
+
 export interface LogbookRange {
   snaps: Snapshot[];
   err: string | null;
@@ -296,28 +319,24 @@ export function useLogbookRange(
     setBusy(true);
     setErr(null);
     try {
-      let rows: Snapshot[];
       setPlain([]);
       if (bucket === 1) {
-        // One more than the ceiling, so the count itself says whether anything was left behind.
-        const r = await api.logbook.minutes({ from, to, limit: RANGE_LIMIT + 1, order: "desc" });
-        setMinutesFrom(r.minutesFrom);
-        rows = r.rows;
-      } else {
-        const hours = await api.logbook.rollupHours(from, to);
-        setMinutesFrom(null);
-        // bucketHours returns oldest first; the ceiling keeps the newest, the way the desc
-        // fetch above does, because a window too long to draw is cut at its far end.
-        const buckets = bucketHours(hours, gran as BucketGran);
-        rows = buckets.map((b) => bucketRow(b, stat));
-        const keep = (r: Snapshot[]) => r.slice(Math.max(0, r.length - RANGE_LIMIT));
-        setTruncated(rows.length > RANGE_LIMIT);
-        setSnaps(keep(rows));
-        if (stat !== "last") setPlain(keep(buckets.map((b) => bucketRow(b, "last"))));
+        const w = await minuteWindow((q) => api.logbook.minutes(q), from, to);
+        setMinutesFrom(w.minutesFrom);
+        setTruncated(w.truncated);
+        setSnaps(w.rows);
         return;
       }
+      const hours = await api.logbook.rollupHours(from, to);
+      setMinutesFrom(null);
+      // bucketHours returns oldest first; the ceiling keeps the newest, the way the desc fetch
+      // in minuteWindow does, because a window too long to draw is cut at its far end.
+      const buckets = bucketHours(hours, gran as BucketGran);
+      const rows = buckets.map((b) => bucketRow(b, stat));
+      const keep = (r: Snapshot[]) => r.slice(Math.max(0, r.length - RANGE_LIMIT));
       setTruncated(rows.length > RANGE_LIMIT);
-      setSnaps(rows.slice(0, RANGE_LIMIT));
+      setSnaps(keep(rows));
+      if (stat !== "last") setPlain(keep(buckets.map((b) => bucketRow(b, "last"))));
     } catch (e) {
       setErr((e as Error).message);
     } finally {

@@ -168,4 +168,12 @@ describe("exportFilename", () => {
       "siparu-voyages-20260704.csv",
     );
   });
+
+  it("keeps that sort when a file has something to say about itself", () => {
+    // After the date, not before it: a suffix in front of the stamp files every partial export
+    // into a second heap of its own, away from the days it belongs beside.
+    expect(exportFilename("logbook-bridge", Date.UTC(2026, 8, 1), "csv", "-partial")).toBe(
+      "logbook-bridge-20260901-partial.csv",
+    );
+  });
 });

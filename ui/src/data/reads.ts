@@ -27,6 +27,14 @@ export interface RawReads {
   rollupHours(from: number, to: number): Promise<RollupHour[]>;
 }
 
+/**
+ * The most rows the boat serves in one page, whatever a caller asks for (the plugin's
+ * LIMIT_MAX). Written out rather than imported: these reads are built for two apps and only
+ * one of them has the plugin's sources beside it. This suite pins the two numbers together,
+ * so a change on her side fails here rather than in the field.
+ */
+export const BOAT_PAGE_MAX = 5000;
+
 export function startOfUtcDay(ts: number): number {
   const d = new Date(ts);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -120,7 +128,9 @@ export function sharedReads(raw: RawReads) {
     const now = Date.now();
     const to = q.to ?? now;
     const order = q.order ?? "desc";
-    const res = await raw.snapshots({ from: q.from, to, bucket: 1, limit: q.limit ?? 5000, order });
+    // What she will actually put on one page: her ceiling caps whatever is asked for.
+    const page = Math.min(q.limit ?? BOAT_PAGE_MAX, BOAT_PAGE_MAX);
+    const res = await raw.snapshots({ from: q.from, to, bucket: 1, limit: q.limit ?? BOAT_PAGE_MAX, order });
     const floor = res.minutesFrom ?? startOfUtcDay(now);
     const from = q.from ?? floor;
 
@@ -132,8 +142,17 @@ export function sharedReads(raw: RawReads) {
     rows = rows.filter((r) => r.ts >= from && r.ts <= to);
     rows.sort((a, b) => (order === "desc" ? b.ts - a.ts : a.ts - b.ts));
     if (q.offset) rows = rows.slice(q.offset);
-    if (q.limit !== undefined) rows = rows.slice(0, q.limit);
-    return { rows, minutesFrom: floor };
+    // Her flag answers two questions at once (plugin/src/query.ts): the page was cut, or the
+    // window reached back past the minutes she keeps. This read asks for the second on purpose
+    // and fills those days from the rollup above, so the flag means something was withheld
+    // only when the page came back full. Taking it at face value calls a complete answer
+    // partial, which is the same lie in the other direction.
+    let clamped = res.clamped && res.rows.length >= page;
+    if (q.limit !== undefined) {
+      if (rows.length > q.limit) clamped = true;
+      rows = rows.slice(0, q.limit);
+    }
+    return { rows, minutesFrom: floor, clamped };
   }
 
   async function baroTrend(hours = 24): Promise<BaroTrend> {
