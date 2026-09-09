@@ -10,6 +10,24 @@ import { beaufortFromKn, MS_TO_KN, SOG_VALID_KN } from "../../../plugin/src/unit
 
 export { SOG_VALID_KN };
 
+/**
+ * The gauge physics itself, passed through rather than copied: which panel a path belongs
+ * under, what its cell is called, what unit it reads in, where a force 6 begins. Both screens
+ * draw the same engine, so both have to read it from the boat's own file or one of them will
+ * be quietly lying about a pressure.
+ */
+export {
+  beaufort,
+  beaufortFromKn,
+  describePath,
+  MS_TO_KN,
+  SYSTEM_TAB_NAMES,
+  SYSTEM_TABS,
+  systemNumeric,
+  systemValue,
+} from "../../../plugin/src/units";
+export type { SystemReading, SystemTab } from "../../../plugin/src/units";
+
 export const formatTs = (ms: number) => {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
