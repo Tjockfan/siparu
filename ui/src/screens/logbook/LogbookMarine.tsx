@@ -3,7 +3,7 @@
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useApi, type Snapshot } from "../../data/api";
-import { bucketsCsv, downloadText, exportFilename, snapshotsCsv } from "../../lib/export";
+import { bucketsCsv, downloadText, exportFilename, printDocument, printName, snapshotsCsv } from "../../lib/export";
 import { bucketHours, bucketRow, STAT_LABEL, type BucketGran, type Stat } from "../../lib/buckets";
 import { unitCell, unitGroups, type UnitGroup } from "./unitRows";
 import { useCrossFade } from "./useCrossFade";
@@ -1251,7 +1251,7 @@ function RangeView({
     // Cleared before the call, not after: print() blocks until the dialog closes, and a reader
     // who cancels it must not find the page trying again on the next render.
     finish();
-    window.print();
+    printDocument(printName("Siparu-Logbook", Date.now()));
     document.documentElement.classList.remove("pdf-screen");
   }, [printing, loaded, busy, finish, r.style]);
   // A print interrupted by an unmount must not leave the whole app dressed for the dark page.

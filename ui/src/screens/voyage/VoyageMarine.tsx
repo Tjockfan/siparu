@@ -9,7 +9,7 @@ import type { Voyage, VoyageRollup, VoyageStatsCards, TrackPoint, FuelPathsView 
 import { ageOf } from "../../lib/age";
 import { fmtCoordDM, fmtNum } from "../../lib/format";
 import { FUEL_MODES, fuelReadout, type FuelMode } from "../../lib/fuel";
-import { downloadText, exportFilename, trackGpx, voyagesCsv } from "../../lib/export";
+import { downloadText, exportFilename, printDocument, printName, trackGpx, voyagesCsv } from "../../lib/export";
 import { useVoyageData, type StatWindow } from "./useVoyageData";
 import { useMediaQuery } from "../../data/useMediaQuery";
 import VoyageTrackMap from "./VoyageTrackMap";
@@ -317,7 +317,11 @@ export default function VoyageMarine() {
                   platform this runs on, including the iPad. The button is here because
                   nobody looks for a print menu inside a boat app. */}
               {d.list.length > 0 && (
-                <button type="button" className="vy-fuelsrc" onClick={() => window.print()}>
+                <button
+                  type="button"
+                  className="vy-fuelsrc"
+                  onClick={() => printDocument(printName("Siparu-Voyage", Date.now()))}
+                >
                   Print
                 </button>
               )}

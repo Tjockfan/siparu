@@ -245,7 +245,35 @@ export function downloadText(filename: string, mime: string, text: string): void
 /** A filename that sorts by date and survives every filesystem. Anything a file has to say
  *  about itself goes in `suffix`, after the date, so saying it does not break that sort. */
 export function exportFilename(prefix: string, ts: number, ext: string, suffix = ""): string {
+  return `${prefix}-${dateStamp(ts)}${suffix}.${ext}`;
+}
+
+function dateStamp(ts: number): string {
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${prefix}-${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${suffix}.${ext}`;
+  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`;
+}
+
+/** The name a printed page is saved under: the same prefix-and-date shape as the files above,
+ *  without an extension, because the browser adds .pdf itself. */
+export function printName(prefix: string, ts: number): string {
+  return `${prefix}-${dateStamp(ts)}`;
+}
+
+/**
+ * Open the print dialog with the page named for what it holds.
+ *
+ * "Save as PDF" takes its filename from the document title, and the title is the app's, set
+ * once at load: every page printed from the portal was landing on the desk as
+ * "Siparu_ sign in.pdf". The title is swapped for exactly as long as the dialog is open;
+ * print() blocks until it closes, so the tab reads as itself again the moment it does.
+ */
+export function printDocument(name: string): void {
+  const previous = document.title;
+  document.title = name;
+  try {
+    window.print();
+  } finally {
+    document.title = previous;
+  }
 }

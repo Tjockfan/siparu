@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TrackPoint, Voyage } from "../data/api";
-import { exportFilename, snapshotsCsv, trackGpx, voyageTitle, voyagesCsv } from "./export";
+import { exportFilename, printDocument, printName, snapshotsCsv, trackGpx, voyageTitle, voyagesCsv } from "./export";
 
 const voyage = (over: Partial<Voyage> = {}): Voyage => ({
   id: 7,
@@ -175,5 +175,38 @@ describe("exportFilename", () => {
     expect(exportFilename("logbook-bridge", Date.UTC(2026, 8, 1), "csv", "-partial")).toBe(
       "logbook-bridge-20260901-partial.csv",
     );
+  });
+});
+
+describe("printName", () => {
+  it("names the page the way the files are named, minus the extension the browser adds", () => {
+    expect(printName("Siparu-Voyage", Date.UTC(2026, 8, 12))).toBe("Siparu-Voyage-20260912");
+  });
+});
+
+describe("printDocument", () => {
+  // These tests run without a DOM: the two globals the function touches are stood in for,
+  // which is also the whole of what it is allowed to touch.
+  const tab = { title: "" };
+  const calls: string[] = [];
+  const stand = (print: () => void) => {
+    vi.stubGlobal("document", tab);
+    vi.stubGlobal("window", { print });
+  };
+  afterEach(() => { vi.unstubAllGlobals(); calls.length = 0; });
+
+  it("prints under the given name and hands the tab its own title back", () => {
+    tab.title = "Siparu: sign in";
+    stand(() => { calls.push(tab.title); });
+    printDocument("Siparu-Logbook-20260912");
+    expect(calls).toEqual(["Siparu-Logbook-20260912"]);
+    expect(tab.title).toBe("Siparu: sign in");
+  });
+
+  it("hands the title back even when the dialog throws", () => {
+    tab.title = "Siparu";
+    stand(() => { throw new Error("no printer"); });
+    expect(() => printDocument("Siparu-Voyage-20260912")).toThrow();
+    expect(tab.title).toBe("Siparu");
   });
 });
