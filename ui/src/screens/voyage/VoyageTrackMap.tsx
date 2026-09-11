@@ -24,8 +24,13 @@ interface Picture {
  * the page does not print half a coastline; one that never settles is not waited on.
  */
 function takePicture(map: maplibregl.Map, container: HTMLElement): Promise<Picture> {
-  const credit =
-    container.querySelector(".maplibregl-ctrl-attrib-inner")?.textContent?.trim() || MAP_ATTRIBUTION;
+  // The data credit, and only that: the licence asks for it wherever the map is shown, paper
+  // included. The "not for navigation" notice stays on screen, where a chart could be mistaken
+  // for one; nobody steers by a printed passage record.
+  const credit = (container.querySelector(".maplibregl-ctrl-attrib-inner")?.textContent ?? "")
+    .replace(MAP_ATTRIBUTION, "")
+    .replace(/^\s*\|\s*/, "")
+    .trim();
   const settled = map.loaded()
     ? Promise.resolve()
     : new Promise<void>((resolve) => {

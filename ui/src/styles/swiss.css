@@ -3428,7 +3428,12 @@ body {
   .swiss .vy-fuel-sel,
   .swiss .vy-m-track,
   .swiss .vy-m-edit,
-  .swiss .pair {
+  .swiss .pair,
+  /* A sheet over the page, and the notice line that opens one, are for the reader at the
+     screen: printed, the Signal K security notice sat across the middle of a passage record. */
+  .swiss .scrim,
+  .swiss .sheet,
+  .swiss .sec-flag {
     display: none !important;
   }
 
@@ -3500,6 +3505,15 @@ body {
     --rule: rgba(255, 255, 255, 0.16);
     --hair: rgba(255, 255, 255, 0.085);
     --accent: #e5484d;
+    /* The glass, which the white page above flattened to #fff and this page has to take
+       back: the passage record's totals, its list and its banner are all sheets, and a
+       dark page with white sheets on it printed as a white page. Opaque, because a
+       translucent sheet on paper has no ground to look through. */
+    --pane: #171a1e;
+    --pane-edge: rgba(255, 255, 255, 0.16);
+    --pane-lit: rgba(255, 255, 255, 0.16);
+    --field: #1a1d21;
+    --cell-hover: transparent;
     background: #101214;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
