@@ -2238,6 +2238,9 @@ body {
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--band-muted);
 }
 .swiss .vy-hd-acts { display: inline-flex; align-items: center; gap: 6px; }
+/* The two pages Print offers, shown beside it while the question is open. */
+.swiss .vy-print-pick { display: inline-flex; align-items: center; gap: 6px; margin-right: 4px; }
+.swiss .vy-fuelsrc.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 /* The cluster badge carries the pulse when she is under way; centred like the remote
    page's, because the lamp has no baseline of its own to sit on. */
 .swiss .vy .sp-sec-h { align-items: center; }
@@ -3420,6 +3423,7 @@ body {
   .swiss .tabbar,
   .swiss .head .back,
   .swiss .umenu-btn,
+  .swiss .vy-hd,
   .swiss .vy-fuelsrc,
   .swiss .vy-fuel-sel,
   .swiss .vy-m-track,

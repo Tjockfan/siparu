@@ -14,6 +14,7 @@ import { useVoyageData, type StatWindow } from "./useVoyageData";
 import { useMediaQuery } from "../../data/useMediaQuery";
 import VoyageTrackMap from "./VoyageTrackMap";
 import { snapshotMapsForPrint } from "./printSnapshots";
+import { toggleOpen } from "./openRows";
 import FuelSourceSheet from "./FuelSourceSheet";
 import { fuelSourceNotice, fuelSourceOffered, fuelSourceSummary } from "../../lib/fuelSource";
 
@@ -97,7 +98,12 @@ export default function VoyageMarine() {
   const d = useVoyageData(reloadKey);
   const wide = useMediaQuery(WIDE_QUERY);
   const [win, setWin] = useState<StatWindow>("today");
-  const [openId, setOpenId] = useState<number | null>(null);
+  // The rows open on the page, oldest first; how many is openRows' business.
+  const [openIds, setOpenIds] = useState<number[]>([]);
+  // Whose edit last failed, so the sentence is shown under the row that asked.
+  const [editErrId, setEditErrId] = useState<number | null>(null);
+  // Print pressed: the two pages on offer, until one is chosen or the button is pressed again.
+  const [printAsk, setPrintAsk] = useState(false);
   const [tracks, setTracks] = useState<Record<number, TrackPoint[]>>({});
   const [fuelMode, setFuelMode] = useState<FuelMode>(initFuelMode);
   const [fuelView, setFuelView] = useState<FuelPathsView | null>(null);
@@ -169,11 +175,9 @@ export default function VoyageMarine() {
   const active = d.current && d.current.end_ts === null ? d.current : null;
 
   const toggle = async (id: number) => {
-    if (openId === id) {
-      setOpenId(null);
-      return;
-    }
-    setOpenId(id);
+    const wasOpen = openIds.includes(id);
+    setOpenIds((open) => toggleOpen(open, id));
+    if (wasOpen) return;
     if (!tracks[id]) {
       try {
         const t = await api.voyage.track(id);
@@ -187,20 +191,39 @@ export default function VoyageMarine() {
   const roll = d.stats?.[win] ?? null;
 
   /**
+   * Print the record as one of the two pages. The open maps take their pictures first and
+   * the page is given a frame to draw them, because the dialog prints what is on the page
+   * when it opens. The dark page is a class on the root for the print stylesheet to key on,
+   * put on for the dialog and taken off when it closes, so a later Cmd+P prints paper.
+   */
+  const printVoyages = async (style: "paper" | "screen") => {
+    setPrintAsk(false);
+    await snapshotMapsForPrint();
+    await nextPaint();
+    if (style === "screen") document.documentElement.classList.add("pdf-screen");
+    try {
+      printDocument(printName("Siparu-Voyage", Date.now()));
+    } finally {
+      document.documentElement.classList.remove("pdf-screen");
+    }
+  };
+
+  /**
    * Run an edit and reload from the boat rather than patching what is on screen.
    * The plugin re-integrates the whole span, so every figure in the list can move,
    * and a screen that guessed at the new ones would be showing arithmetic the boat
    * did not do.
    */
-  const runEdit = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+  const runEdit = async (id: number, fn: () => Promise<{ ok: boolean; error?: string }>) => {
     setEditErr(null);
+    setEditErrId(id);
     try {
       const res = await fn();
       if (!res.ok) {
         setEditErr(EDIT_ERRORS[res.error ?? ""] ?? "That edit could not be made.");
         return;
       }
-      setOpenId(null);
+      setOpenIds([]);
       setTracks({});
       setReloadKey((k) => k + 1);
     } catch (e) {
@@ -325,18 +348,25 @@ export default function VoyageMarine() {
               )}
               {/* The browser's own print dialogue is where a PDF comes from on every
                   platform this runs on, including the iPad. The button is here because
-                  nobody looks for a print menu inside a boat app. */}
+                  nobody looks for a print menu inside a boat app. It asks one question
+                  first, the same one the logbook's export panel asks: the white page for
+                  a printer, or the app's own dark ink for a screen. */}
+              {d.list.length > 0 && printAsk && (
+                <span className="vy-print-pick" role="group" aria-label="Page style">
+                  <button type="button" className="lbp-c" onClick={() => printVoyages("paper")}>
+                    Paper
+                  </button>
+                  <button type="button" className="lbp-c" onClick={() => printVoyages("screen")}>
+                    Screen
+                  </button>
+                </span>
+              )}
               {d.list.length > 0 && (
                 <button
                   type="button"
-                  className="vy-fuelsrc"
-                  onClick={async () => {
-                    // The open maps take their pictures first, and the page is given a frame
-                    // to draw them, because the dialog prints what is on the page when it opens.
-                    await snapshotMapsForPrint();
-                    await nextPaint();
-                    printDocument(printName("Siparu-Voyage", Date.now()));
-                  }}
+                  className={`vy-fuelsrc${printAsk ? " on" : ""}`}
+                  aria-expanded={printAsk}
+                  onClick={() => setPrintAsk((a) => !a)}
                 >
                   Print
                 </button>
@@ -364,15 +394,15 @@ export default function VoyageMarine() {
                   // plugin answers no_previous only when there truly is none.
                   prev={d.list[i + 1]}
                   wasJoined={merged.includes(v.id)}
-                  open={openId === v.id}
+                  open={openIds.includes(v.id)}
                   track={tracks[v.id]}
                   fuelNotice={fuelNotice}
                   fuelMode={fuelMode}
                   onFuelMode={setFuelMode}
                   onToggle={() => toggle(v.id)}
-                  onMerge={merge ? () => runEdit(() => merge(v.id)) : undefined}
-                  onUndoMerge={undoMerge ? () => runEdit(() => undoMerge(v.id)) : undefined}
-                  editErr={openId === v.id ? editErr : null}
+                  onMerge={merge ? () => runEdit(v.id, () => merge(v.id)) : undefined}
+                  onUndoMerge={undoMerge ? () => runEdit(v.id, () => undoMerge(v.id)) : undefined}
+                  editErr={editErrId === v.id ? editErr : null}
                 />
               ))}
             </div>

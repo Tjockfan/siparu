@@ -1,6 +1,6 @@
 /* Voyage track map - mini MapLibre inside the expanded row. Uses the same
  * style factory as the Map tab (night/day brand flavors + seamark). Pan/zoom
- * are free. One row open at a time; mounts on open, unmounts on close. */
+ * are free. A few rows open at a time (openRows); mounts on open, unmounts on close. */
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { TrackPoint } from "../../data/api";
