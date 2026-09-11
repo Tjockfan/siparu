@@ -1,12 +1,56 @@
 /* Voyage track map - mini MapLibre inside the expanded row. Uses the same
  * style factory as the Map tab (night/day brand flavors + seamark). Pan/zoom
  * are free. One row open at a time; mounts on open, unmounts on close. */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { TrackPoint } from "../../data/api";
 import { ensurePmtilesProtocol, getMapConfig } from "../../map/mapRuntime";
 import { useApi } from "../../data/api";
 import { makeMapStyle, MAP_ATTRIBUTION, TRACK_SOURCE, type MapMode } from "../../map/style";
+import { registerMapSnapshot } from "./printSnapshots";
+
+/** What the printed page shows in the map's place: its picture, and the credit the map carries. */
+interface Picture {
+  url: string;
+  credit: string;
+}
+
+/**
+ * The map's picture, taken for paper.
+ *
+ * The drawing buffer is readable only during a frame (the map does not keep it between
+ * frames, on purpose - see printSnapshots), so the read is made inside the next render and
+ * a render is asked for. A map still fetching tiles is given a moment to finish first, so
+ * the page does not print half a coastline; one that never settles is not waited on.
+ */
+function takePicture(map: maplibregl.Map, container: HTMLElement): Promise<Picture> {
+  const credit =
+    container.querySelector(".maplibregl-ctrl-attrib-inner")?.textContent?.trim() || MAP_ATTRIBUTION;
+  const settled = map.loaded()
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 1500);
+        map.once("idle", () => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
+  return settled.then(
+    () =>
+      new Promise<Picture>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("the map did not draw")), 2000);
+        map.once("render", () => {
+          clearTimeout(t);
+          try {
+            resolve({ url: map.getCanvas().toDataURL("image/png"), credit });
+          } catch (e) {
+            reject(e);
+          }
+        });
+        map.triggerRepaint();
+      }),
+  );
+}
 
 function mode(): MapMode {
   return document.documentElement.dataset.theme === "day" ? "day" : "night";
@@ -24,6 +68,7 @@ export default function VoyageTrackMap({ track }: { track: TrackPoint[] }) {
   const api = useApi();
   const ref = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const [picture, setPicture] = useState<Picture | null>(null);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
@@ -34,6 +79,7 @@ export default function VoyageTrackMap({ track }: { track: TrackPoint[] }) {
     let disposed = false;
     let map: maplibregl.Map | null = null;
     let obs: MutationObserver | null = null;
+    let unregister: (() => void) | null = null;
 
     (async () => {
       ensurePmtilesProtocol();
@@ -57,6 +103,11 @@ export default function VoyageTrackMap({ track }: { track: TrackPoint[] }) {
       });
       map.touchZoomRotate.disableRotation();
       mapRef.current = map;
+      const m = map;
+      unregister = registerMapSnapshot(async () => {
+        const pic = await takePicture(m, container);
+        if (!disposed) setPicture(pic);
+      });
 
       const applyTrack = () => {
         if (!map) return;
@@ -97,11 +148,24 @@ export default function VoyageTrackMap({ track }: { track: TrackPoint[] }) {
 
     return () => {
       disposed = true;
+      unregister?.();
       obs?.disconnect();
       map?.remove();
       mapRef.current = null;
     };
   }, [track]);
 
-  return <div ref={ref} className="vy-map" />;
+  return (
+    <>
+      <div ref={ref} className="vy-map" />
+      {/* Paper only: the picture the Print button asked for, in the canvas's place. The credit
+          goes with it because the map's own attribution control is not part of the canvas. */}
+      {picture && (
+        <figure className="vy-map-print" aria-hidden="true">
+          <img src={picture.url} alt="" />
+          <figcaption>{picture.credit}</figcaption>
+        </figure>
+      )}
+    </>
+  );
 }

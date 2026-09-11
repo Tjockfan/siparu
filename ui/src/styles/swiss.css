@@ -2319,6 +2319,9 @@ body {
   padding: 1px 5px; border-radius: 0;
 }
 .swiss .vy-map .maplibregl-ctrl-attrib a { color: var(--muted); text-decoration: none; }
+/* The map's picture, taken for paper by the Print button (VoyageTrackMap). Never on screen,
+   where the map itself is drawn. */
+.swiss .vy-map-print { display: none; }
 
 /* ============================================================
    GLASS TAP - Apple "liquid glass"-inspired tap effect.
@@ -3428,12 +3431,25 @@ body {
   /* The map does not survive the trip to paper. It draws through WebGL, and a
      canvas prints blank unless its drawing buffer is preserved on every frame,
      which is a cost paid continuously on a boat's tablet for a page printed twice
-     a season. A blank one prints as a solid black rectangle, so it is left out:
-     the record here is dates, ports and figures, and the track itself leaves as
-     GPX, which is the format a chart plotter can actually do something with. */
+     a season. A blank one prints as a solid black rectangle, so the canvas is left
+     out and its picture goes in its place: the Print button asks every open map for
+     one before the dialog opens (printSnapshots), and the figure below carries it with
+     the credit the map shows on screen. The track itself still leaves as GPX, which is
+     the format a chart plotter can actually do something with. */
   .swiss .vy-map,
   .swiss .vy-track-empty {
     display: none !important;
+  }
+  .swiss .vy-map-print {
+    display: block; margin: 0 0 10px; break-inside: avoid;
+  }
+  .swiss .vy-map-print img {
+    display: block; width: 100%; height: 180px; object-fit: cover;
+    border: 1px solid var(--rule);
+  }
+  .swiss .vy-map-print figcaption {
+    padding-top: 3px; font-family: var(--sp-mono); font-size: 7px; letter-spacing: 0.08em;
+    color: var(--muted);
   }
 
   .swiss .vy-print-hd {

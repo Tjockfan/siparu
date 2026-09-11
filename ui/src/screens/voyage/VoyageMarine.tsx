@@ -13,6 +13,7 @@ import { downloadText, exportFilename, printDocument, printName, trackGpx, voyag
 import { useVoyageData, type StatWindow } from "./useVoyageData";
 import { useMediaQuery } from "../../data/useMediaQuery";
 import VoyageTrackMap from "./VoyageTrackMap";
+import { snapshotMapsForPrint } from "./printSnapshots";
 import FuelSourceSheet from "./FuelSourceSheet";
 import { fuelSourceNotice, fuelSourceOffered, fuelSourceSummary } from "../../lib/fuelSource";
 
@@ -64,6 +65,15 @@ function fmtDate(ts: number): string {
 function agoShort(ts: number): string {
   const { value, unit } = ageOf((Date.now() - ts) / 1000);
   return `${value}${unit === "s" ? "s" : ` ${unit}`} ago`;
+}
+
+/** Resolves once the browser has drawn what React last rendered. A tab that is not being
+ *  drawn at all (hidden, or a throttled window) gets no frame, so a short clock stands in. */
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, 300);
+    requestAnimationFrame(() => setTimeout(() => { clearTimeout(t); resolve(); }, 0));
+  });
 }
 
 function hhmm(ts: number): string {
@@ -320,7 +330,13 @@ export default function VoyageMarine() {
                 <button
                   type="button"
                   className="vy-fuelsrc"
-                  onClick={() => printDocument(printName("Siparu-Voyage", Date.now()))}
+                  onClick={async () => {
+                    // The open maps take their pictures first, and the page is given a frame
+                    // to draw them, because the dialog prints what is on the page when it opens.
+                    await snapshotMapsForPrint();
+                    await nextPaint();
+                    printDocument(printName("Siparu-Voyage", Date.now()));
+                  }}
                 >
                   Print
                 </button>
