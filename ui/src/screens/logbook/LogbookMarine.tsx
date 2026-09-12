@@ -13,7 +13,7 @@ import ColumnPicker from "./ColumnPicker";
 import ExportPanel, { type ExportRequest } from "./ExportPanel";
 import Reveal from "./Reveal";
 import { columnsFor, hhmm, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
-import { fittedColumns, laneCount, lanesThatFit, fittedMetrics } from "./fitColumns";
+import { fittedColumns, laneCount, lanesThatFit, fittedMetrics, LANE_CEILING, LANE_GAP, TIME_LANE, UNIT_LANE } from "./fitColumns";
 import { BrandMark } from "../../index";
 import {
   isOn,
@@ -644,6 +644,50 @@ export function tableShape(
    *  column the reader chose - the lanes shrink instead, the way the CSV already refuses to
    *  drop what the screen has no room for. */
   fit = true,
+): TableShape {
+  const shape = familyShape(snaps, book, windUnit, selection, width, family, hold, familyHold, chosenHold, fit);
+  if (book !== "engine" || shape.groups.length < 2) return shape;
+  // The window the engineer's table is drawn in - the bar of controls, the panels under it
+  // and the frame - is sized for the boat's widest family, whichever one is on screen. The
+  // families are not the same width (twelve lanes of engine readings, one of tank levels),
+  // and a window that followed the family on show re-flowed the bar from one line to four
+  // and shrank the page to a column at every press of a tab. The table inside keeps its own
+  // lanes; the window around it stays put. The other families are measured on throwaway
+  // holds, so the probe leaves nothing behind.
+  let best = shape;
+  let bestPx = windowPx(shape);
+  for (const g of shape.groups) {
+    if (g === shape.group || g.tab === family) continue;
+    const probe = familyShape(
+      snaps, book, windUnit, selection, width, g.tab, { current: null }, { current: [] }, { current: 0 }, fit,
+    );
+    const px = windowPx(probe);
+    if (px > bestPx) {
+      best = probe;
+      bestPx = px;
+    }
+  }
+  return best === shape ? shape : { ...shape, block: best.block, cls: best.cls };
+}
+
+/** How wide a shape's window is, in the stylesheet's own numbers (see .lb-ctrl's max-width). */
+function windowPx(s: TableShape): number {
+  const lanes = Math.max(1, Number((s.block as Record<string, unknown>)["--lb-cols"] ?? 1));
+  const lead = s.cls.includes("u") ? UNIT_LANE + LANE_GAP : 0;
+  return TIME_LANE + lead + lanes * (LANE_CEILING + LANE_GAP);
+}
+
+function familyShape(
+  snaps: Snapshot[],
+  book: LogBook,
+  windUnit: WindUnit,
+  selection: ColumnSelection,
+  width: number | null,
+  family: string | null,
+  hold: { current: number | null },
+  familyHold: { current: UnitGroup[] },
+  chosenHold: { current: number },
+  fit: boolean,
 ): TableShape {
   const named = book === "engine" ? unitGroups(snaps) : [];
   if (named.length > 0) familyHold.current = named;

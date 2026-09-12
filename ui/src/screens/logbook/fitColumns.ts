@@ -28,6 +28,9 @@ export const MIN_LANE = 48;
 /** The engineer's table leads with a machine's name as well as an hour. Matches --lb-unit. */
 export const UNIT_LANE = 104;
 
+/** The widest a data lane grows on a wide screen. Matches --lb-lane. */
+export const LANE_CEILING = 160;
+
 /** How many data lanes fit beside the time lane. At least one: a table with a time column and
  *  nothing beside it is not a log. */
 export function lanesThatFit(width: number): number {
