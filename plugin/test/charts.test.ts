@@ -85,6 +85,30 @@ describe('safeChartPath', () => {
     expect(safeChartPath(dir, 'run.sh')).toBeNull()
     expect(safeChartPath(dir, 'basemap')).toBeNull()
   })
+
+  // A link dropped into charts/ carries the request wherever it points. The boat's own
+  // identity lives one level up (keys.json, remote.json), and a link named like a chart
+  // asset used to hand it out with a 200.
+  it('refuses a symlink that leaves the charts dir, however it is named', async () => {
+    await fs.mkdir(charts(), { recursive: true })
+    await fs.writeFile(path.join(dir, 'keys.json'), '{"secret":true}')
+    await fs.symlink(path.join('..', 'keys.json'), path.join(charts(), 'style.json'))
+    expect(safeChartPath(dir, 'style.json')).toBeNull()
+
+    const elsewhere = await fs.mkdtemp(path.join(os.tmpdir(), 'siparu-elsewhere-'))
+    await fs.writeFile(path.join(elsewhere, 'x.json'), '{}')
+    await fs.symlink(elsewhere, path.join(charts(), 'sub'))
+    expect(safeChartPath(dir, 'sub/x.json')).toBeNull()
+    await fs.rm(elsewhere, { recursive: true, force: true })
+  })
+
+  it('still serves a link that stays inside the charts dir, and a file that is not there', async () => {
+    await fs.mkdir(charts(), { recursive: true })
+    await fs.writeFile(path.join(charts(), 'basemap.pmtiles'), 'x')
+    await fs.symlink('basemap.pmtiles', path.join(charts(), 'alias.pmtiles'))
+    expect(safeChartPath(dir, 'alias.pmtiles')).toBe(path.join(charts(), 'alias.pmtiles'))
+    expect(safeChartPath(dir, 'missing.pmtiles')).toBe(path.join(charts(), 'missing.pmtiles'))
+  })
 })
 
 describe('chartContentType', () => {

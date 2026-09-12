@@ -93,6 +93,20 @@ export function safeChartPath(dataDir: string, rel: string): string | null {
   // absolute-path tricks in one check).
   if (abs !== dir && !abs.startsWith(dir + path.sep)) return null
   if (!SERVABLE_EXT.has(path.extname(abs).toLowerCase())) return null
+  // The name passed; now the file behind it. A symlink dropped into charts/ carries the
+  // request wherever it points, and the boat's own identity sits one directory up
+  // (keys.json, remote.json), so the file actually on disk has to obey the same rule as
+  // its name. The charts dir itself may be a link (an SD card) and is resolved the same
+  // way. A file that is not there is left for the route to answer with its 404.
+  let real: string
+  let realDir: string
+  try {
+    real = fs.realpathSync(abs)
+    realDir = fs.realpathSync(dir)
+  } catch {
+    return abs
+  }
+  if (real !== realDir && !real.startsWith(realDir + path.sep)) return null
   return abs
 }
 
