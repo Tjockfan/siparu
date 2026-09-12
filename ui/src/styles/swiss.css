@@ -3525,6 +3525,19 @@ body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  /* The dark page runs to the edge of the sheet. A page margin is paper the browser will not
+     paint, so the 12mm the white page keeps printed as a white frame around the dark one. The
+     dark page is a named page with no margin, and the room the margin gave is taken back as
+     padding on the app's root instead: at the sides of every sheet, and at the top and foot
+     of the record as a whole. What a page margin gave that this does not is a clear band at
+     the head and foot of every LATER sheet; nothing in CSS pads a page rather than a box. */
+  @page dark {
+    margin: 0;
+  }
+  html.pdf-screen .swiss.sp-screen {
+    page: dark;
+    padding: 12mm !important;
+  }
   /* The zebra the approved sheet carries: every other entry lifted just off the page. On the
      white page the grid rules the rows instead, as a ledger is ruled. */
   html.pdf-screen .swiss .lb-row:nth-child(even) { background: #171a1e; }

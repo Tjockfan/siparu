@@ -312,7 +312,11 @@ export default function LogbookMarine({ book }: { book: LogBook }) {
       {/* The log runs wide - the engineer's full set is twenty lanes - so its printed pages
           turn sideways. @page cannot be scoped by selector, so the rule exists only while a
           logbook page is mounted; the voyage record keeps the stylesheet's portrait. */}
-      <style>{"@media print { @page { size: A4 landscape; margin: 12mm; } }"}</style>
+      {/* The sheet's size only. Its margin is the stylesheet's (12mm on the white page, none on
+          the dark one, which pads itself instead): a margin written here as well won against
+          the dark page's own rule in Chrome, named page or not, and printed the dark page in a
+          white frame. */}
+      <style>{"@media print { @page { size: A4 landscape; } }"}</style>
       {shownMode === "live" ? (
         <LiveView {...shared} />
       ) : shownMode === "day" ? (
