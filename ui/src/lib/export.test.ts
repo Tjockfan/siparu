@@ -185,28 +185,51 @@ describe("printName", () => {
 });
 
 describe("printDocument", () => {
-  // These tests run without a DOM: the two globals the function touches are stood in for,
-  // which is also the whole of what it is allowed to touch.
+  // These tests run without a DOM: the globals the function touches are stood in for, which
+  // is also the whole of what it is allowed to touch.
   const tab = { title: "" };
-  const calls: string[] = [];
+  const classes = new Set<string>();
+  const head: { textContent: string }[] = [];
+  const calls: { title: string; dark: boolean; sheets: number }[] = [];
   const stand = (print: () => void) => {
-    vi.stubGlobal("document", tab);
+    vi.stubGlobal("document", {
+      get title() { return tab.title; },
+      set title(v: string) { tab.title = v; },
+      documentElement: { classList: { add: (c: string) => classes.add(c), remove: (c: string) => classes.delete(c) } },
+      createElement: () => {
+        const el = { textContent: "", remove: () => { head.splice(head.indexOf(el), 1); } };
+        return el;
+      },
+      head: { appendChild: (el: { textContent: string }) => head.push(el) },
+    });
     vi.stubGlobal("window", { print });
   };
-  afterEach(() => { vi.unstubAllGlobals(); calls.length = 0; });
+  afterEach(() => { vi.unstubAllGlobals(); calls.length = 0; classes.clear(); head.length = 0; });
+  const seen = () => calls.push({ title: tab.title, dark: classes.has("pdf-screen"), sheets: head.length });
 
   it("prints under the given name and hands the tab its own title back", () => {
     tab.title = "Siparu: sign in";
-    stand(() => { calls.push(tab.title); });
+    stand(seen);
     printDocument("Siparu-Logbook-20260912");
-    expect(calls).toEqual(["Siparu-Logbook-20260912"]);
+    expect(calls).toEqual([{ title: "Siparu-Logbook-20260912", dark: false, sheets: 0 }]);
     expect(tab.title).toBe("Siparu: sign in");
   });
 
-  it("hands the title back even when the dialog throws", () => {
+  it("dresses the dark page for the dialog only: the class and the sheet with no margin", () => {
+    tab.title = "Siparu";
+    stand(seen);
+    printDocument("Siparu-Voyage-20260912", "screen");
+    expect(calls).toEqual([{ title: "Siparu-Voyage-20260912", dark: true, sheets: 1 }]);
+    expect(classes.has("pdf-screen")).toBe(false);
+    expect(head).toHaveLength(0);
+  });
+
+  it("hands everything back even when the dialog throws", () => {
     tab.title = "Siparu";
     stand(() => { throw new Error("no printer"); });
-    expect(() => printDocument("Siparu-Voyage-20260912")).toThrow();
+    expect(() => printDocument("Siparu-Voyage-20260912", "screen")).toThrow();
     expect(tab.title).toBe("Siparu");
+    expect(classes.has("pdf-screen")).toBe(false);
+    expect(head).toHaveLength(0);
   });
 });

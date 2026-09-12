@@ -9,7 +9,7 @@ import type { Voyage, VoyageRollup, VoyageStatsCards, TrackPoint, FuelPathsView 
 import { ageOf } from "../../lib/age";
 import { fmtCoordDM, fmtNum } from "../../lib/format";
 import { FUEL_MODES, fuelReadout, type FuelMode } from "../../lib/fuel";
-import { downloadText, exportFilename, printDocument, printName, trackGpx, voyagesCsv } from "../../lib/export";
+import { downloadText, exportFilename, printDocument, printName, trackGpx, voyagesCsv, type PrintPage } from "../../lib/export";
 import { useVoyageData, type StatWindow } from "./useVoyageData";
 import { useMediaQuery } from "../../data/useMediaQuery";
 import VoyageTrackMap from "./VoyageTrackMap";
@@ -193,19 +193,13 @@ export default function VoyageMarine() {
   /**
    * Print the record as one of the two pages. The open maps take their pictures first and
    * the page is given a frame to draw them, because the dialog prints what is on the page
-   * when it opens. The dark page is a class on the root for the print stylesheet to key on,
-   * put on for the dialog and taken off when it closes, so a later Cmd+P prints paper.
+   * when it opens.
    */
-  const printVoyages = async (style: "paper" | "screen") => {
+  const printVoyages = async (page: PrintPage) => {
     setPrintAsk(false);
     await snapshotMapsForPrint();
     await nextPaint();
-    if (style === "screen") document.documentElement.classList.add("pdf-screen");
-    try {
-      printDocument(printName("Siparu-Voyage", Date.now()));
-    } finally {
-      document.documentElement.classList.remove("pdf-screen");
-    }
+    printDocument(printName("Siparu-Voyage", Date.now()), page);
   };
 
   /**

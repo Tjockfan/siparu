@@ -260,20 +260,41 @@ export function printName(prefix: string, ts: number): string {
   return `${prefix}-${dateStamp(ts)}`;
 }
 
+/** The two pages a record can be printed as: white for a printer, or the app's own dark ink. */
+export type PrintPage = "paper" | "screen";
+
 /**
- * Open the print dialog with the page named for what it holds.
+ * Open the print dialog with the page named for what it holds, dressed as one of the two pages.
  *
  * "Save as PDF" takes its filename from the document title, and the title is the app's, set
  * once at load: every page printed from the portal was landing on the desk as
  * "Siparu_ sign in.pdf". The title is swapped for exactly as long as the dialog is open;
  * print() blocks until it closes, so the tab reads as itself again the moment it does.
+ *
+ * The dark page is a class on the root for the print stylesheet to key on, and a sheet with
+ * no page margin: a page margin is paper the browser will not paint, and it printed as a white
+ * frame around the dark page. The margin has to be written as the plain @page rule rather than
+ * a named page: Chrome's print dialog reads its default margins off the plain rule, and with a
+ * named page it laid the page out edge to edge and then printed it inside its own 12mm, which
+ * put the dark page in a white frame with its first letters cut off. Both go on for the dialog
+ * and come off when it closes, so a later Cmd+P prints paper.
  */
-export function printDocument(name: string): void {
+export function printDocument(name: string, page: PrintPage = "paper"): void {
   const previous = document.title;
   document.title = name;
+  const root = document.documentElement;
+  let sheet: HTMLStyleElement | null = null;
+  if (page === "screen") {
+    root.classList.add("pdf-screen");
+    sheet = document.createElement("style");
+    sheet.textContent = "@media print { @page { margin: 0; } }";
+    document.head.appendChild(sheet);
+  }
   try {
     window.print();
   } finally {
     document.title = previous;
+    root.classList.remove("pdf-screen");
+    sheet?.remove();
   }
 }

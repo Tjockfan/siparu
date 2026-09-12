@@ -3527,15 +3527,12 @@ body {
   }
   /* The dark page runs to the edge of the sheet. A page margin is paper the browser will not
      paint, so the 12mm the white page keeps printed as a white frame around the dark one. The
-     dark page is a named page with no margin, and the room the margin gave is taken back as
-     padding on the app's root instead: at the sides of every sheet, and at the top and foot
-     of the record as a whole. What a page margin gave that this does not is a clear band at
-     the head and foot of every LATER sheet; nothing in CSS pads a page rather than a box. */
-  @page dark {
-    margin: 0;
-  }
+     margin is taken off the sheet while the dark page prints (printDocument writes the @page
+     rule, since a stylesheet cannot key one on a class), and the room it gave is taken back as
+     padding on the app's root instead: at the sides of every sheet, and at the top and foot of
+     the record as a whole. What a page margin gave that this does not is a clear band at the
+     head and foot of every LATER sheet; nothing in CSS pads a page rather than a box. */
   html.pdf-screen .swiss.sp-screen {
-    page: dark;
     padding: 12mm !important;
   }
   /* The zebra the approved sheet carries: every other entry lifted just off the page. On the

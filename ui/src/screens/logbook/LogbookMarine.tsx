@@ -1293,17 +1293,11 @@ function RangeView({
   const finish = useCallback(() => donePrinting(), [donePrinting]);
   useEffect(() => {
     if (!printing || !loaded || busy) return;
-    // The screen dress is a class on the root for the print stylesheet to key on; it goes on
-    // for the dialog and comes off when the dialog closes, so a later Cmd+P prints paper.
-    if (r.style === "screen") document.documentElement.classList.add("pdf-screen");
     // Cleared before the call, not after: print() blocks until the dialog closes, and a reader
     // who cancels it must not find the page trying again on the next render.
     finish();
-    printDocument(printName("Siparu-Logbook", Date.now()));
-    document.documentElement.classList.remove("pdf-screen");
+    printDocument(printName("Siparu-Logbook", Date.now()), r.style);
   }, [printing, loaded, busy, finish, r.style]);
-  // A print interrupted by an unmount must not leave the whole app dressed for the dark page.
-  useEffect(() => () => document.documentElement.classList.remove("pdf-screen"), []);
 
   const label = windowLabel(r.from, r.to);
   const interval = windowInterval(r.gran, figure);
