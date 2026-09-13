@@ -185,6 +185,26 @@ describe('refusing a file it cannot understand', () => {
     expect(store.get()).toBeUndefined()
     expect(fs.readFileSync(path.join(dir, 'keys.json'), 'utf8')).toBe('half a fi')
   })
+
+  it('refuses to make new keys over a file it could not read, and says so', async () => {
+    // The identity in that file is the one the shore and every paired phone know her by. A
+    // fresh pair renamed over it is a new boat whose every frame fails verification ashore,
+    // silently; the first poll used to do exactly that.
+    write('half a fi')
+    const store = reload()
+    expect(store.refused()).toBe(true)
+    expect(await store.ensure()).toBeUndefined()
+    expect(store.publicKeys()).toBeUndefined()
+    expect(fs.readFileSync(path.join(dir, 'keys.json'), 'utf8')).toBe('half a fi')
+  })
+
+  it('makes keys when there is no file at all, which is not a refusal', async () => {
+    const store = reload()
+    expect(store.refused()).toBe(false)
+    expect(await store.ensure()).toBeDefined()
+    expect(store.refused()).toBe(false)
+    expect(fs.readdirSync(dir)).toEqual(['keys.json'])
+  })
 })
 
 /** The inbox public half, as a key object a device would agree against. */

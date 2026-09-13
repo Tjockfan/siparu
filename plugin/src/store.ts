@@ -28,6 +28,17 @@ export class Store {
    */
   private knownKeys = new Set<string>()
   private bytes = 0
+  /**
+   * Whether the disk is taking what she writes. A card remounted read-only after an error,
+   * a full data partition, an I/O fault: every one of these made append() resolve as if the
+   * row were on disk, and the plugin went on saying "Recording" for months over a hole. The
+   * last verdict is kept here so that the status line, /health and the hour close can each
+   * read it; the counter is for the person who opens /health afterwards and wants to know
+   * whether it was one bad write or all of them.
+   */
+  private lastWriteOk = true
+  private writeFailures = 0
+  private lastWriteError: string | null = null
   /** Called with the closed hour key after the writer moves to a new hour. */
   onHourClosed: ((closedHour: string) => Promise<void>) | null = null
 
@@ -65,17 +76,39 @@ export class Store {
     return path.join(this.rawDir, `${hour}.ndjson`)
   }
 
-  append(snap: Snapshot): Promise<void> {
+  /**
+   * Append one row. Resolves true when the row reached the disk and false when it did not;
+   * the failure is remembered (see writes()) and never thrown, because the caller's next
+   * row is still worth trying. The hour-close hook runs either way: the hour did close, and
+   * the hook is where the disk cap is enforced, which on a full card is the one thing that
+   * can make the next append succeed.
+   */
+  append(snap: Snapshot): Promise<boolean> {
+    let written = false
     return this.enqueue(async () => {
       const key = hourKey(snap.ts)
       const closed = this.currentHourKey && key !== this.currentHourKey ? this.currentHourKey : null
       this.currentHourKey = key
       const line = JSON.stringify(snap) + '\n'
-      await fs.appendFile(this.rawPath(key), line, 'utf8')
-      this.knownKeys.add(key)
-      this.bytes += Buffer.byteLength(line)
+      try {
+        await fs.appendFile(this.rawPath(key), line, 'utf8')
+        this.knownKeys.add(key)
+        this.bytes += Buffer.byteLength(line)
+        written = true
+        this.lastWriteOk = true
+      } catch (err) {
+        this.writeFailures++
+        this.lastWriteOk = false
+        this.lastWriteError = describeError(err)
+        this.log(`store error: raw append failed: ${this.lastWriteError}`)
+      }
       if (closed && this.onHourClosed) await this.onHourClosed(closed)
-    })
+    }).then(() => written)
+  }
+
+  /** The disk's answer to the last write, and how often it has said no. */
+  writes(): { ok: boolean; failures: number; last_error: string | null } {
+    return { ok: this.lastWriteOk, failures: this.writeFailures, last_error: this.lastWriteError }
   }
 
   /** Hour keys of raw files, ascending. Served from the in-memory index. */
@@ -125,6 +158,14 @@ export class Store {
   flush(): Promise<void> {
     return this.enqueue(async () => undefined)
   }
+}
+
+/** The error as a person reads it in /health: the code first (EROFS, ENOSPC), then the message. */
+function describeError(err: unknown): string {
+  const e = err as { code?: unknown; message?: unknown } | null
+  const code = typeof e?.code === 'string' ? e.code : null
+  const message = e instanceof Error ? e.message : String(err)
+  return code && !message.startsWith(code) ? `${code}: ${message}` : message
 }
 
 export function parseNdjson<T>(text: string): T[] {

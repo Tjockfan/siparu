@@ -389,6 +389,13 @@ export interface HealthResult {
     cap_bytes: number
     raw_files: number
     oldest_raw: string | null
+    /**
+     * Whether the disk took the last row, how many it has refused, and what it said. A card
+     * remounted read-only or a full partition used to leave every other figure here looking
+     * healthy while nothing reached the disk. Optional: a plugin from before it was asked
+     * sends none.
+     */
+    writes?: { ok: boolean; failures: number; last_error: string | null }
   }
   rollup: {
     last_hour: string | null

@@ -112,6 +112,39 @@ describe('plugin lifecycle', () => {
   })
 })
 
+describe('a rollup that cannot be written', () => {
+  it('does not keep the plugin from starting', async () => {
+    // A full card fails the rollup append first. The start chain used to run the rollup
+    // catch-up bare, so the throw went to setPluginError('start failed') and the disk cap,
+    // the one act that frees space, never ran. A closed raw hour on disk forces the
+    // catch-up to write; the rollup directory refuses it.
+    const rawDir = path.join(dir, 'raw')
+    await fs.mkdir(rawDir, { recursive: true })
+    await fs.writeFile(
+      path.join(rawDir, '2020-01-01T00.ndjson'),
+      JSON.stringify({ ts: Date.UTC(2020, 0, 1, 0, 30), sog: 1, lat: 43, lon: 6 }) + '\n'
+    )
+    // The file the catch-up appends to for that hour exists and refuses the append.
+    const rollupDir = path.join(dir, 'rollup')
+    await fs.mkdir(rollupDir, { recursive: true })
+    const hourly = path.join(rollupDir, 'hourly-2020-01.ndjson')
+    await fs.writeFile(hourly, '')
+    await fs.chmod(hourly, 0o444)
+    const app = fakeApp(dir)
+    const plugin = (await loadFactory())(app)
+    try {
+      plugin.start({})
+      await waitFor(() => app.calls.subscribes === 1)
+      expect(app.calls.subscribes).toBe(1)
+      expect(app.calls.errors.filter((e) => e.includes('start failed'))).toEqual([])
+      expect(app.calls.errors.some((e) => e.includes('rollup catch-up failed'))).toBe(true)
+    } finally {
+      await plugin.stop()
+      await fs.chmod(hourly, 0o644)
+    }
+  })
+})
+
 describe('legacy token migration', () => {
   const LEGACY = {
     boatId: 'boat-legacy',

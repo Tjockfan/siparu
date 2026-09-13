@@ -63,6 +63,14 @@ function isPair(value: unknown): value is StoredPair {
 export class BoatKeyStore {
   private readonly file: string
   private keys: BoatKeys | undefined
+  /**
+   * A file was there and could not be understood. Kept apart from "no file yet" because
+   * the two call for opposite acts: a boat with no file makes her keys; a boat whose file
+   * is torn must NOT, since the identity in that file is the one the shore and every
+   * device recognise her by, and a fresh pair written over it would be a new boat that
+   * signs frames nobody can verify.
+   */
+  private unreadable = false
   private writeChain: Promise<void> = Promise.resolve()
 
   constructor(dataDir: string) {
@@ -81,16 +89,26 @@ export class BoatKeyStore {
    * load, and the caller decides.
    */
   load(): void {
+    this.keys = undefined
+    this.unreadable = false
+    let text: string
+    try {
+      text = fs.readFileSync(this.file, 'utf8')
+    } catch (e) {
+      // Absent is the ordinary first start. Anything else (a permission fault, an I/O
+      // error) is a file that may hold her identity and could not be reached.
+      this.unreadable = (e as { code?: unknown } | null)?.code !== 'ENOENT'
+      return
+    }
+    this.unreadable = true
     let parsed: unknown
     try {
-      parsed = JSON.parse(fs.readFileSync(this.file, 'utf8'))
+      parsed = JSON.parse(text)
     } catch {
-      this.keys = undefined
       return
     }
     const raw = (parsed ?? {}) as Partial<FileShape>
     if (raw.v !== FILE_VERSION || !isPair(raw.identity) || !isPair(raw.inbox)) {
-      this.keys = undefined
       return
     }
     try {
@@ -115,9 +133,15 @@ export class BoatKeyStore {
       assertHalvesAgree(identity, Buffer.from(raw.identity.pub, 'base64url'))
       assertHalvesAgree(inbox, Buffer.from(raw.inbox.pub, 'base64url'))
       this.keys = { identity, inbox }
+      this.unreadable = false
     } catch {
       this.keys = undefined
     }
+  }
+
+  /** Whether a key file is there that could not be understood. See `unreadable` above. */
+  refused(): boolean {
+    return this.unreadable
   }
 
   /** The keys, if this boat has any yet. */
@@ -141,8 +165,13 @@ export class BoatKeyStore {
    * her back: if keys are already loaded they are returned untouched. Rolling
    * them would silently cut off every paired device.
    */
-  async ensure(): Promise<BoatKeys> {
+  async ensure(): Promise<BoatKeys | undefined> {
     if (this.keys) return this.keys
+    // A file she could not read is not a file she has not got. Generating here would rename
+    // a fresh identity over the torn one, and the old identity, the one ashore and on every
+    // paired phone, would be gone for good. She stays without keys, which the sealer answers
+    // with silence, and the poll names the file.
+    if (this.unreadable) return undefined
     const identity = generateKeyPairSync('ed25519')
     const inbox = generateKeyPairSync('x25519')
     this.keys = { identity: identity.privateKey, inbox: inbox.privateKey }

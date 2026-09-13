@@ -119,6 +119,19 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
+describe('a boat whose key file cannot be read', () => {
+  it('publishes nothing, keeps the file, and names it', async () => {
+    fs.writeFileSync(path.join(dir, 'keys.json'), 'half a fi')
+    const calls = relayAnswers(answered({ keys: 'ok', devices: [] }))
+    const { sync } = keysync()
+    sync.start()
+    await until(() => sync.status().state === 'failing')
+    expect(sync.status().lastError).toContain('cannot be read')
+    expect(calls).toHaveLength(0)
+    expect(fs.readFileSync(path.join(dir, 'keys.json'), 'utf8')).toBe('half a fi')
+  })
+})
+
 describe('a boat publishing her own public halves', () => {
   it('sends both halves under her token and records that they landed', async () => {
     const calls = relayAnswers(answered({ devices: [], keys: 'ok' }))

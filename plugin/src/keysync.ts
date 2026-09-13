@@ -350,13 +350,17 @@ export class KeySync {
     await this.deps.keys.ensure()
     const pub = this.deps.keys.publicKeys()
     if (!pub) {
-      // ensure() answered and there are still no keys: the disk refused the write. Nothing to
-      // publish, and publishing keys the boat could not keep would be worse than not trying -
-      // she would be recorded ashore under an identity she cannot sign with.
+      // ensure() answered and there are still no keys. Either her key file is there and
+      // could not be read (it is not overwritten: the identity in it is the one the shore and
+      // her phones know her by), or the disk refused to write a new one. Nothing to publish,
+      // and publishing keys the boat could not keep would be worse than not trying - she
+      // would be recorded ashore under an identity she cannot sign with.
       this.failures++
       this.state = 'failing'
-      this.lastError = 'Could not create the keys for this boat on disk.'
-      this.deps.debug('keysync: no keys to publish')
+      this.lastError = this.deps.keys.refused()
+        ? 'The key file on this boat cannot be read. Restore keys.json from a backup of her data directory, or unlink her and pair again.'
+        : 'Could not create the keys for this boat on disk.'
+      this.deps.debug(`keysync: ${this.lastError}`)
       return
     }
 

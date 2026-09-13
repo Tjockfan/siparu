@@ -94,6 +94,47 @@ describe('disk cap with a backwards clock', () => {
   })
 })
 
+describe('a disk that refuses the row', () => {
+  // A card remounted read-only, a full partition, an I/O fault: the append used to resolve as
+  // if the row were on disk, and the plugin said "Recording" over a hole for months.
+  it('answers false, remembers the refusal, and goes on trying', async () => {
+    await store.append(snap(T0))
+    await store.flush()
+    // A directory that refuses new files: the next hour's file cannot be created. (An
+    // existing file would still take an append, since only the file's own mode governs that.)
+    await fs.chmod(store.rawDir, 0o555)
+    try {
+      expect(await store.append(snap(T0 + 3_600_000))).toBe(false)
+      const refused = store.writes()
+      expect(refused.ok).toBe(false)
+      expect(refused.failures).toBe(1)
+      expect(refused.last_error).toContain('EACCES')
+    } finally {
+      await fs.chmod(store.rawDir, 0o755)
+    }
+    // The disk comes back: the next row lands, the verdict follows it, the count stays.
+    expect(await store.append(snap(T0 + 3_660_000))).toBe(true)
+    expect(store.writes()).toEqual({ ok: true, failures: 1, last_error: expect.stringContaining('EACCES') })
+    expect(await store.readRaw('2026-01-15T13')).toHaveLength(1)
+  })
+
+  it('still closes the hour when the append failed, so the cap can run on a full card', async () => {
+    const closed: string[] = []
+    store.onHourClosed = async (h) => {
+      closed.push(h)
+    }
+    await store.append(snap(T0))
+    await store.flush()
+    await fs.chmod(store.rawDir, 0o555)
+    try {
+      expect(await store.append(snap(T0 + 3_600_000))).toBe(false)
+    } finally {
+      await fs.chmod(store.rawDir, 0o755)
+    }
+    expect(closed).toEqual(['2026-01-15T12'])
+  })
+})
+
 describe('parseNdjson', () => {
   it('ignores blank and broken lines', () => {
     const rows = parseNdjson<{ a: number }>('{"a":1}\n\nnot json\n{"a":2}\n')

@@ -33,6 +33,8 @@ import { RemoteLink, RemoteLinkStore } from './remotelink'
 import { registerRoutes, setRestDeps } from './rest'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
+import { statusLine } from './recording'
+import { keyGate, type KeyGateVerdict } from './keygate'
 import { dayKey } from './time'
 import { LiveUplink } from './live'
 import { decimateTrack } from './track'
@@ -191,16 +193,23 @@ export = (app: ServerAPI): Plugin => {
     // one a restart would replay; the live frame builds its own `paths` apart.
     const numeric = state.numericDynamicPaths(now, INTERNAL.fabricationHorizonMs)
     const stored = Object.keys(numeric).length > 0 ? { ...snap, path_values: numeric } : snap
-    await store.append(stored)
-    if (voyages) await voyages.feed(stored)
-    if (phases) await phases.feed(stored)
-    lastSnapshotTs = now
-    const today = dayKey(now)
-    if (today !== countedDay) {
-      countedDay = today
-      snapshotsToday = 0
+    const written = await store.append(stored)
+    // The voyage and phase engines reconcile from the row whether or not the disk took it:
+    // their memory is what the live screen shows, and a persist of their own that fails is
+    // logged by them and must not take the tick down with it.
+    if (voyages) await voyages.feed(stored).catch((err) => app.debug(`voyage feed failed: ${err}`))
+    if (phases) await phases.feed(stored).catch((err) => app.debug(`phase feed failed: ${err}`))
+    // Only a row on disk counts as recorded. A card gone read-only used to advance these
+    // and the status line kept saying "Recording" over a hole that was found months later.
+    if (written) {
+      lastSnapshotTs = now
+      const today = dayKey(now)
+      if (today !== countedDay) {
+        countedDay = today
+        snapshotsToday = 0
+      }
+      snapshotsToday++
     }
-    snapshotsToday++
     const age = state.lastDeltaTs === null ? null : Math.round((now - state.lastDeltaTs) / 1000)
     // Recording is local and goes on regardless; what may have stopped is the reporting. A
     // boat sealing to nobody keeps writing her own history and sends not one frame ashore,
@@ -210,7 +219,7 @@ export = (app: ServerAPI): Plugin => {
     // nobody is expecting her, which the pairing screen already says.
     const held = sealingState()
     const silent = held.mode === 'blocked' ? ` - NOT reporting ashore: ${held.reason}` : ''
-    app.setPluginStatus(`Recording - ${snapshotsToday} rows today${age === null ? ', no data yet' : age > 60 ? `, data age ${age}s` : ''}${silent}`)
+    app.setPluginStatus(statusLine(store.writes(), snapshotsToday, age) + silent)
   }
 
   /**
@@ -224,6 +233,11 @@ export = (app: ServerAPI): Plugin => {
    */
   function sealingState(): SealState {
     if (!sealer || !ensureRemoteLink().getRemote()) return { mode: 'none', reason: null }
+    // Her keys first: a frame sealed under keys the shore does not hold is dropped there
+    // without a word, and a boat with a torn key file has nothing to seal with. Both are
+    // silences, and both have a cure the sealer's own sentence does not name.
+    const gate = keysStand()
+    if (gate) return gate
     const s = sealer.state()
     // The sealer sees only the list the chain left it, so when a pinned boat refuses
     // every screen it says "the shore has named no screen" and prescribes authorising
@@ -238,6 +252,13 @@ export = (app: ServerAPI): Plugin => {
       }
     }
     return s
+  }
+
+  /** The key poll's verdict as the silence it means, or null while her keys stand. */
+  function keysStand(): KeyGateVerdict | null {
+    if (!keySync || !boatKeyStore) return null
+    const status = keySync.status()
+    return keyGate({ state: status.state, lastError: status.lastError, refused: boatKeyStore.refused() })
   }
 
   /**
@@ -259,7 +280,9 @@ export = (app: ServerAPI): Plugin => {
     if (!state || !store || !rollups || !query) throw new Error('not started')
     const now = Date.now()
     const usage = await store.rawUsage()
-    const degraded = state.lastDeltaTs === null || now - state.lastDeltaTs > INTERNAL.degradedAfterMs
+    const writes = store.writes()
+    const degraded =
+      state.lastDeltaTs === null || now - state.lastDeltaTs > INTERNAL.degradedAfterMs || !writes.ok
     return {
       status: degraded ? 'degraded' : 'ok',
       now,
@@ -282,7 +305,8 @@ export = (app: ServerAPI): Plugin => {
         raw_bytes: usage.bytes,
         cap_bytes: opts.maxStorageMB * 1024 * 1024,
         raw_files: usage.files,
-        oldest_raw: usage.oldest
+        oldest_raw: usage.oldest,
+        writes
       },
       rollup: await rollups.status(now),
       ais: aisMemory?.status() ?? { receiver_seen: false, first_seen_ts: null },
@@ -390,8 +414,12 @@ export = (app: ServerAPI): Plugin => {
       const pl = new PhaseLog(st, opts, (msg) => app.debug(msg))
       phases = pl
 
+      // The cap is enforced whatever became of the rollup. On a full card the rollup's own
+      // append is the thing that fails, and pruning the oldest raw hours is the only act
+      // here that frees space; an hour close that gave up before it was the plugin
+      // disabling its one remedy at the moment it was needed.
       st.onHourClosed = async () => {
-        await ru.catchUp(Date.now())
+        await ru.catchUp(Date.now()).catch((err) => app.debug(`rollup catch-up failed: ${err}`))
         await st.enforceCap()
       }
 
@@ -405,7 +433,9 @@ export = (app: ServerAPI): Plugin => {
       app.setPluginStatus('Starting')
       st.init(now)
         .then(async () => {
-          await ru.catchUp(Date.now())
+          // Same order and same reason as the hour close: a rollup that cannot be written
+          // must not keep the plugin from starting, and must not keep the cap from running.
+          await ru.catchUp(Date.now()).catch((err) => app.error(`rollup catch-up failed at start: ${err}`))
           await st.enforceCap()
           await vl.init(Date.now())
           await pl.init(Date.now())
@@ -602,7 +632,10 @@ export = (app: ServerAPI): Plugin => {
                 clampAisQuery(maxNm, undefined, limit)
               ),
             onHealthQuery: () => health(),
-            seal: (frame) => seal.seal(frame),
+            // Nothing leaves under keys the shore will not verify, or from a boat whose key
+            // file could not be read: the gate answers first, in the sealer's own shape, so
+            // the uplink stays silent and the fallback heartbeat carries her clock instead.
+            seal: (frame) => keysStand() ?? seal.seal(frame),
             // A screen ashore has opened, so the list of screens she seals to is worth
             // re-reading now rather than at the end of a five minute poll. That poll is what
             // decides whether a phone authorised a minute ago can open anything, and the moment
