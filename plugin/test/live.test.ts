@@ -446,14 +446,84 @@ describe('holding the socket open', () => {
     live.stop()
   })
 
-  it('treats an unknown speed as under way, keeping her fresh', () => {
-    // A boat whose GPS is silent still deserves the live rate: null must not read as "at rest"
-    // and drop her to a frame a minute.
-    const { live, last } = uplink({ frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0 }) })
+  it('treats an unknown speed as still: a boat with her GPS off has nothing to be fresh about', () => {
+    // A host rebooted with the GPS off used to read null as "under way" and sit at the fast
+    // rate for as long as the GPS stayed off, sending an empty position forty thousand times
+    // a day over a metered link. She still reports once a minute.
+    const { live, last } = uplink({
+      pingEveryMs: 60 * 60_000,
+      frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0 })
+    })
     live.start()
     last().open()
     vi.advanceTimersByTime(FRAME_EVERY_MS)
-    expect(last().frames()).toHaveLength(2)
+    expect(last().frames()).toHaveLength(1)
+    vi.advanceTimersByTime(10 * 60_000 - FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(11)
+    live.stop()
+  })
+
+  it('is not pulled to the fast rate by anchor swing', () => {
+    // A boat swinging in a blow reads 0.3 to 0.8 kn of GPS noise around the floor. One
+    // reading above it used to buy two-second frames until the next reading below; over a
+    // night that is most of a day's cost for a boat going nowhere.
+    let n = 0
+    const { live, last } = uplink({
+      pingEveryMs: 60 * 60_000,
+      frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0, sog: n++ % 2 === 0 ? 0.1 : 0.3 })
+    })
+    live.start()
+    last().open()
+    vi.advanceTimersByTime(10 * 60_000)
+    expect(last().frames()).toHaveLength(11)
+    live.stop()
+  })
+
+  it('stays on the still rate while her nav state says anchored, whatever the swing reads', () => {
+    const { live, last } = uplink({
+      pingEveryMs: 60 * 60_000,
+      frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0, sog: 0.3, nav_state: 'anchored' })
+    })
+    live.start()
+    last().open()
+    vi.advanceTimersByTime(10 * 60_000)
+    expect(last().frames()).toHaveLength(11)
+    live.stop()
+  })
+
+  it('switches to the fast rate after three readings of slow way, and at once for real way', () => {
+    // A slow creep is way, not swing, once it has held for three readings; and a reading no
+    // swing produces switches her on the spot, so a nav state left on "anchored" after
+    // weighing cannot hold her to a frame a minute while she is plainly moving.
+    let sog = 0.3
+    let navState: string | undefined = undefined
+    const { live, last } = uplink({
+      pingEveryMs: 60 * 60_000,
+      frame: () => ({ ts: 1_752_400_000_000, lat: 43.5, lon: 7.0, sog, nav_state: navState })
+    })
+    live.start()
+    last().open() // reading 1 of 3
+    vi.advanceTimersByTime(STILL_FRAME_EVERY_MS) // reading 2
+    vi.advanceTimersByTime(STILL_FRAME_EVERY_MS) // reading 3: under way from here
+    expect(last().frames()).toHaveLength(3)
+    vi.advanceTimersByTime(FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(4)
+
+    // Back to swing, with the state marked, then clearly under way despite the state.
+    sog = 0.1
+    vi.advanceTimersByTime(FRAME_EVERY_MS) // reads 0.1: still from here
+    expect(last().frames()).toHaveLength(5)
+    sog = 0.3
+    navState = 'anchored'
+    vi.advanceTimersByTime(STILL_FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(6)
+    vi.advanceTimersByTime(FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(6)
+    sog = 3.0
+    vi.advanceTimersByTime(STILL_FRAME_EVERY_MS - FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(7) // reads 3.0: fast at once, anchored or not
+    vi.advanceTimersByTime(FRAME_EVERY_MS)
+    expect(last().frames()).toHaveLength(8)
     live.stop()
   })
 

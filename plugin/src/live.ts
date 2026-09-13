@@ -86,9 +86,24 @@ export const REPORTING_STALE_MS = STILL_FRAME_EVERY_MS * 3
 /**
  * Below this speed she is treated as stationary and the slow cadence applies. In metres per
  * second, because that is the unit the snapshot carries. 0.3 kn is drift and swing at anchor,
- * not passage-making; the first frame that shows real way switches her back to the fast rate.
+ * not passage-making.
+ *
+ * One reading above it does not switch her to the fast rate. A boat swinging at anchor in a
+ * blow reads 0.3 to 0.8 kn of GPS noise, and one frame every two seconds from a boat that is
+ * going nowhere was the whole daily cost this cadence exists to avoid. So the fast rate takes
+ * UNDERWAY_STREAK consecutive readings above the floor, unless a single reading is above
+ * CLEARLY_UNDERWAY_SOG_MS, which no swing produces: then she is under way and the frame that
+ * shows it switches her at once, as before. A reading below the floor, a reading she does
+ * not have, or a nav state that says she is anchored or moored puts her back on the still
+ * rate immediately. Null is still, not under way: a boat rebooted with her GPS off used to
+ * sit at the fast rate for as long as the GPS stayed off, sending an empty position forty
+ * thousand times a day.
  */
 const UNDERWAY_SOG_MS = 0.3 * 0.514444
+const CLEARLY_UNDERWAY_SOG_MS = 1.5 * 0.514444
+const UNDERWAY_STREAK = 3
+/** Signal K navigation states in which a reading above the floor is swing, not way. */
+const STILL_NAV_STATES = new Set(['anchored', 'moored', 'aground'])
 
 /**
  * Starlink sits behind CGNAT, which drops an idle flow in around a minute. The relay answers
@@ -601,6 +616,7 @@ export class LiveUplink {
       // which the scheduler treats as under way - the safe side, keeping her fresh.
       const sog = (frame as { sog?: unknown }).sog
       this.lastSog = typeof sog === 'number' && Number.isFinite(sog) ? sog : null
+      this.noteWay(this.lastSog, (frame as { nav_state?: unknown }).nav_state)
 
       // Her speed is read off the frame above and stays aboard: it only decides how soon the
       // next one goes. What leaves is whatever the sealer hands back, and never the frame
@@ -638,10 +654,27 @@ export class LiveUplink {
     }, this.nextFrameDelayMs())
   }
 
+  /** How many consecutive readings have shown way. Capped at the streak, which means "under way". */
+  private wayStreak = 0
+
+  private noteWay(sog: number | null, navState: unknown): void {
+    const heldStill = typeof navState === 'string' && STILL_NAV_STATES.has(navState)
+    if (sog === null || sog < UNDERWAY_SOG_MS) {
+      this.wayStreak = 0
+    } else if (sog >= CLEARLY_UNDERWAY_SOG_MS) {
+      // No anchor swing reads this fast. A nav state left on "anchored" after weighing is
+      // not allowed to hold her to the slow rate while she is plainly making way.
+      this.wayStreak = UNDERWAY_STREAK
+    } else if (heldStill) {
+      this.wayStreak = 0
+    } else {
+      this.wayStreak = Math.min(this.wayStreak + 1, UNDERWAY_STREAK)
+    }
+  }
+
   private nextFrameDelayMs(): number {
     if (this.fixedFrameMs !== null) return this.fixedFrameMs
-    if (this.lastSog !== null && this.lastSog < UNDERWAY_SOG_MS) return STILL_FRAME_EVERY_MS
-    return FRAME_EVERY_MS
+    return this.wayStreak >= UNDERWAY_STREAK ? FRAME_EVERY_MS : STILL_FRAME_EVERY_MS
   }
 
   /**
