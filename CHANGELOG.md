@@ -14,6 +14,13 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+### Added
+
+- **The disk's verdict on the boat's own screen.** The plugin's status line has said NOT
+  recording since 0.2.13; the board now carries the same band above the instruments, with the
+  disk's own error, so a card remounted read-only is found on the day rather than as a hole in
+  the logbook months later. A plugin from before the verdict draws nothing.
+
 ## [0.2.13] - 2026-09-13
 
 ### Fixed

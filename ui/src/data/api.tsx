@@ -206,6 +206,12 @@ export type HealthResult = {
    */
   security_off?: boolean;
   pairing_locked?: boolean;
+  /**
+   * Whether the disk took the last row. Only the verdict is read here; the sizes beside it in
+   * the plugin's answer are for the status page, not for the board. Both absent in the earlier
+   * plugin, and absent is not a refusal.
+   */
+  storage?: { writes?: { ok: boolean; failures: number; last_error: string | null } };
 };
 
 export type MapConfig = {

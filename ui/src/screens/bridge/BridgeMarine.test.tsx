@@ -67,6 +67,7 @@ function bridge(over: Partial<BridgeData> = {}, snapOver: Partial<LiveSnapshot> 
     waterC: 18.8,
     depth: 18.2,
     sealing: null,
+    writes: null,
     navState: "UNDERWAY",
     utcClock: "12:00:00",
     gustMax: null,

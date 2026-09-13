@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useApi } from "../../data/api";
 import type { LiveSnapshot, BaroTrend, HealthResult, SealingStatus } from "../../data/api";
 import { usePolling } from "../../data/usePolling";
+import type { WriteVerdict } from "../../lib/recording";
 import { useNow } from "../../data/useNow";
 import {
   msToKnots,
@@ -49,6 +50,8 @@ export interface BridgeData {
   frameAgeSec: number | null;
   /** What became of her last report ashore. Null until /health lands, or on an older plugin. */
   sealing: SealingStatus | null;
+  /** Whether the disk aboard took her last row. Null until /health lands, or on an older plugin. */
+  writes: WriteVerdict | null;
   navState: string;
   utcClock: string;
   gustMax: { kn: number; ts: number } | null;
@@ -244,6 +247,7 @@ export function useBridgeData(): BridgeData {
     waterC,
     depth,
     sealing: health?.sealing ?? null,
+    writes: health?.storage?.writes ?? null,
     navState,
     utcClock,
     gustMax: displayGust,

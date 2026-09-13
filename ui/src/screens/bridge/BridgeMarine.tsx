@@ -496,7 +496,7 @@ export default function BridgeMarine() {
         {/* Above the readings rather than under them. What is left of the pairing band is the
             part an owner has to act on, and the foot of a screen he reads from the top is
             where a warning goes to be missed. */}
-        <PairAlerts sealing={d.sealing} />
+        <PairAlerts sealing={d.sealing} writes={d.writes} />
         <div className="sp-dash sp-board">
           {showBridge && (
             <section className="sp-sec sp-sec-bridge">
@@ -545,7 +545,7 @@ export default function BridgeMarine() {
 
   return (
     <>
-      <PairAlerts sealing={d.sealing} />
+      <PairAlerts sealing={d.sealing} writes={d.writes} />
       <div className="sp-dash">
         <DashPanel
           tab={a}

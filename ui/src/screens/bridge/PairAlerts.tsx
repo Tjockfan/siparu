@@ -9,15 +9,19 @@
  *   - a boat that cannot seal to anybody, which looks exactly like a healthy boat from ashore
  *     (she says "sending", nothing arrives, and only this screen knows the difference);
  *   - a key on her list that nothing she trusts vouched for, which is what somebody adding a
- *     reader of their own looks like from the helm.
+ *     reader of their own looks like from the helm;
+ *   - a disk that has stopped taking her rows, which every other figure on the board hides
+ *     (the frames still arrive; only the history has a hole in it). This one has no page to
+ *     open, so it is stated whole.
  *
- * They are stated here and answered there: each of the last two is one line that names the
+ * They are stated here and answered there: each of the sealing two is one line that names the
  * condition and opens the page holding the detail. Anything an owner merely wants to check -
  * which screens are sealed to, what the account is - is not here and should not be.
  */
 import { Link } from "react-router-dom";
 import { useApi, type PairScreen, type SealingStatus } from "../../data/api";
 import { screenRefusals, sealingNotice } from "../../lib/sealing";
+import { recordingNotice, type WriteVerdict } from "../../lib/recording";
 import { usePolling } from "../../data/usePolling";
 import SecurityWarning from "../../components/SecurityWarning";
 import { useHref } from "../../data/routes";
@@ -39,7 +43,13 @@ function Alert({ title, detail, tone }: { title: string; detail: string; tone?: 
   );
 }
 
-export default function PairAlerts({ sealing }: { sealing?: SealingStatus | null }) {
+export default function PairAlerts({
+  sealing,
+  writes,
+}: {
+  sealing?: SealingStatus | null;
+  writes?: WriteVerdict | null;
+}) {
   const api = useApi();
   // Pairing is asked at her helm. Ashore there is no door and no code to notice, and the
   // remaining alerts - the sealing ones - come from the health read this page already has.
@@ -51,6 +61,7 @@ export default function PairAlerts({ sealing }: { sealing?: SealingStatus | null
 
   const silent = sealingNotice(sealing);
   const refusals = screenRefusals(sealing);
+  const disk = recordingNotice(writes);
   const unapproved = refusals?.unapproved.length ?? 0;
 
   return (
@@ -65,6 +76,16 @@ export default function PairAlerts({ sealing }: { sealing?: SealingStatus | null
           detail="A phone or a browser is asking to watch this boat. Nothing is linked until it is approved from aboard."
           tone="asking"
         />
+      )}
+      {/* Above the link alerts: a hole in the history outranks a report that did not leave. Not a
+          link, because nothing on the Remote page answers it - the cure is at the card. */}
+      {disk && (
+        <div className="pair warn">
+          <div className="pl">
+            <div className="t">{disk.title}</div>
+            <div className="s">{disk.detail}</div>
+          </div>
+        </div>
       )}
       {silent && <Alert title={silent.title} detail={silent.detail} />}
       {unapproved > 0 && (
