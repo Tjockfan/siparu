@@ -14,6 +14,70 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-09-13
+
+### Fixed
+
+- **A still boat stays on the still cadence.** The frame rate read one number, the last
+  frame's speed, and switched to two-second frames the moment it crossed 0.3 knots. A boat
+  swinging at anchor in a blow reads that much GPS noise, and a boat rebooted with her GPS
+  off had no speed at all, which was read as under way: forty thousand frames a day of an
+  empty position over a metered link. The fast rate now takes three consecutive readings
+  above the floor, or one above 1.5 knots, which no swing produces; a reading below it, a
+  missing reading, or a nav state of anchored, moored or aground puts her back on the
+  minute at once.
+- **A disk that refuses a row is said out loud.** A card remounted read-only or a full
+  partition used to leave the row count rising, the status line saying Recording and
+  `/health` saying ok, over a hole found months later. Only a row on disk is counted now;
+  the status line says NOT recording with the disk's own error, `/health` reads degraded,
+  and the disk cap runs at every hour close and at start whether or not the rollup could
+  be written, since pruning the oldest raw hours is the one act that frees space.
+- **A torn key file is not replaced.** The first poll used to write a fresh key pair over
+  a key file it could not read, which made her a new boat: the shore answered mismatch,
+  every frame was dropped at verification without a word, and the only true sentence lived
+  in a debug log. The keystore now refuses to make keys over a file it could not read, and
+  that state, like a shore holding different keys, silences her before any frame leaves,
+  with the cure in the sentence on her page and in `/health`.
+- **A chart asset is held to the file behind it.** A symlink dropped into `charts/` could
+  carry a request to a file one level up. The file on disk is now resolved and held to the
+  same rule as its name.
+- **The printed passage record.** The dark page prints dark to the edge of the sheet on
+  Chrome's own dialog, not only over the devtools protocol; the white page keeps its
+  margin; the track map prints with its data credit and without the on-screen notice; a
+  printed page is named for what it holds; a few passages stay open together.
+- **The engineer's window** is sized for the boat's widest family rather than the one on
+  show, so switching tabs no longer re-flows the page.
+
+### Changed
+
+- **`/health` carries the disk's verdict** under `storage.writes` (`ok`, `failures`,
+  `last_error`). A plugin from before it was asked sends none.
+- The gauge physics reach the boat's screen through the shared library rather than the
+  published package.
+
+## [0.2.12] - 2026-09-08
+
+Written after the fact: this release shipped without a section of its own.
+
+### Fixed
+
+- **A window of minutes that came back short says so.** The screens read neither the
+  boat's `clamped` flag nor the page size, so a week of minutes drew three and a half days
+  under a count that said 5000, and a CSV stopped in the middle of a passage without a
+  word. The range view and the export now share one window, a short page is resolved
+  against the page it asked for, and a file that stopped short says so in its name.
+- **A lapsed boat says where to look.** The sentence shown when the account behind her
+  stops paying now names the portal's own address, promises no renewal, and says out loud
+  that she stands off for a quarter of an hour after the account is put right.
+- **The gust has its own figure**, set as its neighbours are, with the window strip laid
+  out as a row of equal targets.
+
+### Added
+
+- The licence names its holder.
+- The publish scan checks the published files against a private-value list kept outside
+  the repository, when one is available.
+
 ## [0.2.11] - 2026-08-31
 
 ### Added
@@ -1032,6 +1096,9 @@ being able to delete it is the point.
   a chart, and a GET-only REST API.
 
 [Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.10...HEAD
+[0.2.13]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.13
+[0.2.12]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.12
+[0.2.11]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.11
 [0.2.10]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.10
 [0.2.9]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.9
 [0.2.8]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.8
