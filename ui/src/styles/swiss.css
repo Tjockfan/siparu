@@ -1336,7 +1336,12 @@ body {
    which holds the panel to the centre the page keeps everything else on. The clipping is the
    container's rather than this box's: a row of 1fr is measured from what its item contributes,
    and an item that clips contributes nothing, which closes the panel and never opens it. */
-.swiss .lb-open-in { min-height: 0; display: grid; justify-items: center; }
+/* The inner box scrolls, because the drawer itself cannot: its row is animated from 0fr and
+   needs overflow:hidden for that, so anything taller than the room the table left it is simply
+   unreachable. On a desktop the panels fit and nothing here shows. On a phone, where the
+   browser's own toolbars take a fifth of the height, the export panel stands taller than the
+   drawer and its lower half - the figures, the two verbs - had no way of being reached. */
+.swiss .lb-open-in { min-height: 0; display: grid; justify-items: center; overflow-y: auto; }
 /* The gap travels with the panel. A flex gap is spent on a child the moment it exists, so a
    panel whose row has closed still holds the 14px between the bar and the table, and the table
    jumps that far when it finally goes. Ending the motion one gap short means the last frame of
