@@ -58,13 +58,29 @@ export const SUBSCRIBED_PATHS: string[] = [
 ]
 
 /**
- * Dynamic path families beyond the fixed core: engine, tank and generator
- * data a boat may expose. Subscribed by wildcard and carried on the live
- * frame under their plain SK path name (contract LiveResult.paths). The core
+ * Dynamic path families beyond the fixed core: the engine, tank, generator and
+ * electrical data a boat may expose. Subscribed by wildcard and carried on the
+ * live frame under their plain SK path name (contract LiveResult.paths). The core
  * navigation/wind/depth paths keep their own hand-tuned handling; these ride
  * the same source-resolution machinery but are never mixed into a Snapshot.
+ *
+ * The electrical side is named family by family rather than taken as a whole.
+ * A Victron install publishes dozens of state flags under `electrical.venus.` and
+ * a switch bank under `electrical.switches.`: neither is a gauge, and a blanket
+ * `electrical.` subscription would spend the path budget on them before the
+ * batteries ever spoke.
  */
-export const DYNAMIC_PREFIXES = ['propulsion.', 'tanks.', 'electrical.generators.'] as const
+export const DYNAMIC_PREFIXES = [
+  'propulsion.',
+  'tanks.',
+  'electrical.ac.',
+  'electrical.alternators.',
+  'electrical.batteries.',
+  'electrical.chargers.',
+  'electrical.generators.',
+  'electrical.inverters.',
+  'electrical.solar.'
+] as const
 
 /** Core paths get bespoke handling; anything else in state is a dynamic path. */
 const CORE_PATH_SET: ReadonlySet<string> = new Set(SUBSCRIBED_PATHS)
@@ -77,7 +93,23 @@ const CORE_PATH_SET: ReadonlySet<string> = new Set(SUBSCRIBED_PATHS)
  * the path map grows without bound.
  */
 const TEXT_MAX = 32
-const MAX_DYNAMIC_PATHS = 64
+/**
+ * How many dynamic paths one boat may hold at a time. The common set of a working
+ * boat already passes 64 on its own (two engines 16, two gensets 12, eight tanks 16,
+ * four batteries 20, charger and inverter 6, solar 2), so a cap of 64 was not a
+ * safety margin any more, it was a coin toss over which system got dropped.
+ *
+ * What 128 costs, measured rather than guessed: a full table writes both `paths` and
+ * `path_ages`, about 13 KB of JSON together, near 18 KB once sealed and base64'd. The
+ * relay refuses a sealed frame over 64 KB, so the headroom is real. It is not free,
+ * though, and the two places it is spent are worth naming: under way a frame goes up
+ * every two seconds, so a full table is roughly 30 MB an hour of uplink; and the same
+ * gauges ride every recorded row, so the raw hour files fill the disk cap sooner and
+ * the hourly rollups (which are never pruned) carry more keys for good.
+ *
+ * Kept in step with the relay's telemetry sanitiser and the mobile wire reader.
+ */
+const MAX_DYNAMIC_PATHS = 128
 const PATH_MAX_LEN = 128
 // Dotted, alpha-led at the top, with digits, hyphens and underscores allowed in the
 // segments below it: instance identifiers a gateway assigns are not always camelCase
@@ -93,6 +125,72 @@ function isDynamicPath(path: string): boolean {
     PATH_RE.test(path) &&
     DYNAMIC_PREFIXES.some((p) => path.startsWith(p))
   )
+}
+
+/**
+ * The readings a dashboard is built from, by the leaf of their path.
+ *
+ * A full table has to decide what it keeps, and first-come-first-kept decides it by
+ * boot order: the batteries of a boat whose engines wake up faster would never appear.
+ * These are the leaves the engine, generator, tank, battery, charger and solar panels
+ * read; everything else in the same families is a filler that can give up its slot.
+ *
+ * Deliberately blind to which family a path belongs to. `voltage` matters on a battery,
+ * a genset and a shore inlet alike, and a list per family would drift out of step with
+ * the gateways that name the instances.
+ *
+ * Two spellings of the AC side are here on purpose. The schema puts a shore or genset
+ * leg under `phase.<A|B|C>.lineNeutralVoltage` / `.realPower`, while a Victron gateway
+ * writes `acin.voltage` and a plain `voltage`; a boat is wired by whichever gateway she
+ * has, and a list that knew only one of them would leave half the fleet's shore power
+ * as a filler.
+ */
+const PRIORITY_LEAVES: ReadonlySet<string> = new Set([
+  // Engines and gensets.
+  'revolutions',
+  'temperature',
+  'oilPressure',
+  'runTime',
+  'fuel.rate',
+  'alternatorVoltage',
+  'engineLoad',
+  'exhaustTemperature',
+  'state',
+  // AC: gensets, shore, inverter and charger, in both spellings.
+  'voltage',
+  'current',
+  'frequency',
+  'power',
+  'realPower',
+  'lineNeutralVoltage',
+  'lineLineVoltage',
+  'acin.voltage',
+  'acin.current',
+  // Tanks.
+  'currentLevel',
+  'capacity',
+  // Batteries.
+  'capacity.stateOfCharge',
+  'capacity.timeRemaining',
+  // What a charging source says it is doing: chargers and alternators call it
+  // chargingMode, a solar controller controllerMode, an inverter inverterMode.
+  'chargingMode',
+  'controllerMode',
+  'inverterMode',
+  // Solar.
+  'panelPower',
+  'yieldToday'
+])
+
+/**
+ * Whether a path ends in one of those leaves. Both the last segment and the last two
+ * are tried, because a battery's charge is `capacity.stateOfCharge` while an engine's
+ * speed is plain `revolutions`.
+ */
+function isPriorityPath(path: string): boolean {
+  const seg = path.split('.')
+  if (PRIORITY_LEAVES.has(seg[seg.length - 1]!)) return true
+  return seg.length >= 2 && PRIORITY_LEAVES.has(`${seg[seg.length - 2]!}.${seg[seg.length - 1]!}`)
 }
 
 const STRING_FIELDS: ReadonlySet<MetricField> = new Set(['nav_state', 'ais_class'])
@@ -147,8 +245,12 @@ export class MetricsState {
         if (typeof value === 'number' && Number.isFinite(value)) stored = value
         else if (typeof value === 'string') stored = value.slice(0, TEXT_MAX)
         else return false
-        // A path never seen before claims a slot; a full table takes no new ones.
-        if (!this.paths.has(path) && this.dynamicPathCount() >= MAX_DYNAMIC_PATHS) return false
+        // A path never seen before claims a slot; a full table takes no new ones,
+        // unless what arrived is a reading a dashboard is built from and there is a
+        // filler willing to give up its slot.
+        if (!this.paths.has(path) && this.dynamicPathCount() >= MAX_DYNAMIC_PATHS) {
+          if (!isPriorityPath(path) || !this.evictFiller()) return false
+        }
       } else {
         if (typeof value !== 'number' || !Number.isFinite(value)) return false
         stored = value
@@ -335,6 +437,33 @@ export class MetricsState {
     let n = 0
     for (const path of this.paths.keys()) if (isDynamicPath(path)) n++
     return n
+  }
+
+  /**
+   * Give up the slot of the dynamic path that is both a filler and the quietest,
+   * so a reading the dashboard needs can take it. Returns false when the table is
+   * all readings, in which case the newcomer waits: there is no ranking inside the
+   * priority set, and inventing one would just move the coin toss.
+   *
+   * The value goes with the slot. A gauge that was evicted and comes back later is
+   * a new path in every sense, which is the honest answer: nothing on screen should
+   * claim a reading that the boat stopped reporting long enough to be dropped.
+   */
+  private evictFiller(): boolean {
+    let victim: string | null = null
+    let victimTs = Infinity
+    for (const [path, bySource] of this.paths) {
+      if (!isDynamicPath(path) || isPriorityPath(path)) continue
+      let last = 0
+      for (const entry of bySource.values()) last = Math.max(last, entry.ts)
+      if (last < victimTs) {
+        victimTs = last
+        victim = path
+      }
+    }
+    if (victim === null) return false
+    this.paths.delete(victim)
+    return true
   }
 
   dynamicPaths(now: number): Record<string, number | string> {

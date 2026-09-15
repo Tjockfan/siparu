@@ -237,11 +237,15 @@ describe('dynamic paths (engine/tank/generator)', () => {
     expect(s.dynamicPaths(T0)['propulsion.port.revolutions']).toBeUndefined()
   })
 
-  it('ignores families outside the dynamic allowlist - generators only, not all electrical', () => {
+  it('ignores families outside the dynamic allowlist - named electrical groups, not all of it', () => {
     const s = fresh()
     expect(s.ingest('sensors.foo.bar', 1, T0)).toBe(false)
-    expect(s.ingest('electrical.batteries.0.voltage', 12.6, T0)).toBe(false)
+    // The electrical groups are named one by one, so the state flags and switch
+    // banks of a Victron install stay out while the batteries come in.
+    expect(s.ingest('electrical.venus.dcPower', 120, T0)).toBe(false)
+    expect(s.ingest('electrical.switches.bank.0.state', 'on', T0)).toBe(false)
     expect(s.dynamicPaths(T0)).toEqual({})
+    expect(s.ingest('electrical.batteries.0.voltage', 12.6, T0)).toBe(true)
   })
 
   it('requires the dotted boundary - a lookalike root does not slip in', () => {

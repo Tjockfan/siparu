@@ -537,8 +537,11 @@ function numberedUnit(kind: string, id: string): string {
  * how many of anything there are, and a boat that grows a fourth fuel tank tomorrow gets a
  * fourth cell without this file hearing about it.
  *
- * The families are deliberately narrow: `electrical.generators.*` is a generator, but the rest
- * of `electrical.*` (batteries, inverters) is not a gauge this package knows how to read.
+ * The families are deliberately narrow, and narrower than what the plugin carries. The boat
+ * now subscribes to her batteries, chargers, inverters, alternators, solar and AC as well, and
+ * a phone draws its own Power screen from them; ashore they are deliberately not drawn yet, so
+ * they land here as null and no panel, column or chart appears for them. A screen for them is a
+ * product decision of its own, not something this file should improvise a label for.
  */
 export function describePath(path: string): SystemReading | null {
   if (lookup(SUPPRESSED, path)) return null
