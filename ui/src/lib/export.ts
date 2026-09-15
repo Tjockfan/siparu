@@ -270,11 +270,20 @@ export type PrintPage = "paper" | "screen";
  * once at load: every page printed from the portal was landing on the desk as
  * "Siparu_ sign in.pdf". The title is swapped for exactly as long as the dialog is open.
  *
- * What ends that is the afterprint event, not the return of print(). Desktop browsers block
- * until the dialog closes and the two moments are the same; WebKit on a phone returns straight
- * away and reads the page afterwards, so undressing it in a finally handed the dialog the
- * page in its everyday clothes. Measured on an iPhone, 15 Sep 2026: the dark page printed
- * white, the file was named after the tab, and Safari laid its own margins over the sheet.
+ * When to put it back is the whole difficulty, and it differs by browser. Measured on an
+ * iPhone, 15 Sep 2026, with a page that logs every event: print() returns after 32ms with the
+ * dialog still up, and afterprint is NOT the dialog closing - beforeprint and afterprint ran
+ * three times while it stood open, once per relayout, and changing the paper orientation was
+ * one of them. Closing it announced nothing at all; only a resize followed. So on WebKit
+ * there is no event that means "the reader is done", and a page undressed on afterprint is
+ * undressed while the dialog is still deciding what to print: that is exactly how the dark
+ * page came out white and the file came out named after the tab.
+ *
+ * A browser that blocks in print() tells us so by firing afterprint before print() returns,
+ * and there the page can go back at once. Where it does not, the page stays dressed until the
+ * reader touches it again, which is the earliest honest sign the dialog is behind them. The
+ * cost of waiting is a tab that reads as the document for a moment longer; the cost of not
+ * waiting is a wrong document.
  *
  * The dark page is a class on the root for the print stylesheet to key on, and a sheet with
  * no page margin: a page margin is paper the browser will not paint, and it printed as a white
@@ -295,24 +304,28 @@ export function printDocument(name: string, page: PrintPage = "paper"): void {
     sheet.textContent = "@media print { @page { margin: 0; } }";
     document.head.appendChild(sheet);
   }
-  // Once, whoever says so first: a browser that both fires the event and returns from a
-  // blocking print() would otherwise undress the page twice, and the second time would
-  // undo a title the reader had since been given.
   let undressed = false;
   const undress = () => {
     if (undressed) return;
     undressed = true;
-    window.removeEventListener("afterprint", undress);
+    document.removeEventListener("pointerdown", undress);
     document.title = previous;
     root.classList.remove("pdf-screen");
     sheet?.remove();
   };
-  window.addEventListener("afterprint", undress);
+  // Did this browser stop at the dialog? It says so by firing afterprint before print()
+  // returns. WebKit fires it too, but a second and a third time, and long after.
+  let blocked = false;
+  const noteBlocked = () => { blocked = true; };
+  window.addEventListener("afterprint", noteBlocked);
   try {
     window.print();
   } catch (e) {
-    // No dialog ever opened, so no event is coming to put the page back.
+    window.removeEventListener("afterprint", noteBlocked);
     undress();
     throw e;
   }
+  window.removeEventListener("afterprint", noteBlocked);
+  if (blocked) undress();
+  else document.addEventListener("pointerdown", undress, { once: true });
 }

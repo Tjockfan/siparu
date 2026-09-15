@@ -186,13 +186,15 @@ describe("printName", () => {
 
 describe("printDocument", () => {
   // These tests run without a DOM: the globals the function touches are stood in for, which
-  // is also the whole of what it is allowed to touch. The stand-in also carries the two ways
-  // a browser says the dialog has closed, because when the page is put back is now the point.
+  // is also the whole of what it is allowed to touch. Two of those globals are the ways a
+  // browser can say the dialog is over, and which one arrives is the difference between the
+  // two browsers this function has to live with.
   const tab = { title: "" };
   const classes = new Set<string>();
   const head: { textContent: string }[] = [];
   const calls: { title: string; dark: boolean; sheets: number }[] = [];
-  let closers: (() => void)[] = [];
+  let afterprint: (() => void)[] = [];
+  let touches: (() => void)[] = [];
   const stand = (print: () => void) => {
     vi.stubGlobal("document", {
       get title() { return tab.title; },
@@ -203,51 +205,86 @@ describe("printDocument", () => {
         return el;
       },
       head: { appendChild: (el: { textContent: string }) => head.push(el) },
+      addEventListener: (type: string, fn: () => void) => { if (type === "pointerdown") touches.push(fn); },
+      removeEventListener: (type: string, fn: () => void) => {
+        if (type === "pointerdown") touches = touches.filter((f) => f !== fn);
+      },
     });
     vi.stubGlobal("window", {
       print,
-      addEventListener: (type: string, fn: () => void) => { if (type === "afterprint") closers.push(fn); },
+      addEventListener: (type: string, fn: () => void) => { if (type === "afterprint") afterprint.push(fn); },
       removeEventListener: (type: string, fn: () => void) => {
-        if (type === "afterprint") closers = closers.filter((f) => f !== fn);
+        if (type === "afterprint") afterprint = afterprint.filter((f) => f !== fn);
       },
     });
   };
-  /** The browser saying the dialog is gone. */
-  const dialogCloses = () => closers.slice().forEach((f) => f());
-  afterEach(() => { vi.unstubAllGlobals(); calls.length = 0; classes.clear(); head.length = 0; closers = []; });
+  /** The browser firing afterprint. A blocking dialog does this before print() returns. */
+  const fireAfterprint = () => afterprint.slice().forEach((f) => f());
+  /** The reader touching the page again. */
+  const touch = () => touches.slice().forEach((f) => f());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    calls.length = 0; classes.clear(); head.length = 0; afterprint = []; touches = [];
+  });
   const seen = () => calls.push({ title: tab.title, dark: classes.has("pdf-screen"), sheets: head.length });
 
-  it("prints under the given name and keeps it until the dialog says it has closed", () => {
+  it("prints under the given name", () => {
     tab.title = "Siparu: sign in";
     stand(seen);
     printDocument("Siparu-Logbook-20260912");
     expect(calls).toEqual([{ title: "Siparu-Logbook-20260912", dark: false, sheets: 0 }]);
-    // WebKit returns from print() with the dialog still up and reads the page afterwards. A
-    // title handed back here is the title the file is saved under.
-    expect(tab.title).toBe("Siparu-Logbook-20260912");
-    dialogCloses();
-    expect(tab.title).toBe("Siparu: sign in");
   });
 
-  it("dresses the dark page for as long as the dialog is up, then undresses it", () => {
+  it("dresses the dark page: the class and the sheet with no margin", () => {
     tab.title = "Siparu";
     stand(seen);
     printDocument("Siparu-Voyage-20260912", "screen");
     expect(calls).toEqual([{ title: "Siparu-Voyage-20260912", dark: true, sheets: 1 }]);
-    expect(classes.has("pdf-screen")).toBe(true);
-    expect(head).toHaveLength(1);
-    dialogCloses();
+  });
+
+  it("hands the page back at once to a browser that stopped at the dialog", () => {
+    tab.title = "Siparu";
+    stand(() => { seen(); fireAfterprint(); });
+    printDocument("Siparu-Voyage-20260912", "screen");
+    expect(tab.title).toBe("Siparu");
     expect(classes.has("pdf-screen")).toBe(false);
     expect(head).toHaveLength(0);
   });
 
-  it("puts the page back only once, however many times the dialog reports closing", () => {
+  it("keeps the page dressed where print() returns with the dialog still up", () => {
     tab.title = "Siparu";
     stand(seen);
     printDocument("Siparu-Voyage-20260912", "screen");
-    dialogCloses();
+    // WebKit is still deciding what to print. Undressing here is what printed the dark page
+    // white and named the file after the tab.
+    expect(tab.title).toBe("Siparu-Voyage-20260912");
+    expect(classes.has("pdf-screen")).toBe(true);
+    expect(head).toHaveLength(1);
+    touch();
+    expect(tab.title).toBe("Siparu");
+    expect(classes.has("pdf-screen")).toBe(false);
+    expect(head).toHaveLength(0);
+  });
+
+  it("ignores the afterprint WebKit fires while the dialog is still open", () => {
+    tab.title = "Siparu";
+    stand(seen);
+    printDocument("Siparu-Voyage-20260912", "screen");
+    // On an iPhone this arrived three times with the dialog up, once per relayout: changing
+    // the paper orientation was one of them, and it used to take the dark page away mid-print.
+    fireAfterprint();
+    fireAfterprint();
+    expect(tab.title).toBe("Siparu-Voyage-20260912");
+    expect(classes.has("pdf-screen")).toBe(true);
+  });
+
+  it("puts the page back only once, however many times the reader touches it", () => {
+    tab.title = "Siparu";
+    stand(seen);
+    printDocument("Siparu-Voyage-20260912", "screen");
+    touch();
     tab.title = "Siparu: voyage";
-    dialogCloses();
+    touch();
     expect(tab.title).toBe("Siparu: voyage");
   });
 
