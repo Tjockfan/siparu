@@ -186,11 +186,13 @@ describe("printName", () => {
 
 describe("printDocument", () => {
   // These tests run without a DOM: the globals the function touches are stood in for, which
-  // is also the whole of what it is allowed to touch.
+  // is also the whole of what it is allowed to touch. The stand-in also carries the two ways
+  // a browser says the dialog has closed, because when the page is put back is now the point.
   const tab = { title: "" };
   const classes = new Set<string>();
   const head: { textContent: string }[] = [];
   const calls: { title: string; dark: boolean; sheets: number }[] = [];
+  let closers: (() => void)[] = [];
   const stand = (print: () => void) => {
     vi.stubGlobal("document", {
       get title() { return tab.title; },
@@ -202,26 +204,51 @@ describe("printDocument", () => {
       },
       head: { appendChild: (el: { textContent: string }) => head.push(el) },
     });
-    vi.stubGlobal("window", { print });
+    vi.stubGlobal("window", {
+      print,
+      addEventListener: (type: string, fn: () => void) => { if (type === "afterprint") closers.push(fn); },
+      removeEventListener: (type: string, fn: () => void) => {
+        if (type === "afterprint") closers = closers.filter((f) => f !== fn);
+      },
+    });
   };
-  afterEach(() => { vi.unstubAllGlobals(); calls.length = 0; classes.clear(); head.length = 0; });
+  /** The browser saying the dialog is gone. */
+  const dialogCloses = () => closers.slice().forEach((f) => f());
+  afterEach(() => { vi.unstubAllGlobals(); calls.length = 0; classes.clear(); head.length = 0; closers = []; });
   const seen = () => calls.push({ title: tab.title, dark: classes.has("pdf-screen"), sheets: head.length });
 
-  it("prints under the given name and hands the tab its own title back", () => {
+  it("prints under the given name and keeps it until the dialog says it has closed", () => {
     tab.title = "Siparu: sign in";
     stand(seen);
     printDocument("Siparu-Logbook-20260912");
     expect(calls).toEqual([{ title: "Siparu-Logbook-20260912", dark: false, sheets: 0 }]);
+    // WebKit returns from print() with the dialog still up and reads the page afterwards. A
+    // title handed back here is the title the file is saved under.
+    expect(tab.title).toBe("Siparu-Logbook-20260912");
+    dialogCloses();
     expect(tab.title).toBe("Siparu: sign in");
   });
 
-  it("dresses the dark page for the dialog only: the class and the sheet with no margin", () => {
+  it("dresses the dark page for as long as the dialog is up, then undresses it", () => {
     tab.title = "Siparu";
     stand(seen);
     printDocument("Siparu-Voyage-20260912", "screen");
     expect(calls).toEqual([{ title: "Siparu-Voyage-20260912", dark: true, sheets: 1 }]);
+    expect(classes.has("pdf-screen")).toBe(true);
+    expect(head).toHaveLength(1);
+    dialogCloses();
     expect(classes.has("pdf-screen")).toBe(false);
     expect(head).toHaveLength(0);
+  });
+
+  it("puts the page back only once, however many times the dialog reports closing", () => {
+    tab.title = "Siparu";
+    stand(seen);
+    printDocument("Siparu-Voyage-20260912", "screen");
+    dialogCloses();
+    tab.title = "Siparu: voyage";
+    dialogCloses();
+    expect(tab.title).toBe("Siparu: voyage");
   });
 
   it("hands everything back even when the dialog throws", () => {

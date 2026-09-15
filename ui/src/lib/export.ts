@@ -268,8 +268,13 @@ export type PrintPage = "paper" | "screen";
  *
  * "Save as PDF" takes its filename from the document title, and the title is the app's, set
  * once at load: every page printed from the portal was landing on the desk as
- * "Siparu_ sign in.pdf". The title is swapped for exactly as long as the dialog is open;
- * print() blocks until it closes, so the tab reads as itself again the moment it does.
+ * "Siparu_ sign in.pdf". The title is swapped for exactly as long as the dialog is open.
+ *
+ * What ends that is the afterprint event, not the return of print(). Desktop browsers block
+ * until the dialog closes and the two moments are the same; WebKit on a phone returns straight
+ * away and reads the page afterwards, so undressing it in a finally handed the dialog the
+ * page in its everyday clothes. Measured on an iPhone, 15 Sep 2026: the dark page printed
+ * white, the file was named after the tab, and Safari laid its own margins over the sheet.
  *
  * The dark page is a class on the root for the print stylesheet to key on, and a sheet with
  * no page margin: a page margin is paper the browser will not paint, and it printed as a white
@@ -290,11 +295,24 @@ export function printDocument(name: string, page: PrintPage = "paper"): void {
     sheet.textContent = "@media print { @page { margin: 0; } }";
     document.head.appendChild(sheet);
   }
-  try {
-    window.print();
-  } finally {
+  // Once, whoever says so first: a browser that both fires the event and returns from a
+  // blocking print() would otherwise undress the page twice, and the second time would
+  // undo a title the reader had since been given.
+  let undressed = false;
+  const undress = () => {
+    if (undressed) return;
+    undressed = true;
+    window.removeEventListener("afterprint", undress);
     document.title = previous;
     root.classList.remove("pdf-screen");
     sheet?.remove();
+  };
+  window.addEventListener("afterprint", undress);
+  try {
+    window.print();
+  } catch (e) {
+    // No dialog ever opened, so no event is coming to put the page back.
+    undress();
+    throw e;
   }
 }
