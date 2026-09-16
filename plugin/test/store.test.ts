@@ -100,21 +100,24 @@ describe('a disk that refuses the row', () => {
   it('answers false, remembers the refusal, and goes on trying', async () => {
     await store.append(snap(T0))
     await store.flush()
-    // A directory that refuses new files: the next hour's file cannot be created. (An
-    // existing file would still take an append, since only the file's own mode governs that.)
-    await fs.chmod(store.rawDir, 0o555)
+    // The next hour's file cannot be created because a directory already stands in its place.
+    // The refusal comes from the path rather than from a permission bit on purpose: the armv7
+    // CI job runs this suite as root inside a container, and root writes straight through a
+    // read-only mode as if it were unset, so a chmod here proves nothing there.
+    const blocked = store.rawPath('2026-01-15T13')
+    await fs.mkdir(blocked)
     try {
       expect(await store.append(snap(T0 + 3_600_000))).toBe(false)
       const refused = store.writes()
       expect(refused.ok).toBe(false)
       expect(refused.failures).toBe(1)
-      expect(refused.last_error).toContain('EACCES')
+      expect(refused.last_error).toContain('EISDIR')
     } finally {
-      await fs.chmod(store.rawDir, 0o755)
+      await fs.rmdir(blocked)
     }
     // The disk comes back: the next row lands, the verdict follows it, the count stays.
     expect(await store.append(snap(T0 + 3_660_000))).toBe(true)
-    expect(store.writes()).toEqual({ ok: true, failures: 1, last_error: expect.stringContaining('EACCES') })
+    expect(store.writes()).toEqual({ ok: true, failures: 1, last_error: expect.stringContaining('EISDIR') })
     expect(await store.readRaw('2026-01-15T13')).toHaveLength(1)
   })
 
@@ -125,11 +128,12 @@ describe('a disk that refuses the row', () => {
     }
     await store.append(snap(T0))
     await store.flush()
-    await fs.chmod(store.rawDir, 0o555)
+    const blocked = store.rawPath('2026-01-15T13')
+    await fs.mkdir(blocked)
     try {
       expect(await store.append(snap(T0 + 3_600_000))).toBe(false)
     } finally {
-      await fs.chmod(store.rawDir, 0o755)
+      await fs.rmdir(blocked)
     }
     expect(closed).toEqual(['2026-01-15T12'])
   })

@@ -124,12 +124,13 @@ describe('a rollup that cannot be written', () => {
       path.join(rawDir, '2020-01-01T00.ndjson'),
       JSON.stringify({ ts: Date.UTC(2020, 0, 1, 0, 30), sog: 1, lat: 43, lon: 6 }) + '\n'
     )
-    // The file the catch-up appends to for that hour exists and refuses the append.
+    // The path the catch-up appends to for that hour refuses the write: a directory stands
+    // where the file belongs. A read-only mode would not refuse it, since the armv7 CI job
+    // runs this suite as root inside a container and root writes through the mode bits.
     const rollupDir = path.join(dir, 'rollup')
     await fs.mkdir(rollupDir, { recursive: true })
     const hourly = path.join(rollupDir, 'hourly-2020-01.ndjson')
-    await fs.writeFile(hourly, '')
-    await fs.chmod(hourly, 0o444)
+    await fs.mkdir(hourly)
     const app = fakeApp(dir)
     const plugin = (await loadFactory())(app)
     try {
@@ -140,7 +141,7 @@ describe('a rollup that cannot be written', () => {
       expect(app.calls.errors.some((e) => e.includes('rollup catch-up failed'))).toBe(true)
     } finally {
       await plugin.stop()
-      await fs.chmod(hourly, 0o644)
+      await fs.rmdir(hourly)
     }
   })
 })
