@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteLink } from '../src/config'
-import { LiveSocket, LiveUplink, isWatchingNote } from '../src/live'
+import { LiveSocket, LiveUplink, PROMPTED_FRAME_FLOOR_MS, STILL_FRAME_EVERY_MS,
+         isWatchingNote } from '../src/live'
 
 /**
  * The one thing the relay says on its own account: that a screen ashore has opened.
@@ -52,6 +53,11 @@ class FakeSocket implements LiveSocket {
   replies(): unknown[] {
     return this.sent.filter((s) => s !== 'ping').slice(1).map((s) => JSON.parse(s))
   }
+}
+
+/** How many frames she has put on the wire. */
+function frames(sock: FakeSocket): number {
+  return sock.sent.filter((s) => s !== 'ping' && JSON.parse(s).type === 'sealed').length
 }
 
 async function flush(): Promise<void> {
@@ -114,8 +120,41 @@ describe('the relay saying a screen ashore has opened', () => {
     await flush()
 
     expect(watched).toHaveBeenCalledTimes(1)
-    // And nothing went back: there is no question here to refuse and no answer to give.
-    expect(last().replies()).toEqual([])
+    // And nothing went back but her frame: there is no question here to refuse and no answer
+    // to give.
+    expect(last().replies().filter((r) => (r as { type?: string }).type !== 'sealed')).toEqual([])
+  })
+
+  it('is answered with a frame at once, not left to the still cadence', () => {
+    // A boat lying still sends a frame a minute and the relay keeps none of them, so the
+    // screen that opened between two would otherwise show a connected vessel and nothing else
+    // for up to a minute.
+    const { live, last } = uplink()
+    live.start()
+    last().open()
+    expect(frames(last())).toBe(1)
+
+    vi.advanceTimersByTime(STILL_FRAME_EVERY_MS / 2)
+    expect(frames(last())).toBe(1)
+
+    last().say(WATCHING)
+    expect(frames(last())).toBe(2)
+  })
+
+  it('does not become a boat sending in a loop when screens open in one', () => {
+    const { live, last } = uplink()
+    live.start()
+    last().open()
+
+    vi.advanceTimersByTime(PROMPTED_FRAME_FLOOR_MS + 1)
+    last().say(WATCHING)
+    last().say(WATCHING)
+    last().say(WATCHING)
+    expect(frames(last())).toBe(2)
+
+    vi.advanceTimersByTime(PROMPTED_FRAME_FLOOR_MS + 1)
+    last().say(WATCHING)
+    expect(frames(last())).toBe(3)
   })
 
   it('is answered with nothing at all', async () => {

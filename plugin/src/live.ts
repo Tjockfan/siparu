@@ -74,6 +74,13 @@ export const FRAME_EVERY_MS = 2_000
 export const STILL_FRAME_EVERY_MS = 60_000
 
 /**
+ * The closest together two frames may go when a screen opening prompts one. A few seconds: no
+ * faster than she reports under way, so the worst a looping screen can make her do is what she
+ * does on passage, and one owner opening one phone is indistinguishable from instant.
+ */
+export const PROMPTED_FRAME_FLOOR_MS = 5_000
+
+/**
  * How long a socket may carry nothing before the slow path takes over the job of saying she is
  * still here.
  *
@@ -299,7 +306,9 @@ export interface LiveDeps {
    * A note, never an instruction, and it is worth being exact about the difference: the shore
    * may not tell this vessel to do anything, so nothing here carries a payload she acts on, and
    * the handler she is wired with decides whether to ask and how often. Absent leaves her on
-   * the poll alone, which is what a boat wired without this does.
+   * the poll alone, which is what a boat wired without this does. Separately from the handler,
+   * the uplink answers the same note with a frame at once (see `greet`), so the screen that
+   * opened is not left to the still cadence.
    */
   onWatching?: () => void
   debug: (msg: string) => void
@@ -495,6 +504,7 @@ export class LiveUplink {
       // ask anyway.
       if (isWatchingNote(data)) {
         this.deps.onWatching?.()
+        this.greet(gen)
         return
       }
       // Her records do not leave in the clear. Not while she is sealing, which is the only
@@ -605,6 +615,24 @@ export class LiveUplink {
       return undefined
     }
     return open(envelope)
+  }
+
+  /**
+   * A frame now, because a screen has just opened.
+   *
+   * A boat lying still sends one frame a minute, and the relay keeps none of them: a screen
+   * that opens between two is shown a connected vessel and nothing else for up to a minute,
+   * which is the first thing every owner sees on every opening at a berth. So the note that a
+   * screen has opened is answered with the frame she was going to send anyway, sooner. Her own
+   * decision on her own timing, nothing the shore asked for and nothing it can vary; and it is
+   * floored, because a screen reconnecting in a loop must not become a boat sending in one.
+   * Under way the floor is her own cadence and this changes nothing.
+   */
+  private greet(gen: number): void {
+    if (this.lastFrameTs !== null && Date.now() - this.lastFrameTs < PROMPTED_FRAME_FLOOR_MS) {
+      return
+    }
+    this.sendFrame(gen)
   }
 
   private sendFrame(gen: number): void {
