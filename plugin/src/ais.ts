@@ -120,6 +120,7 @@ export function buildAisFeed(vessels: unknown, selfContext: string, now: number,
       ais_class: cleanStr(dig(vessel.sensors, 'ais', 'class')),
       ship_type: cleanStr(shipType && typeof shipType === 'object' ? shipType.name : null),
       length_m: num(length?.overall),
+      beam_m: num(dig(design, 'beam')),
       distance_nm: Math.round(dist * 100) / 100,
       ts
     })

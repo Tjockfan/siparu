@@ -18,7 +18,11 @@ function vesselsModel() {
         speedOverGround: { value: 5.0 },
         courseOverGroundTrue: { value: Math.PI }
       },
-      design: { aisShipType: { value: { name: 'Sailing' } }, length: { value: { overall: 14 } } }
+      design: {
+        aisShipType: { value: { name: 'Sailing' } },
+        length: { value: { overall: 14 } },
+        beam: { value: 4.2 }
+      }
     },
     'urn:mrn:imo:mmsi:333333333': {
       mmsi: '333333333',
@@ -50,6 +54,7 @@ describe('buildAisFeed', () => {
     expect(t.cog_deg).toBeCloseTo(180, 0)
     expect(t.ship_type).toBe('Sailing')
     expect(t.length_m).toBe(14)
+    expect(t.beam_m).toBe(4.2)
   })
 
   it('reports an explicit error without own position', () => {

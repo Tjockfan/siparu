@@ -569,6 +569,7 @@ export interface AisTarget {
   ais_class: string | null
   ship_type: string | null
   length_m: number | null
+  beam_m: number | null
   distance_nm: number | null
   ts: number | null
 }
