@@ -180,7 +180,6 @@ describe("logbookColumns", () => {
     expect(at("wind", "bft")).toBe("5");
     expect(at("baro")).toBe("1013");
     expect(at("depth")).toBe("18.2");
-    expect(at("ts")).toMatch(/^\d{2}:\d{2}$/);
   });
 });
 

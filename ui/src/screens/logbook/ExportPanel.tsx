@@ -151,7 +151,7 @@ export default function ExportPanel({
         <div className="lbp-book">
           <div className="lbp-h">
             <span className="lbp-n">Window</span>
-            <span className="lbp-s">local days, both ends included</span>
+            <span className="lbp-s">UTC days, both ends included</span>
           </div>
           <div className="lbe-dates">
             <label>

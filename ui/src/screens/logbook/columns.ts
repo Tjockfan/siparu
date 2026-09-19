@@ -76,23 +76,19 @@ export interface LogColumn {
 }
 
 /**
- * The hour a reading was taken, as the log prints it.
+ * The time column, which every row has by construction - a snapshot is a moment.
  *
- * Shared with the engineer's unit-major table, which stamps its rows the same way: a second
- * copy of this would be the two books disagreeing about what time it is.
+ * It holds the lane and nothing to print in it. The table sets this lane on the ship's clock
+ * (lib/shipTime.ts), head and rows together, because the zone is read off the positions of a
+ * whole page of rows and one row cannot say it alone. A CSV never prints this lane either: it
+ * writes its own ISO stamp, and a file stays in UTC. A `cell` here that printed an hour would
+ * be a second clock nothing reads, kept alive by whichever test called it.
  */
-export function hhmm(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
-}
-
-/** The time column, which every row has by construction - a snapshot is a moment. */
 const UTC: LogColumn = {
   key: "ts",
   head: "UTC",
   book: "bridge",
-  cell: (s) => hhmm(s.ts),
+  cell: () => "",
 };
 
 /**

@@ -1410,8 +1410,9 @@ body {
    named on it is not a record of anything. */
 .swiss .lb-print-hd { display: none; }
 .swiss .lb-print-ft { display: none; }
-/* The dated line the range view writes above its first row and wherever the UTC day turns:
-   a week of hours never leaves the reader guessing which day an hour belongs to. Set like
+/* The dated line a page writes above its first row and wherever the day turns aboard (which
+   pages do is pageIsLined's to say): a week of hours never leaves the reader guessing which
+   day an hour belongs to. Set like
    the caption band under the head, quieter - it divides the table, it is not a heading. */
 .swiss .lb-sep {
   font-family: var(--sp-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2em;
@@ -1586,6 +1587,9 @@ body {
   text-transform: uppercase; color: var(--muted);
 }
 .swiss .lb-cols span:not(:first-child) { text-align: right; }
+/* The head over the time lane is the ship's offset, and "UTC-9:30" has a hyphen in it, which is
+   a place a line may break: a negative half-hour zone set its head on two lines. */
+.swiss .lb-cols span:first-child { white-space: nowrap; }
 /* The unit, under the head rather than beside it. A table that printed it in every cell would
    print it three hundred times on a page; over the column it is written once. Its own line
    because the room says so: measured across the engineer's thirteen heads, all thirteen fit
@@ -3394,6 +3398,12 @@ body {
       repeat(var(--lb-cols, 5), minmax(0, var(--lb-lane))) !important;
   }
   .swiss .lb-sep .sd { white-space: nowrap; }
+  /* The offset after the date is the screen's. Here the date already runs into the lane beside
+     it, and eight characters more ran over the first head on any sheet whose first reading is
+     one lane wide. The masthead names the clock instead; only a sheet holding two offsets, which
+     the masthead cannot name, keeps them on its lines. */
+  .swiss .lb-sep .so { display: none; }
+  .swiss .lb-frame.mixed .lb-sep .so { display: inline; }
   .swiss .lb-sep .sh {
     display: block; text-align: right; padding-inline: 6px;
     font-family: var(--sp-font); font-size: 6.8px; font-weight: 700; letter-spacing: 0.06em;
@@ -3410,6 +3420,9 @@ body {
   .swiss .lb-row .v.dim { font-size: 9.5px !important; }
   .swiss .lb-row.u .un { font-size: 8px; }
   .swiss .lb-cols { font-size: 6.8px !important; padding-block: 6px 4px; }
+  /* The time lane is 34px on paper and its head is an offset of up to eight characters. Tracked
+     out, "UTC+5:30" ran 4px past the rule of the cell beside it; set solid it stays inside. */
+  .swiss .lb-cols span:first-child { letter-spacing: 0; }
   /* The unit line sets its own size and does not follow the head down: left alone it printed
      at 9px under a 6.8px head. The same ratio as on screen, where it sits a hair over the head. */
   .swiss .lb-cols .lb-u { font-size: 7.2px; margin-top: 1px; }

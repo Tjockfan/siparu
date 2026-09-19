@@ -8,7 +8,7 @@
  * already been given and adds no route to a REST surface that is read-only by
  * design.
  *
- * Times are written as ISO 8601 in UTC. The screen shows local time because that
+ * Times are written as ISO 8601 in UTC. The screen shows the ship's time because that
  * is the watch a person keeps, but a file outlives the timezone it was made in,
  * and GPX has no other option.
  */

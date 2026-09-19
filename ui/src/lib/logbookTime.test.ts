@@ -1,11 +1,15 @@
 /**
- * A logbook is kept in UTC.
+ * A logbook day is a UTC day.
  *
- * The column says UTC, the whole stack underneath is UTC (the plugin stamps rows in
- * epoch ms, /snapshots windows on startOfUtcDay), and at sea a log time is UTC: it is
- * what an MRCC, a position report and an insurance statement all assume. The screen
- * was the one place that quietly used the reader's own clock - a number that looks
- * plausible, is internally consistent, and is wrong by the reader's offset.
+ * That is what these tests pin, and all they pin: the window a page asks the boat for. The
+ * stack underneath is UTC (the plugin stamps rows in epoch ms, /snapshots windows on
+ * startOfUtcDay, the rollups are cut on it), so a page that asked for a local midnight would
+ * ask for a window the boat never recorded against. The hour printed on a row is a separate
+ * matter and is not UTC: it is the ship's clock, see lib/shipTime.ts.
+ *
+ * What both have in common is the reader. The screen was once the one place that quietly used
+ * the reader's own clock - a number that looks plausible, is internally consistent, and is
+ * wrong by the reader's offset. Neither the window nor the hour may depend on who is looking.
  *
  * These tests fix the reader somewhere other than UTC on purpose. Run from a machine
  * already in UTC they would all pass while proving nothing, which is exactly how this

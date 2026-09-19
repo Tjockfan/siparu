@@ -11,11 +11,12 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Snapshot } from "../../data/api";
-import { DayLine, columnsCount, summaryNote, tableShape, windowInterval, withClosingReadings } from "./LogbookMarine";
+import { DayLine, Rows, columnsCount, pageIsLined, summaryNote, tableShape, windowInterval, withClosingReadings } from "./LogbookMarine";
 import { columnsFor, logbookColumns } from "./columns";
 import { unitGroups } from "./unitRows";
 import { ALL_ON } from "./columnSelection";
 import type { UnitGroup } from "./unitRows";
+import { shipTimes, type ZoneLookup } from "../../lib/shipTime";
 
 const page: Snapshot[] = [];
 
@@ -46,6 +47,19 @@ vi.mock("./useLogbookData", async (importOriginal) => ({
   }),
   useLogbookRange: () => ({ snaps: page, err: null, busy: false, truncated: false, loaded: true }),
 }));
+
+// The zone table is a lazy chunk and a static render runs no effects, so on its own this suite
+// would only ever see the page as it stands before the table arrives: in UTC. The stand-in is
+// for the loading and nothing else - the clock, the head and the lines are the real ones, read
+// off the rows the screen hands over. Null is that cold page, and is what every test above the
+// ship's-clock block runs on.
+const zoneTable = vi.hoisted(() => ({ current: null as ZoneLookup | null }));
+vi.mock("../../data/useShipTimes", async () => {
+  const { shipTimes } = await import("../../lib/shipTime");
+  return {
+    useShipTimes: (rows: Parameters<typeof shipTimes>[0]) => shipTimes(rows, zoneTable.current),
+  };
+});
 
 // The screen remembers the wind unit. There is no DOM in this suite, so the store is a map.
 beforeAll(() => {
@@ -425,5 +439,192 @@ describe("the logbook table over a boat's own instruments", () => {
     expect(html).toContain("DEP");
     expect(html).toContain("4.2");
     expect(html).toContain("·");
+  });
+});
+
+/**
+ * The hour on a row is the hour aboard, read off the row's own position, and the offset stands
+ * over the lane. The reader's zone does not enter into it: this suite is not run in Malta.
+ */
+describe("the time lane on the ship's clock", () => {
+  const PORT = { lat: 35.9, lon: 14.52 };
+  const at = (h: number) => Date.UTC(2026, 8, 17, h, 59);
+  const malta: ZoneLookup = () => "Europe/Malta";
+  const lines = (html: string) =>
+    [...html.matchAll(/class="sd">(.*?)<\/span>(?=<span class="sh|<\/div>)/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
+
+  it("prints the hour aboard and names the offset over it, in both books", async () => {
+    zoneTable.current = malta;
+    try {
+      const rows = [snap({ ts: at(0), ...PORT, sog: 0.2, path_values: { "propulsion.port.revolutions": 25.5 } })];
+      for (const book of ["bridge", "engine"] as const) {
+        const html = await draw(rows, book);
+        expect(html).toContain("UTC+2");
+        expect(html).toContain("02:59");
+        expect(html).not.toContain("00:59");
+      }
+    } finally {
+      zoneTable.current = null;
+    }
+  });
+
+  it("prints the machines' table on the same clock as the officer's", async () => {
+    zoneTable.current = malta;
+    try {
+      const html = await draw(
+        [
+          snap({
+            ts: at(0),
+            ...PORT,
+            path_values: { "propulsion.port.revolutions": 25.5, "propulsion.starboard.revolutions": 25 },
+          }),
+        ],
+        "engine",
+      );
+      expect(html).toContain("UTC+2");
+      expect(html).toContain("02:59");
+      expect(html).not.toContain("00:59");
+    } finally {
+      zoneTable.current = null;
+    }
+  });
+
+  it("stays in UTC, and says UTC, for a boat that never reported a position", async () => {
+    zoneTable.current = malta;
+    try {
+      const html = await draw([snap({ ts: at(0), sog: 0.2 })]);
+      expect(html).toContain("00:59");
+      expect(html).not.toContain("UTC+2");
+    } finally {
+      zoneTable.current = null;
+    }
+  });
+
+  // 21:59 UTC is Thursday evening aboard; 22:59 UTC is already Friday there.
+  const evening = [snap({ ts: at(21), ...PORT, sog: 1 }), snap({ ts: at(22), ...PORT, sog: 1 })];
+  const cols = columnsFor(logbookColumns(evening, "kn"), "bridge");
+  const rowsHtml = (dated: boolean | "turns", rows = evening, lookup = malta) => {
+    const times = shipTimes(rows, lookup);
+    return renderToStaticMarkup(
+      <Rows snaps={rows} cols={cols} group={null} times={times} footer={null} lined={pageIsLined(rows, times, dated)} />,
+    );
+  };
+
+  it("dates a range page at the ship's midnight, with the offset on the line", () => {
+    const got = lines(rowsHtml(true));
+    expect(got).toHaveLength(2);
+    expect(got[0]).toMatch(/^THU · 17 .* · UTC\+2$/);
+    expect(got[1]).toMatch(/^FRI · 18 .* · UTC\+2$/);
+  });
+
+  it("dates a day page that holds a turn aboard, newest first, the top rows included", () => {
+    // The page lists newest first. The rows at the top are the ones past the ship's midnight,
+    // which is exactly the stretch the page's own title does not name.
+    const got = lines(rowsHtml("turns", [...evening].reverse()));
+    expect(got).toHaveLength(2);
+    expect(got[0]).toMatch(/^FRI · 18 /);
+    expect(got[1]).toMatch(/^THU · 17 /);
+  });
+
+  it("leaves a day page that sits inside one day aboard to its title", () => {
+    expect(lines(rowsHtml("turns", [evening[0]]))).toHaveLength(0);
+  });
+
+  it("draws no line on a live page that sits inside one offset", () => {
+    expect(lines(rowsHtml(false))).toHaveLength(0);
+  });
+
+  it("dates every view once a page holds two offsets, the first row included", () => {
+    const passage = [snap({ ts: at(10), ...PORT, sog: 8 }), snap({ ts: at(11), lat: 36.5, lon: 22.5, sog: 8 })];
+    const twoZones: ZoneLookup = (_lat, lon) => (lon > 20 ? "Europe/Athens" : "Europe/Malta");
+    const got = lines(rowsHtml(false, passage, twoZones));
+    expect(got).toHaveLength(2);
+    expect(got[0]).toMatch(/ · UTC\+2$/);
+    expect(got[1]).toMatch(/ · UTC\+3$/);
+  });
+});
+
+/**
+ * Paper. The masthead is the only thing on a printed sheet that names the window, and the head
+ * row prints only where no dated line carries the heads instead (swiss.css, .lb-frame.dated).
+ * Both used to be true by construction: every hour was UTC and only the range view wrote lines.
+ */
+describe("the printed page under the ship's clock", () => {
+  const PORT = { lat: 35.9, lon: 14.52 };
+  const malta: ZoneLookup = () => "Europe/Malta";
+
+  it("does not head a table of ship's hours with the word UTC", async () => {
+    zoneTable.current = malta;
+    try {
+      const html = await draw([snap({ ts: Date.UTC(2026, 8, 17, 0, 59), ...PORT, sog: 0.2 })]);
+      const masthead = html.match(/class="ph-meta">.*?<\/div><\/div>/s)?.[0] ?? "";
+      expect(masthead).toContain("WINDOW");
+      expect(masthead).not.toMatch(/· UTC</);
+    } finally {
+      zoneTable.current = null;
+    }
+  });
+
+  /**
+   * On paper the dated line shares its row with the column heads, and the date alone already
+   * runs into the lane beside it. The offset after it ran over the first head on any sheet whose
+   * first reading is one lane wide: a bridge page with the position struck off, every page of a
+   * single engine. So the sheet names the clock once, in the masthead, where "UTC" used to
+   * stand, and the line keeps the offset for the screen and for a sheet that holds two.
+   */
+  it("names the ship's clock once in the masthead, and sets the offset apart on the line", async () => {
+    zoneTable.current = malta;
+    try {
+      const html = await draw([snap({ ts: Date.UTC(2026, 8, 17, 0, 59), ...PORT, sog: 0.2 })]);
+      const masthead = html.match(/class="ph-meta">.*?<\/div><\/div>/s)?.[0] ?? "";
+      expect(masthead).toContain("CLOCK");
+      expect(masthead).toContain("SHIP&#x27;S TIME · UTC+2");
+      expect(html).not.toMatch(/class="lb-frame[^"]* mixed/);
+    } finally {
+      zoneTable.current = null;
+    }
+  });
+
+  it("says UTC in the masthead for a boat that never reported a position", async () => {
+    const html = await draw([snap({ ts: Date.UTC(2026, 8, 17, 0, 59), sog: 0.2 })]);
+    const masthead = html.match(/class="ph-meta">.*?<\/div><\/div>/s)?.[0] ?? "";
+    expect(masthead).toMatch(/CLOCK<\/span><b>UTC</);
+  });
+
+  it("sends the reader of a two-offset sheet to the dated lines, and marks the frame so they keep the offset", async () => {
+    zoneTable.current = (_lat, lon) => (lon > 20 ? "Europe/Athens" : "Europe/Malta");
+    try {
+      const html = await draw([
+        snap({ ts: Date.UTC(2026, 8, 17, 10), ...PORT, sog: 8 }),
+        snap({ ts: Date.UTC(2026, 8, 17, 11), lat: 36.5, lon: 22.5, sog: 8 }),
+      ]);
+      expect(html).toMatch(/class="lb-frame dated mixed/);
+      expect(html).toContain("SHIP&#x27;S TIME · OFFSET ON EACH DATED LINE");
+      expect(html).toMatch(/class="sd">[^<]*<span class="so"> · UTC\+2<\/span>/);
+    } finally {
+      zoneTable.current = null;
+    }
+  });
+
+  it("gives the frame the class that drops the head row whenever the page writes dated lines", async () => {
+    // A live page across a zone change writes lines, so its one head row must not print above
+    // them: the lines are the heads on paper, and the names would be set twice.
+    zoneTable.current = (_lat, lon) => (lon > 20 ? "Europe/Athens" : "Europe/Malta");
+    try {
+      const passage = [
+        snap({ ts: Date.UTC(2026, 8, 17, 10), ...PORT, sog: 8 }),
+        snap({ ts: Date.UTC(2026, 8, 17, 11), lat: 36.5, lon: 22.5, sog: 8 }),
+      ];
+      // The two travel together or the sheet is wrong either way: the class without the lines
+      // prints a table with no heads at all, the lines without the class print them twice.
+      const crossed = await draw(passage);
+      expect(crossed).toMatch(/class="lb-frame dated/);
+      expect(crossed.match(/class="sd"/g)).toHaveLength(2);
+      const still = await draw([passage[1]]);
+      expect(still).not.toMatch(/class="lb-frame dated/);
+      expect(still).not.toContain('class="sd"');
+    } finally {
+      zoneTable.current = null;
+    }
   });
 });

@@ -1,5 +1,5 @@
 /* Logbook - snapshot history (Swiss redesign).
- * Brutalist data table: Live|Day + granularity, UTC·SOG·HDG·TWS·BARO·DEP rows.
+ * Brutalist data table: Live|Day + granularity, one row per moment on the ship's clock.
  * Data flow (useLogbookLive / useLogbookDay) preserved; only the presentation changed. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useApi, type Snapshot } from "../../data/api";
@@ -9,10 +9,12 @@ import { unitCell, unitGroups, type UnitGroup } from "./unitRows";
 import { useCrossFade } from "./useCrossFade";
 import { dateInputToMs, dateToInput } from "../../lib/format";
 import { useElementWidth } from "../../data/useElementWidth";
+import { useShipTimes } from "../../data/useShipTimes";
+import type { ShipTimes } from "../../lib/shipTime";
 import ColumnPicker from "./ColumnPicker";
 import ExportPanel, { type ExportRequest } from "./ExportPanel";
 import Reveal from "./Reveal";
-import { columnsFor, hhmm, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
+import { columnsFor, logbookColumns, type LogBook, type LogColumn, type WindUnit } from "./columns";
 import { fittedColumns, laneCount, lanesThatFit, fittedMetrics, LANE_CEILING, LANE_GAP, TIME_LANE, UNIT_LANE } from "./fitColumns";
 import { BrandMark } from "../../index";
 import {
@@ -871,17 +873,20 @@ function ExportButton({ open, onOpen }: { open: boolean; onOpen: () => void }) {
 function Cols({
   cols,
   group,
+  times,
   toggleWind,
 }: {
   cols: LogColumn[];
   group: UnitGroup | null;
+  /** What stands over the time lane: the ship's offset, which only the rows can name. */
+  times: ShipTimes;
   toggleWind: () => void;
 }) {
   if (group) {
     const named = group.units.length > 1;
     return (
       <div className={`lb-cols${named ? " u" : ""}`} style={metricVar(group)}>
-        <span>UTC</span>
+        <span>{times.head}</span>
         {named && <span className="un">Unit</span>}
         {group.metrics.map((m) => (
           <span key={m.key}>
@@ -907,7 +912,7 @@ function Cols({
           </span>
         ) : (
           <span key={c.key} className={laneClass(c).trim()}>
-            {c.head}
+            {c.key === "ts" ? times.head : c.head}
             <Unit of={c.unit} />
           </span>
         ),
@@ -962,6 +967,8 @@ function LiveView({
   saveNote,
 }: ViewProps) {
   const { snaps, err, busy, hasMore, loadMore } = useLogbookLive(shownGran);
+  const times = useShipTimes(snaps);
+  const lined = useMemo(() => pageIsLined(snaps, times, false), [snaps, times]);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
     snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold,
   );
@@ -1006,10 +1013,10 @@ function LiveView({
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
       {saveNote && <div className="lb-note">{saveNote}</div>}
-      <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
-        <PrintHead book={book} window={GRAN_LABEL[shownGran]} interval={INTERVAL_NAME[shownGran]} />
+      <div className={`lb-frame${lined ? " dated" : ""}${times.mixed ? " mixed" : ""}${cls}${leaving ? " leaving" : ""}`} style={block}>
+        <PrintHead book={book} window={GRAN_LABEL[shownGran]} interval={INTERVAL_NAME[shownGran]} times={times} />
         <div className="lb-day" style={laneVar(drawn)}><span>{GRAN_LABEL[shownGran]}</span><b>{snaps.length}</b></div>
-        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
+        <Cols cols={drawn} group={group} times={times} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
         {!busy && !err && snaps.length === 0 ? (
           <NoRows what={`Nothing was logged in this window (${GRAN_LABEL[shownGran].toLowerCase()}).`} />
@@ -1018,6 +1025,8 @@ function LiveView({
             snaps={snaps}
             cols={drawn}
             group={group}
+            times={times}
+            lined={lined}
             footer={
               hasMore ? (
                 <button className="lb-more" onClick={loadMore} disabled={busy}>
@@ -1061,16 +1070,24 @@ function DayView({
   saveNote,
 }: ViewProps) {
   const { dateStr, setDateStr, isToday, snaps, err, busy, prevDay, nextDay, goToday } = useLogbookDay();
+  const times = useShipTimes(snaps);
+  const lined = useMemo(() => pageIsLined(snaps, times, "turns"), [snaps, times]);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
     snaps, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold,
   );
   // timeZone: UTC throughout - dateStr names a UTC day, and rendering it in the
   // reader's zone would label it a day early west of Greenwich.
-  const dayLabel = isToday
-    ? `Today · ${new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })}`
-    : new Date(dateStr)
-        .toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" })
-        .replace(/,/g, "");
+  //
+  // The label says so. The rows under it are on the ship's clock, so away from Greenwich the
+  // page opens or closes on hours that belong to the neighbouring day aboard, under a dated
+  // line that names it. Without the two words here the title and that line simply disagree.
+  const dayLabel = `${
+    isToday
+      ? `Today · ${new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })}`
+      : new Date(dateStr)
+          .toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" })
+          .replace(/,/g, "")
+  } · UTC day`;
 
   return (
     <>
@@ -1120,15 +1137,15 @@ function DayView({
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
       {saveNote && <div className="lb-note">{saveNote}</div>}
-      <div className={`lb-frame${cls}${leaving ? " leaving" : ""}`} style={block}>
-        <PrintHead book={book} window={dayLabel} interval={INTERVAL_NAME["1h"]} />
+      <div className={`lb-frame${lined ? " dated" : ""}${times.mixed ? " mixed" : ""}${cls}${leaving ? " leaving" : ""}`} style={block}>
+        <PrintHead book={book} window={dayLabel} interval={INTERVAL_NAME["1h"]} times={times} />
         <div className="lb-day" style={laneVar(drawn)}><span>{dayLabel}</span><b>{snaps.length}</b></div>
-        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
+        <Cols cols={drawn} group={group} times={times} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
         {!busy && snaps.length === 0 ? (
           <NoRows what="No telemetry was logged for this day." />
         ) : (
-          <Rows snaps={snaps} cols={drawn} group={group} footer={null} />
+          <Rows snaps={snaps} cols={drawn} group={group} times={times} footer={null} lined={lined} />
         )}
         <PrintFoot />
       </div>
@@ -1159,8 +1176,28 @@ const BOOK_KEEPER: Record<LogBook, string> = {
  * it does not matter which of them the reader happened to have open when he printed. The mark
  * and the wordmark sit where they sit on every other Siparu surface; the right side says when
  * the page was made and what it holds.
+ *
+ * It names the clock too, once, because on a dated sheet nothing else can: the head row does not
+ * print there, and the dated line shares its row with the column heads and has no room for an
+ * offset after the date. A sheet that holds two offsets has no one figure to name, so it sends
+ * the reader to the lines, which keep their offset on that sheet and on no other.
  */
-function PrintHead({ book, window: w, interval }: { book: LogBook; window: string; interval: string }) {
+function PrintHead({
+  book,
+  window: w,
+  interval,
+  times,
+}: {
+  book: LogBook;
+  window: string;
+  interval: string;
+  times: ShipTimes;
+}) {
+  const clock = times.mixed
+    ? "SHIP'S TIME · OFFSET ON EACH DATED LINE"
+    : times.head === "UTC"
+      ? "UTC"
+      : `SHIP'S TIME · ${times.head}`;
   return (
     <div className="lb-print-hd">
       <div className="ph-id">
@@ -1174,7 +1211,8 @@ function PrintHead({ book, window: w, interval }: { book: LogBook; window: strin
       </div>
       <div className="ph-meta">
         <div><span className="l">GENERATED</span><b>{generatedStamp()}</b></div>
-        <div><span className="l">WINDOW</span><b>{`${w} · ${interval} · UTC`.toUpperCase()}</b></div>
+        <div><span className="l">WINDOW</span><b>{`${w} · ${interval}`.toUpperCase()}</b></div>
+        <div><span className="l">CLOCK</span><b>{clock}</b></div>
       </div>
     </div>
   );
@@ -1189,21 +1227,13 @@ function PrintFoot() {
   );
 }
 
-/** "SAT · 29 AUG 2026" - the line a page writes where the day turns. */
-function utcDayLine(ts: number): string {
-  return new Date(ts)
-    .toLocaleDateString("en-GB", {
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    })
-    .replace(/,\s*/, " · ")
-    .toUpperCase();
-}
-
-/** "3 Aug - 10 Aug 2026", and just the one date when both ends are the same day. */
+/**
+ * "3 Aug - 10 Aug 2026 · UTC days", and just the one date when both ends are the same day.
+ *
+ * The last two words are the same ones the day view's title carries and for the same reason:
+ * the window is cut on UTC days and the rows under it are on the ship's clock, so the first
+ * dated line of a page can name a day the window does not.
+ */
 function windowLabel(from: string, to: string): string {
   const fmt = (iso: string, withYear: boolean) =>
     new Date(iso).toLocaleDateString("en-GB", {
@@ -1212,7 +1242,7 @@ function windowLabel(from: string, to: string): string {
       ...(withYear ? { year: "numeric" } : {}),
       timeZone: "UTC",
     });
-  return from === to ? fmt(to, true) : `${fmt(from, false)} - ${fmt(to, true)}`;
+  return from === to ? `${fmt(to, true)} · UTC day` : `${fmt(from, false)} - ${fmt(to, true)} · UTC days`;
 }
 
 /**
@@ -1285,6 +1315,7 @@ function RangeView({
     () => withClosingReadings([...snaps].sort((a, b) => a.ts - b.ts), plain),
     [snaps, plain],
   );
+  const times = useShipTimes(shown);
   const { groups, group, drawn, pick, btn, block, cls } = tableShape(
     shown, book, windUnit, selection, width, shownFamily, lanesHold, groupsHold, chosenHold,
     false,
@@ -1349,13 +1380,13 @@ function RangeView({
       </Reveal>
       {saveErr && <div className="lb-err">{saveErr}</div>}
       {saveNote && <div className="lb-note">{saveNote}</div>}
-      <div className={`lb-frame dated${cls}${leaving ? " leaving" : ""}`} style={block}>
-        <PrintHead book={book} window={label} interval={interval} />
+      <div className={`lb-frame dated${times.mixed ? " mixed" : ""}${cls}${leaving ? " leaving" : ""}`} style={block}>
+        <PrintHead book={book} window={label} interval={interval} times={times} />
         <div className="lb-day" style={laneVar(drawn)}>
           <span>{label} · {interval}</span>
           <b>{truncated ? `${snaps.length} of more` : snaps.length}</b>
         </div>
-        <Cols cols={drawn} group={group} toggleWind={toggleWind} />
+        <Cols cols={drawn} group={group} times={times} toggleWind={toggleWind} />
         {err && <div className="lb-err">{err}</div>}
         {borrowed.length > 0 && (
           <div className="lb-note">{summaryNote(figure, borrowed, snaps)}</div>
@@ -1372,7 +1403,7 @@ function RangeView({
         {!busy && shown.length === 0 ? (
           <NoRows what={emptyRangeNote(r)} />
         ) : (
-          <Rows snaps={shown} cols={drawn} group={group} footer={null} dated />
+          <Rows snaps={shown} cols={drawn} group={group} times={times} footer={null} lined />
         )}
         <PrintFoot />
       </div>
@@ -1380,33 +1411,68 @@ function RangeView({
   );
 }
 
-function Rows({
+/**
+ * Whether a page writes dated lines: one above the first row and one wherever the day, or the
+ * offset, turns aboard.
+ *
+ * The range view (`true`) always does, so a week of hours never leaves the reader guessing
+ * which day an hour belongs to.
+ *
+ * The day view ("turns") does when its page holds a turn. Its window is a UTC day and its rows
+ * are read on the ship's clock, so away from Greenwich some hours of the page belong to the
+ * neighbouring day aboard. Such a page is dated like a range, every stretch of it; a page that
+ * sits inside one day aboard has its title and needs nothing more. Dating only the far side of
+ * the turn was tried and reads wrong: the page lists newest first, so the undated rows at the
+ * top were the ones that did not belong to the day in the title.
+ *
+ * Any view does once the page holds two offsets. The line carries the offset, no single figure
+ * can stand over the lane then, and the line is the only place left that says which clock the
+ * hours are on.
+ *
+ * Asked by the view and not inside Rows, because the frame needs the same answer: on paper the
+ * dated lines carry the column heads, and the frame's `dated` class is what stops the one head
+ * row printing the same names above them.
+ */
+export function pageIsLined(snaps: readonly Snapshot[], times: ShipTimes, dated: boolean | "turns"): boolean {
+  if (dated === true) return true;
+  if (dated === false && !times.mixed) return false;
+  return new Set(snaps.map((s) => times.dayLine(s.ts))).size > 1;
+}
+
+export function Rows({
   snaps,
   cols,
   group,
+  times,
   footer,
-  dated = false,
+  lined,
 }: {
   snaps: Snapshot[];
   cols: LogColumn[];
   group: UnitGroup | null;
+  times: ShipTimes;
   footer: React.ReactNode;
-  /** Range view only: a dated line above the first row and wherever the UTC day turns, so a
-   *  week of hours never leaves the reader guessing which day an hour belongs to. */
-  dated?: boolean;
+  /** See pageIsLined. */
+  lined: boolean;
 }) {
   const items: React.ReactNode[] = [];
   let prevDay: string | null = null;
   for (const s of snaps) {
-    if (dated) {
-      const day = utcDayLine(s.ts);
+    if (lined) {
+      const day = times.dayLine(s.ts);
       if (day !== prevDay) {
-        items.push(<DayLine key={`sep-${s.ts}`} day={day} cols={cols} group={group} />);
+        items.push(
+          <DayLine key={`sep-${s.ts}`} day={times.day(s.ts)} offset={times.offset(s.ts)} cols={cols} group={group} />,
+        );
         prevDay = day;
       }
     }
     items.push(
-      group ? <UnitBlock key={s.ts} s={s} group={group} /> : <Row key={s.ts} s={s} cols={cols} />,
+      group ? (
+        <UnitBlock key={s.ts} s={s} group={group} times={times} />
+      ) : (
+        <Row key={s.ts} s={s} cols={cols} times={times} />
+      ),
     );
   }
   return (
@@ -1425,7 +1491,7 @@ function Rows({
  * are one. The lines are held together by the rule above the block rather than by repetition.
  */
 /**
- * The dated line where the UTC day turns, and on paper the heads again beside it.
+ * The dated line where the day turns aboard, and on paper the heads again beside it.
  *
  * The screen has one head row and it stays in place while the rows scroll under it. Paper has
  * no such row: a grid repeats its heads on no page but the first, and a reader three sheets in
@@ -1435,14 +1501,28 @@ function Rows({
  * the table has (the one head row prints only where no day line does). On screen the names
  * are hidden; the date is the whole line.
  */
-export function DayLine({ day, cols, group }: { day: string; cols: LogColumn[]; group: UnitGroup | null }) {
+export function DayLine({
+  day,
+  offset,
+  cols,
+  group,
+}: {
+  day: string;
+  /** Set apart from the date so paper can leave it off: see the note over PrintHead. */
+  offset?: string;
+  cols: LogColumn[];
+  group: UnitGroup | null;
+}) {
   const named = group !== null && group.units.length > 1;
   const heads = group
     ? group.metrics.map((m) => ({ key: m.key, head: m.head, unit: m.unit, cls: "" }))
     : cols.slice(1).map((c) => ({ key: c.key, head: c.head, unit: c.unit, cls: laneClass(c).trim() }));
   return (
     <div className={`lb-sep${named ? " u" : ""}`}>
-      <span className="sd">{day}</span>
+      <span className="sd">
+        {day}
+        {offset && <span className="so"> · {offset}</span>}
+      </span>
       {named && <span className="sh" />}
       {heads.map((h) => (
         <span key={h.key} className={h.cls ? `sh ${h.cls}` : "sh"}>
@@ -1454,7 +1534,7 @@ export function DayLine({ day, cols, group }: { day: string; cols: LogColumn[]; 
   );
 }
 
-function UnitBlock({ s, group }: { s: Snapshot; group: UnitGroup }) {
+function UnitBlock({ s, group, times }: { s: Snapshot; group: UnitGroup; times: ShipTimes }) {
   const named = group.units.length > 1;
   return (
     <>
@@ -1463,7 +1543,7 @@ function UnitBlock({ s, group }: { s: Snapshot; group: UnitGroup }) {
           key={u.key}
           className={`lb-row${named ? " u" : ""}${i > 0 ? " cont" : ""}`}
         >
-          <span className="tm">{hhmm(s.ts)}</span>
+          <span className="tm">{times.clock(s.ts)}</span>
           {named && <span className="un">{u.head}</span>}
           {group.metrics.map((m) => (
             <span key={m.key} className="v">
@@ -1476,7 +1556,7 @@ function UnitBlock({ s, group }: { s: Snapshot; group: UnitGroup }) {
   );
 }
 
-function Row({ s, cols }: { s: Snapshot; cols: LogColumn[] }) {
+function Row({ s, cols, times }: { s: Snapshot; cols: LogColumn[]; times: ShipTimes }) {
   return (
     <div className="lb-row">
       {cols.map((c, i) => (
@@ -1484,7 +1564,7 @@ function Row({ s, cols }: { s: Snapshot; cols: LogColumn[] }) {
           key={c.key}
           className={i === 0 ? "tm" : `${c.dim ? "v dim" : "v"}${laneClass(c)}`}
         >
-          {c.cell(s)}
+          {c.key === "ts" ? times.clock(s.ts) : c.cell(s)}
         </span>
       ))}
     </div>

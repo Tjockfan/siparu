@@ -280,7 +280,7 @@ export interface LogbookRange {
  * reader who is reading them. It reloads when the window or the interval changes and not
  * otherwise.
  *
- * The dates are the reader's own local days, inclusive at both ends: he picks the 3rd and the
+ * The dates are UTC days (see dateInputToMs), inclusive at both ends: he picks the 3rd and the
  * 5th and means the whole of the 5th too. The API takes moments, so the end is the last
  * millisecond of that day rather than its start, which is the off-by-a-day this would
  * otherwise have.
