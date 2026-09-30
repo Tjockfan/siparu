@@ -14,12 +14,83 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-09-30
+
+### Changed
+
+- **The logbook reads on the ship's clock, and says which one it is.** Every row was
+  stamped in UTC, which is nobody's watch: an owner comparing the page with the deck log
+  aboard found the same hour three lines apart. The hour on a row is now the hour at the
+  position the row was taken, so it depends on the boat and on nothing about the reader.
+  A row with no fix borrows the zone of the nearest row that has one, and a boat that never
+  reported a position stays in UTC and says so. The offset stands over the time lane; a
+  page that holds two, because she crossed a zone or the clocks changed, says SHIP there
+  and keeps the offset on its dated lines, which turn at the ship's midnight. The day
+  window is still a UTC day, because that is how the boat's summaries are cut, and its
+  title says so. Exported files are untouched and stay in UTC.
+
+### Added
+
+- **A vessel's beam in the AIS answer.** `GET /ais/targets` carries `beam_m` beside
+  `length_m`, read from `design.beam`, and `null` where the vessel did not broadcast one.
+
+### Fixed
+
+- **The export panel no longer calls its days local.** They were UTC days and are now
+  named as such.
+
+## [0.2.16] - 2026-09-18
+
+### Fixed
+
+- **An opening screen is answered with a frame, not with the next tick.** A boat lying
+  still sends one frame a minute and the relay keeps none of them, so a screen that opened
+  between two was shown a connected vessel and nothing else for up to a minute. The note
+  that a screen has opened is now answered with the frame she was going to send anyway,
+  sooner, floored at a few seconds so a screen that reconnects in a loop cannot make her
+  send in one.
+- **The disk-failure tests hold on 32-bit ARM.** They staged a refused write with a
+  permission bit, which root writes straight through, and the armv7 job runs as root. A
+  directory standing where the file belongs refuses the write for every user. The product
+  path under test is unchanged.
+
+## [0.2.15] - 2026-09-15
+
+### Added
+
+- **Her electrical side is taken aboard.** Batteries, chargers, inverters, alternators,
+  solar and shore AC are recorded, rolled up and sent. The groups are named one by one
+  rather than taken as a family, because an install can publish dozens of state flags and
+  a switch bank under `electrical.` that are not gauges and would spend the path budget
+  before the batteries spoke. No screen draws these families yet.
+
+### Changed
+
+- **The path table holds 128 and has a rule for what it keeps.** The cap was 64 and the
+  rule was first come, first kept, with no slot ever released, which left boot order
+  deciding which systems an owner could see. A full table now lets a reading a dashboard
+  is built from take the slot of the quietest gauge that is not one. A full table writes
+  about 13 KB a frame, near 18 KB sealed, and the same gauges ride every recorded row, so
+  raw files reach the disk cap sooner than they did.
+
+## [0.2.14] - 2026-09-15
+
 ### Added
 
 - **The disk's verdict on the boat's own screen.** The plugin's status line has said NOT
   recording since 0.2.13; the board now carries the same band above the instruments, with the
   disk's own error, so a card remounted read-only is found on the day rather than as a hole in
   the logbook months later. A plugin from before the verdict draws nothing.
+
+### Fixed
+
+- **The opened panel scrolls, so a phone can reach its buttons.** The drawer holding the
+  column picker and the export panel let nothing inside it scroll, and on a phone the row
+  holding View and Save CSV sat below the fold with no way down to it.
+- **The printed page survives an iPhone's print dialog.** Safari returns from `print()`
+  with the dialog still up and lays the page out again on every change inside it, so the
+  dark page came out white, lost its name and vanished when the paper was turned. The page
+  now stays dressed until the reader touches it again.
 
 ## [0.2.13] - 2026-09-13
 
@@ -1102,7 +1173,11 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.10...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.17...HEAD
+[0.2.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.17
+[0.2.16]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.16
+[0.2.15]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.15
+[0.2.14]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.14
 [0.2.13]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.13
 [0.2.12]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.12
 [0.2.11]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.11
