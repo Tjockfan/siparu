@@ -14,6 +14,8 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-10-06
+
 ### Added
 
 - **A passage is named after the places it ran between.** Where a voyage began and ended
@@ -1193,7 +1195,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.17...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.18...HEAD
+[0.2.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.18
 [0.2.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.17
 [0.2.16]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.16
 [0.2.15]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.15
