@@ -14,6 +14,26 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+### Added
+
+- **A passage is named after the places it ran between.** Where a voyage began and ended
+  was written as a position unless the owner had typed that port into the configuration,
+  and a list of passages written as coordinates says nothing about where the boat went.
+  The plugin now carries a gazetteer of the world's coasts (harbours, marinas, anchorages,
+  ports, bays, coves, inlets, fjords and the towns behind them: an extract of GeoNames and
+  of the World Port Index) and names each end after the best-placed known place within
+  five nautical miles, preferring the town to the quarter nearest the quay and to the bay
+  the town stands on. A configured port still wins where it reaches, including over
+  passages recorded before it was configured; farther than five miles from anything
+  known, the position stays, because a guessed name is worse than an honest coordinate.
+  The lookup happens aboard, from the bundled file, so no position leaves the boat for
+  it. Names are put on when a list is read rather than written into the record, which is
+  why passages recorded before this release are named too. Inland waters are covered
+  only where the gazetteer happens to name their shores. The hourly logbook still carries
+  the positions themselves. The package grows by 4 MB for the file, read on the first
+  voyage listed rather than at start. Built from the GeoNames dump and the World Port
+  Index of 2026-10-06; the file's SHA-256 is recorded in NOTICE.
+
 ## [0.2.17] - 2026-09-30
 
 ### Changed

@@ -9,6 +9,7 @@
   "main": "plugin/dist/index.js",
   "files": [
     "plugin/dist",
+    "plugin/data",
     "public",
     "NOTICE"
   ],

@@ -17,6 +17,7 @@ import * as path from 'node:path'
 import { RollupHour, Snapshot, TrackPoint, Voyage, VoyageStatsResult, VoyageWindowStats } from './contract'
 import { Options } from './config'
 import { RollupEngine } from './rollup'
+import { PlaceResolver } from './places'
 import { Logger, Store } from './store'
 import { hourKey, startOfUtcDay } from './time'
 import { ReconcileState, VoyageRow, applyMetrics, nearestPort, reconcile } from './voyage'
@@ -65,9 +66,33 @@ export class VoyageLog {
   constructor(
     private store: Store,
     private opts: Options,
-    private log: Logger
+    private log: Logger,
+    /**
+     * Names a voyage end the configured ports did not: the bundled gazetteer aboard, or
+     * nothing. It is asked when a list is read, never when a voyage is written, so the record
+     * keeps the position only and a better gazetteer names old passages too.
+     */
+    private place: PlaceResolver = () => null
   ) {
     this.filePath = path.join(store.rollupDir, 'voyages.json')
+  }
+
+  /**
+   * A voyage as a reader sees it. The owner's configured ports name an end first, the ones
+   * configured today and not only the ones known when the voyage was written, so a port
+   * added after a season names that season's passages; then the nearest known place; and
+   * where neither reaches, the position stays, which the readers already show. An open
+   * voyage's end is not named: she is still going there.
+   */
+  private named(v: Voyage): Voyage {
+    const start_port =
+      v.start_port ?? nearestPort(v.start_lat, v.start_lon, this.opts.ports) ?? this.place(v.start_lat, v.start_lon)
+    const end_port =
+      v.status === 'closed'
+        ? (v.end_port ?? nearestPort(v.end_lat, v.end_lon, this.opts.ports) ?? this.place(v.end_lat, v.end_lon))
+        : v.end_port
+    if (start_port === v.start_port && end_port === v.end_port) return v
+    return { ...v, start_port, end_port }
   }
 
   /** Serialize a job onto the reconcile chain (the mutex of the Python original). */
@@ -119,11 +144,15 @@ export class VoyageLog {
 
   /** Newest first, like the reference API. */
   list(limit: number): Voyage[] {
-    return [...this.state.voyages].sort((a, b) => b.start_ts - a.start_ts).slice(0, limit)
+    return [...this.state.voyages]
+      .sort((a, b) => b.start_ts - a.start_ts)
+      .slice(0, limit)
+      .map((v) => this.named(v))
   }
 
   current(): Voyage | null {
-    return this.state.voyages.find((v) => v.status === 'open') ?? null
+    const open = this.state.voyages.find((v) => v.status === 'open')
+    return open ? this.named(open) : null
   }
 
   async track(voyageId: number, now: number): Promise<TrackPoint[]> {

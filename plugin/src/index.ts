@@ -45,6 +45,7 @@ import { acceptDevices, type AcceptResult } from './approval'
 import { BoatKeyStore } from './keystore'
 import { KeySync } from './keysync'
 import { Sealer, type SealState } from './sealer'
+import { Gazetteer, PLACES_FILE } from './places'
 import { VoyageLog } from './voyagelog'
 import { PhaseLog } from './phaselog'
 
@@ -409,7 +410,10 @@ export = (app: ServerAPI): Plugin => {
       rollups = ru
       const qs = new QueryService(st, ru)
       query = qs
-      const vl = new VoyageLog(st, opts, (msg) => app.debug(msg))
+      // The gazetteer that names voyage ends the configured ports do not. Read on the first
+      // voyage listed rather than here: a boat nobody asks keeps its start fast, and whether
+      // the file loaded is one debug line either way.
+      const vl = new VoyageLog(st, opts, (msg) => app.debug(msg), Gazetteer.lazy(PLACES_FILE, (msg) => app.debug(msg)))
       voyages = vl
       const pl = new PhaseLog(st, opts, (msg) => app.debug(msg))
       phases = pl

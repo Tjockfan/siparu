@@ -40,3 +40,22 @@ Map data and assets served from the tile host (not bundled in this package):
   OpenStreetMap contributors - ODbL 1.0 - https://www.openstreetmap.org/copyright
   Protomaps basemaps       - BSD-3-Clause - https://github.com/protomaps/basemaps
   Noto Sans glyphs         - SIL OFL 1.1  - https://github.com/protomaps/basemaps-assets
+
+-------------------------------------------------------------------------------
+GeoNames gazetteer - https://www.geonames.org
+Creative Commons Attribution 4.0 - https://creativecommons.org/licenses/by/4.0/
+
+  plugin/data/places.json.gz is an extract of coastal places (harbours, bays and the
+  towns behind them) from the GeoNames dump, built by tools/build-places.mjs. The
+  plugin uses it aboard to name where a voyage began and ended.
+  Current file: built 2026-10-06 from the GeoNames dump of 2026-10-06 and the World
+  Port Index as published on 2026-10-06;
+  sha256 7ed46496ab48dde6ed2d6b07878cb7404f659aeb16475ea4e06a96993dc4ac72.
+
+-------------------------------------------------------------------------------
+World Port Index (Publication 150) - https://msi.nga.mil
+National Geospatial-Intelligence Agency, United States. A work of the US government,
+in the public domain.
+
+  Port names and positions from the index are folded into plugin/data/places.json.gz
+  where GeoNames does not carry the port under the same name.
