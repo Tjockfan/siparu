@@ -22,8 +22,9 @@
  */
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter, Request, Response } from 'express'
-import { securityOff, writeLocked, WRITE_LOCKED_MESSAGE } from './pairing'
+import { allowConfigure, securityOff, writeLocked, WRITE_LOCKED_MESSAGE } from './pairing'
 import { sameOrigin } from './origin-guard'
+import { readable } from './access'
 
 interface ConfigDeps {
   app: ServerAPI
@@ -46,23 +47,9 @@ interface ConfigDeps {
   restart: (configuration: object) => void
 }
 
-/**
- * True when the server would let this request change its configuration - an
- * admin principal on a secured server. Read through the same securityStrategy
- * shape pairing.ts uses (absent from @signalk/server-api's types); the dummy
- * strategy on an unsecured server returns false here, which is why securityOff
- * is checked first rather than leaning on this alone.
- */
-export function allowConfigure(app: ServerAPI, req: unknown): boolean {
-  try {
-    const ss = (
-      app as unknown as { securityStrategy?: { allowConfigure?: (r: unknown) => boolean } }
-    ).securityStrategy
-    return ss?.allowConfigure?.(req) === true
-  } catch {
-    return false
-  }
-}
+// allowConfigure lives in pairing.ts beside securityOff, the other half of the same
+// question; re-exported here because this is where the callers first found it.
+export { allowConfigure }
 
 /**
  * The JSON body, without an express.json() value import (express is types-only
@@ -102,7 +89,7 @@ export function registerConfigRoutes(router: IRouter, deps: ConfigDeps): void {
 
   // Read side: open like the rest of the dashboard. The picker asks what engines
   // report a fuel rate and which are counted; a write to change it is gated below.
-  router.get('/config/fuel-paths', (_req: Request, res: Response) => {
+  readable(router).get('/config/fuel-paths', (_req: Request, res: Response) => {
     res.json(fuelPathsView())
   })
 

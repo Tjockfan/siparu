@@ -33,6 +33,7 @@ import type { IRouter, Request, Response } from 'express'
 import { securityOff, writeLocked, WRITE_LOCKED_MESSAGE } from './pairing'
 import { allowConfigure } from './config-routes'
 import { sameOrigin } from './origin-guard'
+import { readable } from './access'
 import type { EditResult } from './voyagelog'
 
 interface VoyageEditDeps {
@@ -58,7 +59,7 @@ export function registerVoyageEditRoutes(router: IRouter, deps: VoyageEditDeps):
 
   // Read side, open like the rest of the dashboard: the screen has to know which
   // voyages carry an undo before it can offer one.
-  router.get('/voyages/edits', (_req: Request, res: Response) => {
+  readable(router).get('/voyages/edits', (_req: Request, res: Response) => {
     res.json(edits())
   })
 

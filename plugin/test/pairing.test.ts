@@ -22,9 +22,18 @@ import type { UplinkStatus } from '../src/uplink'
 
 type Handler = (req: Request, res: Response) => void
 
+/**
+ * A secured server answering an administrator: the shape the pairing screen is
+ * written for. The crew's view of the same screen is pinned separately, below.
+ */
+let allowConfigure = true
 const app = {
   debug: () => {},
-  error: () => {}
+  error: () => {},
+  securityStrategy: {
+    getLoginStatus: () => ({ authenticationRequired: true }),
+    allowConfigure: () => allowConfigure
+  }
 } as unknown as ServerAPI
 
 const PAIRED: RemoteState = {
@@ -527,5 +536,37 @@ describe('maskEmail', () => {
     expect(maskEmail('skipper@example.com')).toBe('s***@example.com')
     expect(maskEmail(null)).toBeNull()
     expect(maskEmail('@example.com')).toBeNull()
+  })
+})
+
+describe('the crew\'s view of the pairing screen', () => {
+  afterEach(() => {
+    allowConfigure = true
+  })
+
+  it('a signed-in user who cannot approve sees the state and not the code', async () => {
+    relaySpy()
+    const handlers = routes()
+    await call(handlers, '/pair/start')
+    allowConfigure = false
+    const status = (await call(handlers, 'GET /pair/status')) as Record<string, unknown>
+    expect(status.state).toBe('showing_code')
+    expect(status.userCode).toBeNull()
+    expect(status.expiresAt).toEqual(expect.any(String))
+  })
+
+  it('an administrator on the same server sees the code', async () => {
+    relaySpy()
+    const handlers = routes()
+    await call(handlers, '/pair/start')
+    const status = (await call(handlers, 'GET /pair/status')) as Record<string, unknown>
+    expect(status.userCode).toBe('WDJB-MJHT')
+  })
+
+  it('a paired boat shows the crew no address, and the administrator the masked one', async () => {
+    const handlers = routes({ remote: PAIRED })
+    expect(await call(handlers, 'GET /pair/status')).toMatchObject({ state: 'paired', email: 's***@example.com' })
+    allowConfigure = false
+    expect(await call(handlers, 'GET /pair/status')).toMatchObject({ state: 'paired', email: null })
   })
 })

@@ -9,9 +9,10 @@ import { BrandMark } from "siparu-ui";
  * for a clean boot once it opens up. No password passes through here - identity
  * is handled entirely by Signal K.
  *
- * Note (signalk-server 2.27): with security enabled, /plugins/* requires admin
- * privileges - a read-only account and anonymous read are not enough; that is
- * why the footnote exists.
+ * Note: with security enabled, Signal K answers a plugin's routes only to an
+ * admin unless the plugin declares otherwise, which it can from server 2.31
+ * (plugin/src/access.ts does, for every read route). On an older server a
+ * read-only account is still turned away; that is why the footnote exists.
  */
 const PROBE_MS = 3000;
 
@@ -52,8 +53,9 @@ export default function AuthGate() {
           Open Signal K sign-in
         </a>
         <p className="sp-auth-foot">
-          Signed in but still locked out? Your account may not have enough
-          access - ask whoever runs this Signal K server.
+          Signed in but still locked out? Any signed-in account opens this
+          dashboard on Signal K 2.31 and newer; an older server needs an admin
+          account. Ask whoever runs this Signal K server.
         </p>
       </div>
       <span className="sp-auth-wait">

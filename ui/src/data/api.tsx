@@ -252,10 +252,11 @@ export interface UplinkStatus {
  */
 export type PairState =
   | { state: "idle" }
-  | { state: "showing_code"; userCode: string; expiresAt: string }
+  /** userCode is null for a screen that may watch but not act: the boat shows the code only to an administrator. */
+  | { state: "showing_code"; userCode: string | null; expiresAt: string }
   | {
       state: "awaiting_approval";
-      userCode: string;
+      userCode: string | null;
       email: string | null;
       expiresAt: string;
       /**

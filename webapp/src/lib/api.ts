@@ -53,7 +53,11 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   // the poll ticks.
   const r = await fetch(BASE + path, { signal: AbortSignal.timeout(10_000), ...init });
   if (!r.ok) {
-    if (r.status === 401) window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
+    // A 401 on a read means this screen is not signed in at all: the gate takes over.
+    // A 401 on a write (the only requests that carry a method) means a signed-in user
+    // without the right to act, which the button's own error line should say; swapping
+    // the screen for the gate would reload it into the same dashboard, forever.
+    if (r.status === 401 && !init?.method) window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
     let detail = r.statusText;
     let code: string | undefined;
     try {

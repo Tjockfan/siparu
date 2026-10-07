@@ -14,6 +14,24 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-10-07
+
+### Changed
+
+- **The dashboard aboard opens to any signed-in Signal K user, not only an admin.** With
+  security switched on, Signal K hands a plugin's pages only to administrators unless the
+  plugin says otherwise, so the admin user this plugin asks every owner to add was also
+  locking the free dashboard behind that admin password, and a read-only account for the
+  crew stopped at "Sign-in required". Every read route now declares itself readable through
+  the server's own route permissions (signalk-server 2.31 and newer), so whoever the server
+  lets read opens the dashboard, the logbook and the passages: a read-only account, and,
+  where the server's own "Allow Readonly Access" is on, anyone on the boat's network. The
+  pairing screen keeps its code for an administrator: a crew screen sees that a pairing is
+  under way, not the code that would claim it, nor the owner's address. The write routes
+  (pairing, the fuel source, the two passage edits) are untouched and keep every guard they
+  had. On an older server, down to the 2.18 floor, nothing changes: the reads stay
+  admin-only as before.
+
 ## [0.2.18] - 2026-10-06
 
 ### Added
@@ -1196,6 +1214,7 @@ being able to delete it is the point.
   a chart, and a GET-only REST API.
 
 [Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.18...HEAD
+[0.2.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.19
 [0.2.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.18
 [0.2.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.17
 [0.2.16]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.16

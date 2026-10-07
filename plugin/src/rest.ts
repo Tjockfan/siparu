@@ -1,12 +1,13 @@
 /**
  * Read-only REST API, mounted by the server at /plugins/siparu/.
  *
- * GET-only by construction - this file is the only place routes are
- * registered, and it registers nothing but router.get(). "Never writes to
- * the boat" is a sales claim backed by grep.
+ * GET-only by construction - this file registers nothing but GET routes, and
+ * registers them through the read-only registrar in access.ts, which has no
+ * other method. "Never writes to the boat" is a sales claim backed by grep.
  */
 import * as nodePath from 'node:path'
 import type { IRouter, Request, Response } from 'express'
+import { readable } from './access'
 import { chartContentType, chartsDir, safeChartPath } from './charts'
 import { ApiError, SnapshotsQuery } from './contract'
 import { QueryError } from './query'
@@ -59,17 +60,18 @@ function intParam(req: Request, name: string): number | undefined {
 }
 
 export function registerRoutes(router: IRouter): void {
-  router.get('/live', (_req, res) => {
+  const read = readable(router)
+  read.get('/live', (_req, res) => {
     if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
     res.json(deps.live())
   })
 
-  router.get('/inventory', (_req, res) => {
+  read.get('/inventory', (_req, res) => {
     if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
     res.json(deps.inventory())
   })
 
-  router.get('/snapshots', (req, res) => {
+  read.get('/snapshots', (req, res) => {
     if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
     let q: SnapshotsQuery
     try {
@@ -94,7 +96,7 @@ export function registerRoutes(router: IRouter): void {
       })
   })
 
-  router.get('/health', (_req, res) => {
+  read.get('/health', (_req, res) => {
     if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
     deps
       .health()
@@ -103,7 +105,7 @@ export function registerRoutes(router: IRouter): void {
   })
 
   const asyncGet = (path: string, handler: (d: RestDeps, req: Request) => Promise<unknown>) => {
-    router.get(path, (req, res) => {
+    read.get(path, (req, res) => {
       if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
       const d = deps
       // Promise.resolve wrapper: a synchronous throw (bad param) must land
@@ -150,7 +152,7 @@ export function registerRoutes(router: IRouter): void {
 
   // Local chart assets (PMTiles/glyphs/sprites) with HTTP Range support -
   // express sendFile answers 206s, which is how PMTiles clients read.
-  router.get('/charts/*', (req, res) => {
+  read.get('/charts/*', (req, res) => {
     if (!deps) return sendError(res, 503, 'NOT_STARTED', 'plugin is not started')
     // Express 4 puts the `*` remainder under params['0'].
     const rest = (req.params as Record<string, string | undefined>)['0']

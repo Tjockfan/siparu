@@ -91,6 +91,18 @@ jobs:
             | grep -vE "router\.post\('(/pair/(start|approve|deny|reset)|/config/fuel-paths|/voyages/:id/(merge-previous|undo-merge))'") || true
           [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
 
+      - name: Read routes only declare themselves readable; nothing else asks the server for access
+        run: |
+          # access.ts is the one place that talks to the server's router.access(), and the
+          # registrar it hands back has no method but get(): that type is what stops a write
+          # route from being declared readable, so the type is what this step pins. A verb
+          # added to ReadRegistrar, or access() asked for anywhere else, breaks this build
+          # on purpose.
+          offenders=$(grep -rnE "\.access\(" plugin/src | grep -v "^plugin/src/access.ts:") || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+          offenders=$(grep -nE "^[[:space:]]+(post|put|patch|delete)[(<]" plugin/src/access.ts) || true
+          [ -z "$offenders" ] || { echo "$offenders"; exit 1; }
+
       - name: Encrypted or nothing - no unsealed report leaves the boat
         run: |
           # The vessel reports sealed or she reports not at all. There used to be a third

@@ -17,6 +17,7 @@
  */
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
+import { readable } from './access'
 import type { DeviceAnchor } from './approval'
 import { fingerprintOfEncoded } from './fingerprint'
 import type { PendingUnlink, RemoteLink } from './remotelink'
@@ -28,10 +29,11 @@ export type RemoteState = RemoteLink
 
 export type PairScreen =
   | { state: 'idle' }
-  | { state: 'showing_code'; userCode: string; expiresAt: string }
+  /** userCode is null for a caller who may watch the screen but not act on it (see privileged). */
+  | { state: 'showing_code'; userCode: string | null; expiresAt: string }
   | {
       state: 'awaiting_approval'
-      userCode: string
+      userCode: string | null
       email: string | null
       expiresAt: string
       /**
@@ -120,6 +122,52 @@ export function securityOff(app: ServerAPI, req: unknown): boolean {
  */
 export function writeLocked(app: ServerAPI, req: unknown, acceptOpenNetwork: boolean): boolean {
   return securityOff(app, req) && !acceptOpenNetwork
+}
+
+/**
+ * True when the server would let this request change its configuration - an
+ * admin principal on a secured server. Read through the same securityStrategy
+ * shape securityOff uses (absent from @signalk/server-api's types); the dummy
+ * strategy on an unsecured server returns false here, which is why securityOff
+ * is checked first rather than leaning on this alone.
+ */
+export function allowConfigure(app: ServerAPI, req: unknown): boolean {
+  try {
+    const ss = (
+      app as unknown as { securityStrategy?: { allowConfigure?: (r: unknown) => boolean } }
+    ).securityStrategy
+    return ss?.allowConfigure?.(req) === true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Who may read the pairing screen in full. The status route opens to every
+ * signed-in user since the reads were declared readable (access.ts), and with
+ * "Allow Readonly Access" on, to anyone on the network. The screen's STATE is
+ * theirs to see; the code on it is not: a code grants a pairing to whoever
+ * claims it, so it is shown only to a caller who could approve one, and the
+ * owner's address and the claiming screen's fingerprint go with it. An
+ * unsecured server shows everything, as it always did: there is no one to
+ * hide it from who could not already take the boat.
+ */
+export function privileged(app: ServerAPI, req: unknown): boolean {
+  return securityOff(app, req) || allowConfigure(app, req)
+}
+
+/** The screen as a caller who cannot act on it is shown it. */
+export function forTheCrew(screen: PairScreen): PairScreen {
+  switch (screen.state) {
+    case 'showing_code':
+      return { state: 'showing_code', userCode: null, expiresAt: screen.expiresAt }
+    case 'awaiting_approval':
+      return { state: 'awaiting_approval', userCode: null, email: null, expiresAt: screen.expiresAt }
+    case 'paired':
+      return { ...screen, email: null }
+    default:
+      return screen
+  }
 }
 
 /** What a refused write answers, worded for the screen the skipper is looking at. */
@@ -312,11 +360,15 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
     uplink: uplinkStatus() ?? undefined
   })
 
-  /** What the on-board screen renders. Safe to poll; never returns a secret. */
-  router.get('/pair/status', sameOrigin((req, res) => {
+  /**
+   * What the on-board screen renders. Safe to poll; never returns a token, and
+   * returns the code only to a caller who could approve the pairing it opens.
+   */
+  readable(router).get('/pair/status', sameOrigin((req, res) => {
     // Every answer carries the door's state alongside the screen's, so the helm is
     // told once, wherever the skipper is in the flow.
-    const json = (screen: PairScreen): void => {
+    const json = (full: PairScreen): void => {
+      const screen = privileged(app, req) ? full : forTheCrew(full)
       const status: PairStatus = { ...screen }
       if (securityOff(app, req)) {
         status.security_off = true

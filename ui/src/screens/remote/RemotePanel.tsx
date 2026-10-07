@@ -343,9 +343,13 @@ export default function RemotePanel({ sealing }: { sealing?: SealingStatus | nul
           <div className="pair">
             <div className="pl">
               <div className="t">Remote watching</div>
-              <div className="code">{data.userCode}</div>
+              <div className="code">{data.userCode ?? "····"}</div>
               <div className="s">
-                Enter this at <b>{PORTAL}</b> · {minutesLeft(data.expiresAt)} min left
+                {data.userCode ? (
+                  <>Enter this at <b>{PORTAL}</b> · {minutesLeft(data.expiresAt)} min left</>
+                ) : (
+                  <>The code shows on an administrator's screen · {minutesLeft(data.expiresAt)} min left</>
+                )}
               </div>
             </div>
             {btn("Cancel", () => act(pair.deny), "ghost")}
