@@ -1213,7 +1213,7 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.18...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.19...HEAD
 [0.2.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.19
 [0.2.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.18
 [0.2.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.17
