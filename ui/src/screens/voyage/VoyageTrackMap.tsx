@@ -2,9 +2,9 @@
  * style factory as the Map tab (night/day brand flavors + seamark). Pan/zoom
  * are free. A few rows open at a time (openRows); mounts on open, unmounts on close. */
 import { useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { TrackPoint } from "../../data/api";
-import { ensurePmtilesProtocol, getMapConfig } from "../../map/mapRuntime";
+import { ensureMapRuntime, getMapConfig } from "../../map/mapRuntime";
 import { useApi } from "../../data/api";
 import { makeMapStyle, MAP_ATTRIBUTION, TRACK_SOURCE, type MapMode } from "../../map/style";
 import { registerMapSnapshot } from "./printSnapshots";
@@ -87,7 +87,7 @@ export default function VoyageTrackMap({ track }: { track: TrackPoint[] }) {
     let unregister: (() => void) | null = null;
 
     (async () => {
-      ensurePmtilesProtocol();
+      ensureMapRuntime();
       const charts = await getMapConfig(api);
       if (disposed) return;
 

@@ -3,10 +3,10 @@
  *  /map-config; the style comes from the style.ts factory. The caller
  *  renders its own chrome (header / overlay / tab bar). */
 import { useCallback, useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 import { useApi, type Snapshot, type AisTarget } from "../../data/api";
-import { ensurePmtilesProtocol, getMapConfig } from "../../map/mapRuntime";
+import { ensureMapRuntime, getMapConfig } from "../../map/mapRuntime";
 import { radToDeg } from "../../lib/format";
 import { startVisibleInterval } from "../../data/visibleInterval";
 import {
@@ -176,7 +176,7 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
     let chartTimer: number | undefined;
 
     (async () => {
-      ensurePmtilesProtocol();
+      ensureMapRuntime();
       const charts = await getMapConfig(api);
       if (disposed) return;
       const basemapSource = basemapSourceId(charts);
