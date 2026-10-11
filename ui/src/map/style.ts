@@ -63,8 +63,27 @@ export function basemapSourceId(cfg: MapConfig): string | null {
 /** Product stance, added by the map control. Data credits come from the sources. */
 export const MAP_ATTRIBUTION = 'Not for navigation'
 
-/** ODbL credit for the offline archive, which carries no TileJSON to declare one. */
-const PMTILES_ATTRIBUTION = '© OpenStreetMap contributors'
+/*
+ * Data credits are written here, never read from the tile host. The attribution
+ * control renders each source's credit as HTML, so a credit taken from a TileJSON or
+ * a PMTiles header is markup a third party controls, and the sanitizer it passes
+ * through has been bypassed before (GHSA-jrc7-96c5-q579). A credit set on the source
+ * outranks the remote one, so setting it on every vector source closes that door.
+ */
+
+/** ODbL credit. Seamarks are OpenStreetMap data too; the control drops it when a
+ *  longer credit already contains it. */
+const OSM_ATTRIBUTION = '© OpenStreetMap contributors'
+const OSM_LINK = `<a href="https://www.openstreetmap.org/copyright" target="_blank">${OSM_ATTRIBUTION}</a>`
+const OMT_LINK = '<a href="https://www.openmaptiles.org/" target="_blank">© OpenMapTiles</a>'
+const OPENFREEMAP_LINK = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a>'
+
+/** Any OpenMapTiles host serves OpenMapTiles over OpenStreetMap; the default host
+ *  also asks to be named. The tile URL is boat config, so the host is checked. */
+function hostedAttribution(tilesUrl: string): string {
+  const credit = `${OMT_LINK} ${OSM_LINK}`
+  return /^https:\/\/tiles\.openfreemap\.org\//.test(tilesUrl) ? `${OPENFREEMAP_LINK} ${credit}` : credit
+}
 
 /* Siparu night flavor: protomaps "black" recolored onto the Swiss
  * night tokens (see swiss.css) - sea #101418, land #1e2226. Roads and
@@ -272,20 +291,26 @@ export function makeMapStyle(mode: MapMode, cfg: MapConfig, opts: StyleOptions):
     sources[PMTILES_SOURCE] = {
       type: 'vector',
       url: `pmtiles://${abs(cfg.basemap)}`,
-      attribution: PMTILES_ATTRIBUTION
+      attribution: OSM_ATTRIBUTION
     }
     layers.push(...brandBasemapLayers(mode))
   } else if (cfg.basemapTiles) {
-    // No `attribution` here on purpose: the TileJSON carries the credit the tile
-    // host requires, and setting one on the source would override and erase it.
-    // MapLibre reads it from the TileJSON. The `url` indirection is load-bearing
-    // too - the real tile path is build-dated and rotates, so it must never be
-    // inlined as a `tiles` array.
-    sources[OMT_SOURCE] = { type: 'vector', url: cfg.basemapTiles }
+    // The `url` indirection is load-bearing: the real tile path is build-dated and
+    // rotates, so it must never be inlined as a `tiles` array. Only the credit is
+    // pinned (see hostedAttribution).
+    sources[OMT_SOURCE] = {
+      type: 'vector',
+      url: cfg.basemapTiles,
+      attribution: hostedAttribution(cfg.basemapTiles)
+    }
     layers.push(...omtLayers(OMT_SOURCE, mode === 'day' ? dayFlavor() : nightFlavor()))
   }
   if (seamarksOn && cfg.seamark) {
-    sources[SEAMARK_SOURCE] = { type: 'vector', url: `pmtiles://${abs(cfg.seamark)}` }
+    sources[SEAMARK_SOURCE] = {
+      type: 'vector',
+      url: `pmtiles://${abs(cfg.seamark)}`,
+      attribution: OSM_ATTRIBUTION
+    }
     layers.push(...brandSeamarkLayers(mode))
   }
 

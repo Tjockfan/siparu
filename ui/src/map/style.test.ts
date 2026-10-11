@@ -125,12 +125,30 @@ describe('makeMapStyle', () => {
   })
 
   describe('attribution', () => {
-    // The tile host states its own credit in the TileJSON and MapLibre renders it.
-    // Setting one on the source overrides it, so the credit we owe would vanish.
-    it('lets the hosted basemap speak for itself', () => {
-      const src = makeMapStyle('night', HOSTED, TRACK).sources.openmaptiles
-      expect(src).toMatchObject({ type: 'vector', url: HOSTED.basemapTiles })
-      expect(src).not.toHaveProperty('attribution')
+    // The control renders every source's credit as HTML. A credit read from the network
+    // (TileJSON, PMTiles metadata) is markup a tile host controls, and the sanitizer it
+    // passes through has been bypassed (GHSA-jrc7-96c5-q579). Every vector source states
+    // its credit here instead; an explicit source option outranks the remote one.
+    for (const [name, cfg] of SCHEMAS) {
+      it(`fixes the credit of every vector source (${name})`, () => {
+        for (const [id, src] of Object.entries(makeMapStyle('night', cfg, TRACK).sources)) {
+          if (src.type !== 'vector') continue
+          expect(typeof (src as { attribution?: unknown }).attribution, `${name}/${id}`).toBe('string')
+        }
+      })
+    }
+
+    it('credits the hosted basemap without asking the host', () => {
+      const src = makeMapStyle('night', HOSTED, TRACK).sources.openmaptiles as { attribution?: string }
+      expect(src.attribution).toContain('OpenMapTiles')
+      expect(src.attribution).toContain('© OpenStreetMap contributors')
+      expect(src.attribution).not.toContain('OpenFreeMap')
+    })
+
+    it('credits OpenFreeMap only when the tiles come from it', () => {
+      const ofm = { ...HOSTED, basemapTiles: 'https://tiles.openfreemap.org/planet' }
+      const src = makeMapStyle('night', ofm, TRACK).sources.openmaptiles as { attribution?: string }
+      expect(src.attribution).toContain('OpenFreeMap')
     })
 
     // The offline archive has no TileJSON, so nothing else can declare its credit.
