@@ -14,6 +14,21 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-10-11
+
+### Security
+
+- **The chart's credit line no longer shows markup from the tile host.** The map drew the
+  credit for its hosted basemap from the tile server's own description, and the seamark
+  archive could carry one too. That credit is rendered as HTML through a sanitizer that a
+  published advisory shows letting an event handler through (GHSA-jrc7-96c5-q579, rated
+  critical, maplibre-gl up to 6.4.0), so a compromised tile host could have run script in
+  the dashboard. The credits are now written in this code for every map source and the
+  host's text is never read: OpenMapTiles and OpenStreetMap for the hosted basemap, with
+  OpenFreeMap named only when the tiles come from it, and OpenStreetMap for the offline
+  archive and the seamarks. The map looks the same. The library itself will be upgraded in
+  a later release.
+
 ## [0.2.19] - 2026-10-07
 
 ### Changed
@@ -1213,7 +1228,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.19...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.20...HEAD
+[0.2.20]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.20
 [0.2.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.19
 [0.2.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.18
 [0.2.17]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.17
