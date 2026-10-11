@@ -192,6 +192,19 @@ jobs:
         run: |
           ! grep -rn "from '@signalk/server-api'\|from 'express'" plugin/src | grep -v "import type"
 
+      - name: Dependency audit - nothing that ships carries a high or critical advisory
+        run: |
+          # The plugin's runtime tree, the webapp bundled into public/, and the screens it
+          # bundles from ui/. A critical advisory against the map library once sat unseen
+          # through eight releases because nothing here asked. The audit reads the registry,
+          # so a red run can come from an advisory published since the last commit, not from
+          # the commit itself: that is the point, it is how the news arrives. Dev-only
+          # packages are left out; they never reach a boat.
+          for dir in . webapp ui; do
+            echo "--- $dir"
+            (cd "$dir" && npm audit --omit=dev --audit-level=high) || exit 1
+          done
+
       - name: Clean-room - the checkout reads as one professional English product
         run: |
           # This repository is public, and all of it is meant to read as a product written
