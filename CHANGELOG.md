@@ -14,6 +14,18 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+## [0.2.21] - 2026-10-11
+
+### Security
+
+- **The map library moves to MapLibre 6.11.** 0.2.20 stopped the chart's credit line from
+  showing anything the tile host wrote; this release replaces the library whose sanitizer
+  that advisory was about (GHSA-jrc7-96c5-q579, fixed in 6.4.1). The chart, the wide view
+  and the passage map draw the same in both themes as before. The map's tile decoder now
+  runs as a file of its own served by the boat, rather than one assembled in the browser.
+- The dashboard's router moves to 7.18.4, clearing an advisory that applies only to a
+  server rendering mode this app does not use (GHSA-qwww-vcr4-c8h2).
+
 ## [0.2.20] - 2026-10-11
 
 ### Security
@@ -1228,7 +1240,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.20...HEAD
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.21...HEAD
+[0.2.21]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.21
 [0.2.20]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.20
 [0.2.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.19
 [0.2.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.18
