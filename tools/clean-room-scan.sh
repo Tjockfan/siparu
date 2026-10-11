@@ -52,10 +52,12 @@ EM_DASH=$(printf '\xe2\x80\x94')
 # Third-party bundles that legitimately carry characters the patterns look for. Kept
 # deliberately narrow - a whole directory would hide our own output, which lands here too.
 # style-*.js: MapLibre ships a vertical-writing character map whose keys include the
-# long dash. It is data, not prose.
+# long dash. It is data, not prose. maplibre-gl-worker-*.js: from MapLibre 6 the worker
+# is bundled on its own and carries the same table.
 is_vendor_exempt() {
   case "$1" in
     public/assets/style-*.js) return 0 ;;
+    public/assets/maplibre-gl-worker-*.js) return 0 ;;
     *) return 1 ;;
   esac
 }
