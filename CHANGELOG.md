@@ -14,7 +14,7 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
-## [0.2.21] - 2026-10-11
+## [0.2.22] - 2026-10-11
 
 ### Security
 
@@ -1240,8 +1240,8 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.21...HEAD
-[0.2.21]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.21
+[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.22...HEAD
+[0.2.22]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.22
 [0.2.20]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.20
 [0.2.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.19
 [0.2.18]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.18
