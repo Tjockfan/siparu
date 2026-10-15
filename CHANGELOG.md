@@ -38,6 +38,10 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 - **A range of minutes is capped at 2000 rows** (was 5000), the size at which a sealed
   answer from a boat reporting many gauges came within a megabyte of the relay's frame
   ceiling.
+- **The chart's LIVE badge now goes STALE when the boat stops answering.** It was judged
+  for the instruments screen only, so the chart said LIVE for as long as it stayed open,
+  and the vessel popup's "updated" line kept the age it was drawn with. The chart is now
+  judged by its own polls, and the popup is dated the moment it is opened.
 
 ## [0.2.22] - 2026-10-11
 

@@ -9,6 +9,7 @@ import { useNow } from "../data/useNow";
 import { useMediaQuery } from "../data/useMediaQuery";
 import { dur, ease } from "../motion";
 import { cacheTimestamp } from "../data/prefetchCache";
+import { liveRouteOf, staleOn } from "./staleBadge";
 import { SecurityNotice } from "./SecurityWarning";
 import { useApi, type PairScreen } from "../data/api";
 import { usePolling } from "../data/usePolling";
@@ -112,13 +113,16 @@ export default function Layout({
   const dir = idx === prevIdx ? 0 : idx > prevIdx ? 1 : -1;
   const off = involvesMap ? 0 : dir * 10;
 
-  // STALE badge: only on the telemetry screen (there a 2s live poll runs;
-  // Map does not poll it, so age growing there is normal). If the last
-  // SUCCESSFUL fetch is older than 10s the data is stale - showing LIVE would
-  // be misleading.
+  // STALE badge: each live screen judged by its own poll (staleBadge.ts). The telemetry
+  // screen's two-second poll and the map's thirty-second position fetch both write the cache
+  // only on a SUCCESSFUL fetch, so a boat that has gone quiet shows as the age growing.
   const now = useNow(2000);
-  const liveTs = cacheTimestamp("bridge:live");
-  const stale = location.pathname === at("/") && liveTs !== null && now - liveTs > 10_000;
+  const stale = staleOn(
+    liveRouteOf(location.pathname, at),
+    now,
+    cacheTimestamp("bridge:live"),
+    cacheTimestamp("map:latest"),
+  );
 
   const wide = useMediaQuery(RAIL_QUERY);
   // The door is a fact about her server. At her helm the pairing status carries it; ashore

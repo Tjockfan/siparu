@@ -9,6 +9,7 @@ import { useApi, type Snapshot, type AisTarget } from "../../data/api";
 import { ensureMapRuntime, getMapConfig } from "../../map/mapRuntime";
 import { radToDeg } from "../../lib/format";
 import { startVisibleInterval } from "../../data/visibleInterval";
+import { writeCache } from "../../data/prefetchCache";
 import {
   AIS_LIMIT_MAX,
   AIS_LIMIT_MIN,
@@ -106,6 +107,8 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const boatMarkerRef = useRef<maplibregl.Marker | null>(null);
   const boatPopupRef = useRef<maplibregl.Popup | null>(null);
+  // The newest position the popup draws from, for the moment it is opened.
+  const latestRef = useRef<Snapshot | null>(null);
   const aisMarkersRef = useRef<maplibregl.Marker[]>([]);
   const initialFitDoneRef = useRef(false);
   const trackDataRef = useRef<FeatureCollection>(trackGeojson([]));
@@ -377,9 +380,14 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
         const s = await api.logbook.snapshotLatest();
         if (cancelled) return;
         setLatest(s);
+        // On success only: the shell's STALE badge reads this timestamp (Layout, staleBadge),
+        // and a failed fetch, swallowed below, must leave it where it was so the age grows.
+        writeCache("map:latest", s);
         const map = mapRef.current;
         if (!map) return;
         if (s.lat === null || s.lon === null) return;
+        // Past the guard, as the popup always was: a snapshot without a fix never reaches it.
+        latestRef.current = s;
         const hdgDeg = radToDeg(s.heading_true);
         const html = cfgRef.current.makeBoat(hdgDeg);
         const ll: [number, number] = [s.lon, s.lat];
@@ -391,6 +399,13 @@ export function useMapEngine(cfg: MapEngineConfig): MapEngine {
           const popup = new maplibregl.Popup({ closeButton: true, offset: 16, maxWidth: "300px" }).setHTML(
             cfgRef.current.popupHtml(s, Date.now())
           );
+          // The popup's UPD line is an age, and an age drawn at the last fetch is wrong by
+          // however long ago that was: up to a whole poll, and for good once the boat stops
+          // answering. Redrawn the moment it is opened, from the newest position in hand.
+          popup.on("open", () => {
+            const cur = latestRef.current;
+            if (cur) popup.setHTML(cfgRef.current.popupHtml(cur, Date.now()));
+          });
           boatPopupRef.current = popup;
           boatMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "center" })
             .setLngLat(ll)
