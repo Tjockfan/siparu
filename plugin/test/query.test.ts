@@ -185,10 +185,20 @@ describe('bucket=1 edge cases', () => {
 })
 
 describe('bucket=360 (6h windows)', () => {
-  it('returns the latest hour per window', async () => {
+  it('writes each window as one row carrying its last reading', async () => {
     const r = await query.snapshots({ bucket: 360, order: 'asc' }, NOW)
-    // windows: yesterday 12:00-18:00 (hours 12+13 -> last wins: sog 5), today 06:00-12:00 (hour 09: sog 6)
+    // windows: yesterday 12:00-18:00 (hours 12+13 -> the window's last: sog 5), today 06:00-12:00 (hour 09: sog 6)
     expect(r.rows.map((x) => x.sog)).toEqual([5, 6])
+    expect(r.rows.map((x) => x.path_values?.[RPM])).toEqual([30, 25])
+  })
+
+  it('graphs a window as the merge of its hours, not as its latest hour', async () => {
+    // Hours 12 (rpm 20) and 13 (rpm 30) share yesterday's 12:00-18:00 window. The window's
+    // band is both hours'; a week drawn from this bucket used to lose five extremes in six.
+    const r = await query.pathSeries(RPM, { bucket: 360, order: 'asc' }, NOW)
+    expect(r.points[0]).toMatchObject({ ts: YESTERDAY_NOON, min: 20, max: 30, avg: 25, last: 30 })
+    const w = await query.pathSeries('environment.wind.speedTrue', { bucket: 360, order: 'asc' }, NOW)
+    expect(w.points[0]).toMatchObject({ ts: YESTERDAY_NOON, min: 5, max: 7, last: 7 })
   })
 })
 

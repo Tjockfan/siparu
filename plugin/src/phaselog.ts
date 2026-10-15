@@ -68,7 +68,10 @@ export class PhaseLog {
       this.persistedRev = this.revision()
       // Replay from the open phase's start, or the last closed end, or the
       // oldest retained row. Streaks reconstruct; a transition that had not yet
-      // held long enough when the plugin stopped is re-evaluated here.
+      // held long enough when the plugin stopped is re-evaluated here. The file
+      // always carries `open`, so the closed end is a fallback for a file edited
+      // by hand; since a phase can now end at a data gap, a replay from there
+      // would open a stub of the old kind before the record resumes.
       const from = open ? open.start.ts : this.lastClosedEnd()
       for (const r of await this.readRows(from, now)) this.absorb(r)
       await this.persistIfChanged()

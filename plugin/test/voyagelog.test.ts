@@ -9,6 +9,7 @@ import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULTS } from '../src/config'
 import { Snapshot, Voyage } from '../src/contract'
+import { RollupEngine } from '../src/rollup'
 import { Store } from '../src/store'
 import { hourKey } from '../src/time'
 import { ReconcileState, VoyageRow, reconcile } from '../src/voyage'
@@ -205,5 +206,43 @@ describe('VoyageLog', () => {
     expect(track.length).toBeGreaterThan(50)
     expect(track[0]!.lat).not.toBeNull()
     expect(track.every((p) => p.ts >= first.start_ts && p.ts <= (first.end_ts ?? now))).toBe(true)
+  })
+  /**
+   * An open voyage that crossed UTC midnight is one passage shown on two cards.
+   * Each card takes the share of it that fell inside its window, and the two
+   * shares add up to the passage - never to more. The yesterday card used to
+   * treat the window's end as the voyage's end and claim the whole thing.
+   */
+  it('splits an open voyage across midnight between the cards instead of counting it twice', async () => {
+    const t0 = Date.UTC(2026, 5, 1, 22, 0, 0)
+    const rows: VoyageRow[] = []
+    for (let i = 0; i < 240; i++) {
+      rows.push({
+        ts: t0 + i * 60_000,
+        lat: 43.0 + i * 0.001,
+        lon: 7.0,
+        sog: 3.1,
+        nav_state: 'under way using engine',
+        path_values: {}
+      })
+    }
+    await store.init(t0)
+    const rollups = new RollupEngine(store, () => undefined)
+    await rollups.init()
+    const vlog = new VoyageLog(store, DEFAULTS, () => undefined)
+    await vlog.init(t0)
+    for (const r of rows) {
+      await store.append(asSnapshot(r))
+      await vlog.feed(asSnapshot(r))
+    }
+    await vlog.flush()
+    const now = rows[rows.length - 1]!.ts
+
+    const open = vlog.current()
+    expect(open).not.toBeNull()
+    const s = await vlog.stats(rollups, now)
+    expect(s.yesterday.distance_nm).toBeLessThan(open!.distance_nm)
+    expect(s.yesterday.distance_nm + s.today.distance_nm).toBeCloseTo(open!.distance_nm, 1)
+    expect(s.yesterday.hours_underway + s.today.hours_underway).toBeCloseTo(open!.hours_underway, 1)
   })
 })

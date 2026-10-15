@@ -170,6 +170,16 @@ export class VoyageStateMachine {
   private movingStreakMs = 0
   private stationaryStreakMs = 0
   private lastTs: number | null = null
+  /**
+   * The last row before a data gap, when she had already stopped before it and
+   * has not moved since coming back. A boat that loses power minutes after
+   * berthing and returns the next morning, still, ended her passage before the
+   * gap: the close that follows is dated there, not five minutes after the
+   * power came back. A boat still making way when the record stopped gets no
+   * such date: her arrival fell inside the gap, and the close stays where she
+   * is found. Any row that is not still drops it; a second gap keeps the first.
+   */
+  private endBeforeGap: number | null = null
 
   constructor(
     private opts: VoyageOptions,
@@ -177,8 +187,8 @@ export class VoyageStateMachine {
     public open: boolean
   ) {}
 
-  /** Returns an event when this row opens or closes a voyage. */
-  feed(row: VoyageRow): { type: 'open'; startTs: number } | { type: 'close' } | null {
+  /** Returns an event when this row opens or closes a voyage. A close names its end. */
+  feed(row: VoyageRow): { type: 'open'; startTs: number } | { type: 'close'; endTs: number } | null {
     const ts = row.ts
     const sogKn = typeof row.sog === 'number' ? row.sog * MS_TO_KN : null
     const sogValid = sogKn !== null && sogKn < SOG_SANITY_KN ? sogKn : null
@@ -193,6 +203,10 @@ export class VoyageStateMachine {
 
     const dtMs = this.lastTs !== null ? ts - this.lastTs : 0
     if (dtMs < 0 || dtMs > MAX_GAP_MS) {
+      // Only a real gap can date the end: a clock stepping backwards is not time off the air.
+      if (dtMs > MAX_GAP_MS && this.open && this.lastTs !== null && this.stationaryStreakMs > 0) {
+        this.endBeforeGap ??= this.lastTs
+      }
       this.movingStreakMs = 0
       this.stationaryStreakMs = 0
       this.lastTs = ts
@@ -212,11 +226,14 @@ export class VoyageStateMachine {
       }
     } else {
       this.stationaryStreakMs = stationary ? this.stationaryStreakMs + dtMs : 0
+      if (!stationary) this.endBeforeGap = null
       if (this.stationaryStreakMs >= this.opts.closeMinutes * 60_000) {
+        const endTs = this.endBeforeGap ?? ts
         this.open = false
         this.movingStreakMs = 0
         this.stationaryStreakMs = 0
-        return { type: 'close' }
+        this.endBeforeGap = null
+        return { type: 'close', endTs }
       }
     }
     return null
@@ -327,9 +344,9 @@ export async function reconcile(
       }
       state.voyages.push(openVoyage)
     } else if (event.type === 'close' && openVoyage) {
-      openVoyage.end_ts = row.ts
-      openVoyage.end_lat = row.lat
-      openVoyage.end_lon = row.lon
+      // The end may sit before a data gap, so the fix is not this row's:
+      // applyMetrics sets end_lat/end_lon to the last fix inside the range.
+      openVoyage.end_ts = event.endTs
       openVoyage.status = 'closed'
       await applyMetrics(openVoyage, readRange, now, fuelRatePaths)
       openVoyage.end_port = nearestPort(openVoyage.end_lat, openVoyage.end_lon, ports)

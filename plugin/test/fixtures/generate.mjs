@@ -92,6 +92,16 @@ for (let i = 0; i < 11; i++) {
   stationary(between(8, 16))
 }
 
+// A twelfth passage that ends in a power cut: she berths, the instruments go
+// dark within two minutes (before the closing streak has run), and come back
+// fifteen hours later with her still at the berth. The voyage must end at the
+// last row before the gap. Appended after the eleven so their rows (and the
+// PRNG draws behind them) are untouched.
+leg(0.7)
+stationary(2 / 60)
+ts += 15 * 3600_000
+stationary(2)
+
 const ndjson = rows.map((r) => JSON.stringify(r)).join('\n') + '\n'
 writeFileSync(path.join(HERE, 'season-sample.ndjson.gz'), gzipSync(Buffer.from(ndjson, 'utf8')))
 

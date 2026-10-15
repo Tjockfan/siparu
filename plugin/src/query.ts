@@ -3,24 +3,25 @@
  *
  * bucket=1   -> raw NDJSON over the last RAW_WINDOW_DAYS, clamped and flagged past that.
  * bucket=60  -> hourly rollup lines, one row per hour (last values).
- * bucket=360 -> hourly rollups grouped into 6h windows, latest hour wins.
+ * bucket=360 -> hourly rollups merged into 6h windows (the window's aggregate).
  * bucket=1440-> daily rollup lines, one row per day (last values).
  *
  * Bucketed rows carry the latest values seen in each bucket, so charts
- * read the same regardless of bucket size.
+ * read the same regardless of bucket size; a graph point carries the
+ * bucket's whole min/max/avg, so a week of weather keeps its extremes.
  */
 import {
   MetricAgg,
   MetricField,
   PathSeriesPoint,
   PathSeriesResult,
-  RollupDay,
   RollupHour,
   Snapshot,
   SnapshotsQuery,
   SnapshotsResult,
   metricFields,
 } from './contract'
+import { WindowAgg, mergeHours } from './aggregate'
 import { RollupEngine } from './rollup'
 import { Store } from './store'
 import { dayKey, dayStartOf, hourKey, hourStartOf } from './time'
@@ -35,6 +36,29 @@ import { coreSeriesFor } from './units'
  * no plane named. It now reads the same declaration the rollup does.
  */
 const ROLLUP_FIELDS: readonly MetricField[] = metricFields('linear', 'angular', 'text')
+
+const SIX_HOURS_MS = 6 * 3_600_000
+
+/** What a bucketed row or point is read from: an hour, a day, or a merged window of hours. */
+type Summary = Pick<RollupHour, 'metrics' | 'pos_last' | 'path_metrics'>
+
+/**
+ * Hour rollups grouped into six-hour windows, each window one aggregate, keyed by its start.
+ *
+ * Merged, not sampled: a window that kept only its latest hour reported that hour's band as
+ * six hours' worth, and a week of wind or depth lost five extremes in every six. mergeHours
+ * does the arithmetic the daily rollup already trusts.
+ */
+function sixHourWindows(hours: readonly RollupHour[]): [number, WindowAgg][] {
+  const byWindow = new Map<number, RollupHour[]>()
+  for (const h of hours) {
+    const win = Math.floor(hourStartOf(h.hour) / SIX_HOURS_MS)
+    const list = byWindow.get(win)
+    if (list) list.push(h)
+    else byWindow.set(win, [h])
+  }
+  return [...byWindow.entries()].map(([win, hs]) => [win * SIX_HOURS_MS, mergeHours(hs)])
+}
 
 export const LIMIT_DEFAULT = 200
 export const LIMIT_MAX = 5000
@@ -56,7 +80,7 @@ export const RAW_WINDOW_DAYS = 7
 
 /** The aggregate for a series in one rollup: a core metric is in `metrics`, a dynamic gauge in `path_metrics`. */
 function aggFor(
-  r: RollupHour | RollupDay,
+  r: Summary,
   coreField: MetricField | undefined,
   pathName: string
 ): MetricAgg | undefined {
@@ -90,7 +114,7 @@ function aggToPoint(ts: number, agg: MetricAgg | undefined): PathSeriesPoint[] {
  * at the end of the hour - and the reader can ask for the average or the extremes instead
  * without the row's hour changing under him.
  */
-function rollupToRow(r: RollupHour | RollupDay, ts: number): Snapshot {
+function rollupToRow(r: Summary, ts: number): Snapshot {
   const row = { ts } as Snapshot
   for (const field of ROLLUP_FIELDS) {
     ;(row as unknown as Record<string, unknown>)[field] = r.metrics[field]?.last ?? null
@@ -136,13 +160,7 @@ export class QueryService {
       rows = (await this.rollups.readHourly(from, to)).map((h) => rollupToRow(h, hourStartOf(h.hour)))
     } else if (q.bucket === 360) {
       const from = q.from ?? 0
-      const hours = await this.rollups.readHourly(from, to)
-      const byWindow = new Map<number, RollupHour>()
-      for (const h of hours) {
-        const win = Math.floor(hourStartOf(h.hour) / (6 * 3_600_000))
-        byWindow.set(win, h) // hours arrive ascending; the latest wins
-      }
-      rows = [...byWindow.entries()].map(([win, h]) => rollupToRow(h, win * 6 * 3_600_000))
+      rows = sixHourWindows(await this.rollups.readHourly(from, to)).map(([ts, w]) => rollupToRow(w, ts))
     } else if (q.bucket === 1440) {
       const from = q.from ?? 0
       rows = (await this.rollups.readDaily(from, to)).map((d) => rollupToRow(d, dayStartOf(d.date)))
@@ -196,14 +214,10 @@ export class QueryService {
       )
     } else if (q.bucket === 360) {
       const from = q.from ?? 0
-      const byWindow = new Map<number, RollupHour>()
-      for (const h of await this.rollups.readHourly(from, to)) {
-        byWindow.set(Math.floor(hourStartOf(h.hour) / (6 * 3_600_000)), h) // ascending; latest wins
-      }
       // The point is the window, like the row: plotted at the last hour in it, a six-hour
       // reading would sit five hours right of the window it summarises.
-      points = [...byWindow.entries()].flatMap(([win, h]) =>
-        aggToPoint(win * 6 * 3_600_000, aggFor(h, coreField, pathName))
+      points = sixHourWindows(await this.rollups.readHourly(from, to)).flatMap(([ts, w]) =>
+        aggToPoint(ts, aggFor(w, coreField, pathName))
       )
     } else if (q.bucket === 1440) {
       const from = q.from ?? 0

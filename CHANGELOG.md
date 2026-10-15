@@ -14,6 +14,31 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
 
 ## [Unreleased]
 
+### Fixed
+
+- **A passage across midnight is no longer counted twice.** The stats cards pro-rate an
+  open voyage over their window; the Yesterday card took the window's end for the voyage's
+  end and so claimed the whole passage, while Today claimed its share again. An open voyage
+  now runs to the present on every card, and the shares add up to the passage.
+- **A power cut at the berth ends the passage before the cut, not after it.** A boat that
+  berths and goes dark within minutes, then comes back the next morning still at the berth,
+  had her voyage closed five minutes after the power returned, with fifteen hours of
+  "under way" in it. The voyage now ends at the last row before the gap when she comes back
+  still; a dropout at sea, with her still making way afterwards, changes nothing. The
+  golden fixture gains a twelfth passage that ends this way; the eleven before it are
+  unchanged.
+- **The activity band stops at a data gap when she comes back doing something else.** The
+  same fourteen hours off the air were one "under way" phase; now a phase ends at the gap
+  (or where the change had already begun before it) and the hours off the air belong to no
+  phase.
+- **Six-hour history rows carry the whole window.** The weekly view reads history in
+  six-hour buckets, and each bucket used to be its latest hour alone, so a week of wind or
+  depth kept one extreme in six. A six-hour row is now the merge of its hours, as a day
+  already was.
+- **A range of minutes is capped at 2000 rows** (was 5000), the size at which a sealed
+  answer from a boat reporting many gauges came within a megabyte of the relay's frame
+  ceiling.
+
 ## [0.2.22] - 2026-10-11
 
 ### Security

@@ -141,5 +141,18 @@
     "avg_sog_kn": 8.81,
     "max_sog_kn": 9.31,
     "status": "closed"
+  },
+  {
+    "start_ts": 1700767280000,
+    "end_ts": 1700769800000,
+    "start_lat": 33.4322226,
+    "start_lon": -40.7258316,
+    "end_lat": 33.5061717,
+    "end_lon": -40.7191579,
+    "distance_nm": 4.654,
+    "hours_underway": 0.667,
+    "avg_sog_kn": 6.98,
+    "max_sog_kn": 8.22,
+    "status": "closed"
   }
 ]

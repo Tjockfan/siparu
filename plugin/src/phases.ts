@@ -56,8 +56,9 @@ export interface OpenPhase {
  * Feed rows in chronological order; it returns the previous phase each time a
  * new one is confirmed. A change of kind must persist for phaseMinMinutes
  * before it counts, so a momentary blip does not split a phase in two, and the
- * confirmed phase is back-dated to where the change actually began. Streaks
- * reset across a data gap (> MAX_GAP_MS), as in the voyage engine.
+ * confirmed phase is back-dated to where the change actually began. A data gap
+ * (> MAX_GAP_MS) resets the streak and, when she comes back doing something
+ * else, ends the phase at the gap rather than carrying it across.
  */
 export class PhaseStateMachine {
   private curKind: PhaseKind | null = null
@@ -94,15 +95,31 @@ export class PhaseStateMachine {
     }
 
     const dt = this.lastTs !== null ? row.ts - this.lastTs : 0
+    const before = this.last
     this.lastTs = row.ts
     this.last = pt
 
-    // A gap breaks the streak but not the phase: what she did while off the air
-    // is unknown, and the current phase simply resumes with the next row.
+    // A gap breaks the streak. What she did while off the air is unknown, so the
+    // phase is decided by what she comes back doing: the same thing, and it simply
+    // resumes; the thing that had already begun before the gap, and that beginning
+    // stands as the boundary; something new, and the old phase ends at the last row
+    // before the gap and the new one starts here. Without this a fourteen-hour
+    // power cut at the berth was fourteen hours "under way".
     if (dt < 0 || dt > MAX_GAP_MS) {
+      // A clock stepping backwards is not time off the air: it resets the streak
+      // and nothing else, or the band would hold two phases overlapping.
+      if (dt < 0 || raw === this.curKind) {
+        this.candKind = null
+        this.candStreakMs = 0
+        return null
+      }
+      const boundary = raw === this.candKind && this.candStart ? this.candStart : null
+      const closed = this.close(boundary ?? (before as Pt))
+      this.curKind = raw
+      this.curStart = boundary ?? pt
       this.candKind = null
       this.candStreakMs = 0
-      return null
+      return closed
     }
 
     if (raw === this.curKind) {
@@ -124,16 +141,7 @@ export class PhaseStateMachine {
 
     if (this.candStreakMs >= this.opts.phaseMinMinutes * 60_000) {
       const start = this.candStart as Pt
-      const cur = this.curStart as Pt
-      const closed: Phase = {
-        kind: this.curKind,
-        start_ts: cur.ts,
-        end_ts: start.ts,
-        start_lat: cur.lat,
-        start_lon: cur.lon,
-        end_lat: start.lat,
-        end_lon: start.lon
-      }
+      const closed = this.close(start)
       this.curKind = this.candKind as PhaseKind
       this.curStart = start
       this.candKind = null
@@ -141,6 +149,20 @@ export class PhaseStateMachine {
       return closed
     }
     return null
+  }
+
+  /** The current phase as a closed one, ending at `end`. The caller opens the next. */
+  private close(end: Pt): Phase {
+    const cur = this.curStart as Pt
+    return {
+      kind: this.curKind as PhaseKind,
+      start_ts: cur.ts,
+      end_ts: end.ts,
+      start_lat: cur.lat,
+      start_lon: cur.lon,
+      end_lat: end.lat,
+      end_lon: end.lon
+    }
   }
 
   /** The phase currently in progress, or null before the first row. */

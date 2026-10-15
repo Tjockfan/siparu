@@ -209,7 +209,10 @@ export class VoyageLog {
     let hours = 0
     for (const v of this.state.voyages) {
       const vStart = v.start_ts
-      const vEnd = v.end_ts ?? winEnd
+      // An open voyage runs to now, not to the window's edge: with the edge as
+      // its end, a window that closed before now (yesterday) would hold all of
+      // it and the one holding now would hold a share of it again.
+      const vEnd = v.end_ts ?? now
       const s = Math.max(vStart, winStart)
       const e = Math.min(vEnd, winEnd)
       if (e <= s) continue

@@ -119,16 +119,43 @@ describe('PhaseStateMachine', () => {
     expect(m.current()?.start_ts).toBe(0) // never split
   })
 
-  it('a data gap resets the streak but keeps the current phase open', () => {
+  it('a data gap with the same kind on both sides resumes the phase', () => {
     const m = new PhaseStateMachine(OPTS)
     m.feed(row(0, MOVING))
     m.feed(row(5 * MIN, STILL)) // candidate stopped begins
     m.feed(row(8 * MIN, STILL)) // streak 3 min
-    // a gap of 17 min (> MAX_GAP): the pre-gap streak cannot carry across it
-    expect(m.feed(row(25 * MIN, STILL))).toBeNull()
-    expect(m.current()?.kind).toBe('underway') // the gap did not close the phase
-    // a fresh full streak is required after the gap
-    expect(m.feed(row(30 * MIN, STILL))).toBeNull()
+    // a gap of 17 min (> MAX_GAP), and she is back under way: nothing changed
+    expect(m.feed(row(25 * MIN, MOVING))).toBeNull()
+    expect(m.current()?.kind).toBe('underway')
+    expect(m.current()?.start_ts).toBe(0)
+    // the pre-gap candidate did not survive it: a fresh full streak is required
+    for (let t = 26; t <= 34; t++) expect(m.feed(row(t * MIN, STILL)), `t=${t}`).toBeNull()
+  })
+
+  it('a data gap confirms the change that had begun before it, at its beginning', () => {
+    const m = new PhaseStateMachine(OPTS)
+    m.feed(row(0, MOVING, null, 40, 10))
+    m.feed(row(5 * MIN, STILL, null, 41, 11)) // she stops here
+    m.feed(row(8 * MIN, STILL, null, 41, 11)) // power goes two minutes later
+    const closed = m.feed(row(14 * 60 * MIN, STILL, null, 41, 11)) // back the next afternoon, still
+    expect(closed?.kind).toBe('underway')
+    expect(closed?.end_ts).toBe(5 * MIN) // where she stopped, not fourteen hours on
+    expect(closed?.end_lat).toBe(41)
+    expect(m.current()?.kind).toBe('stopped')
+    expect(m.current()?.start_ts).toBe(5 * MIN) // contiguous: the stop began before the gap
+  })
+
+  it('a data gap followed by a new kind ends the phase at the last row before it', () => {
+    const m = new PhaseStateMachine(OPTS)
+    m.feed(row(0, MOVING, null, 40, 10))
+    m.feed(row(8 * MIN, MOVING, null, 40.1, 10.1)) // still making way when the record stops
+    const closed = m.feed(row(14 * 60 * MIN, STILL, 'at anchor', 40.2, 10.2))
+    expect(closed?.kind).toBe('underway')
+    expect(closed?.end_ts).toBe(8 * MIN)
+    expect(closed?.end_lat).toBe(40.1)
+    // the hours off the air belong to no phase; the new one starts where the record resumes
+    expect(m.current()?.kind).toBe('anchored')
+    expect(m.current()?.start_ts).toBe(14 * 60 * MIN)
   })
 
   it('restores an open phase across a restart', () => {

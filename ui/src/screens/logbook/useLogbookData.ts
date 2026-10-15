@@ -209,8 +209,14 @@ export function useLogbookDay(): LogbookDay {
  * low enough that the page stays a page; when it bites, the reader is told so in the same
  * sentence that gives him the count, because a file silently missing its tail is worse than
  * one that says where it stops.
+ *
+ * It is also the size of the boat's sealed answer. A minute row from a boat reporting her
+ * engines and tanks runs to about 5 KB, and at 5000 rows the sealed, base64-wrapped frame
+ * measured 32 MB against the relay's 33.5 MB ceiling on a 78-path boat; a boat with more
+ * paths would have had the socket dropped under her the moment a day was opened. 2000 keeps
+ * the frame well under the ceiling at the largest path table she records.
  */
-export const RANGE_LIMIT = 5000;
+export const RANGE_LIMIT = 2000;
 
 /**
  * A window of minutes at the ceiling: the rows to show or write, where the boat's own minutes
