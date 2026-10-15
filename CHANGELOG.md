@@ -43,6 +43,17 @@ wrongly. CI proves both on every commit, and an eighth write route fails the bui
   and the vessel popup's "updated" line kept the age it was drawn with. The chart is now
   judged by its own polls, and the popup is dated the moment it is opened.
 
+### Security
+
+- **The boat reads no more than 64 KiB from the shore, on either channel.** The relay
+  socket took messages of up to 100 MiB (the `ws` default) with compression negotiated, and
+  the two HTTP calls the boat makes ashore (pairing, and the five-minute key sync) read their
+  answers without a ceiling. A relay that had been taken over, or a proxy in front of it,
+  could have had the Signal K process on a Cerbo GX or a Pi killed for memory. The socket
+  now closes with 1009 past the ceiling and never negotiates compression; the HTTP answers
+  are read a chunk at a time and abandoned the moment they pass it. Nothing honest the shore
+  sends comes near the limit.
+
 ## [0.2.22] - 2026-10-11
 
 ### Security

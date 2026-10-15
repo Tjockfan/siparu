@@ -517,6 +517,69 @@ describe('what the skipper is told when it fails', () => {
     expect(body.message).not.toMatch(/captive portal|DNS/i)
   })
 
+  it('a relay answering with more than a receipt is refused, and not blamed on the uplink', async () => {
+    // Bounded: a 16 MiB chunked reply (finite, so the ceiling removed fails this
+    // rather than hanging the runner). The uplink demonstrably works, so the message must
+    // not send the skipper to look at DNS.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        let sent = 0
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (sent++ < 1024) controller.enqueue(new Uint8Array(16 * 1024).fill(0x61))
+              else controller.close()
+            }
+          }),
+          { status: 200 }
+        )
+      })
+    )
+
+    const body = (await call(routes(), '/pair/start')) as { state: string; message: string }
+
+    expect(body.state).toBe('error')
+    expect(body.message).toMatch(/more than this boat will read/i)
+    expect(body.message).not.toMatch(/captive portal|DNS/i)
+  })
+
+  it('the status poll says the same when the relay oversizes its answer', async () => {
+    // The poll runs for as long as the code is on screen; a wrong diagnosis there is the
+    // one the skipper actually reads.
+    const oversized = () => {
+      let sent = 0
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (sent++ < 1024) controller.enqueue(new Uint8Array(16 * 1024).fill(0x61))
+            else controller.close()
+          }
+        }),
+        { status: 200 }
+      )
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).endsWith('/pair/start')
+          ? new Response(
+              JSON.stringify({ device_code: 'dc', user_code: 'WDJB-MJHT', expires_in: 3600 }),
+              { status: 200 }
+            )
+          : oversized()
+      )
+    )
+    const handlers = routes()
+    await call(handlers, '/pair/start')
+
+    const status = (await call(handlers, 'GET /pair/status')) as { state: string; message: string }
+
+    expect(status.state).toBe('error')
+    expect(status.message).toMatch(/more than this boat will read/i)
+    expect(status.message).not.toMatch(/online/i)
+  })
+
   it('a relay that never answers still reads as a connectivity problem', async () => {
     vi.stubGlobal(
       'fetch',

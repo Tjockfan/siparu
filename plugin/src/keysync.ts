@@ -25,6 +25,7 @@
  * Read-only, like everything else here: this talks outbound to the relay and never to
  * Signal K. Nothing in this file emits a delta or a PUT.
  */
+import { AnswerTooLarge, readBounded } from './bounded'
 import type { DeviceApproval, DevicePublicKey } from './contract'
 import type { BoatKeyStore } from './keystore'
 import type { SealingLatchStore } from './latch'
@@ -395,7 +396,9 @@ export class KeySync {
         return
       }
 
-      const answer = (await res.json()) as { keys?: unknown; devices?: unknown }
+      // Bounded, not res.json(): the shore's answer is a few kilobytes when honest, and a
+      // relay that is not honest must not be able to grow this process until it is killed.
+      const answer = JSON.parse(await readBounded(res)) as { keys?: unknown; devices?: unknown }
 
       // She was unpaired while this was in the air. Nothing in it is hers any more: the token
       // it was asked with belongs to an account she has left, and so do the screens it names.
@@ -455,7 +458,12 @@ export class KeySync {
       // would go on being unreachable after the network came back.
       if (this.state !== 'mismatch') {
         this.state = 'failing'
-        this.lastError = 'Cannot reach Siparu. Is the boat online?'
+        // An answer too large to read is the shore misbehaving, not the boat being offline,
+        // and the one must not be dressed up as the other at the helm.
+        this.lastError =
+          e instanceof AnswerTooLarge
+            ? 'Siparu answered with more than this boat will read. If it persists, contact support.'
+            : 'Cannot reach Siparu. Is the boat online?'
       }
       // Offline is the normal state of a boat, not an incident.
       this.deps.debug(`keysync unreachable: ${String(e)}`)

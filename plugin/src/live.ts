@@ -168,6 +168,9 @@ const REFUSED_PLAN_REQUIRED = 403
  */
 const HANDSHAKE_TIMEOUT_MS = 15_000
 
+/** The largest message the boat will take from the shore socket, in bytes. */
+export const SHORE_MESSAGE_MAX_BYTES = 64 * 1024
+
 /**
  * The socket, as this file needs it. The real one is a `ws` WebSocket; a test drives a fake.
  * What is being tested here is a state machine, and a real socket would put a network between
@@ -1285,7 +1288,16 @@ function wsConnect(url: string, token: string): LiveSocket {
   const sock = new WS(url, {
     headers: { authorization: `Bearer ${token}` },
     // Opt-in, and without it a handshake that is never answered is never abandoned either.
-    handshakeTimeout: HANDSHAKE_TIMEOUT_MS
+    handshakeTimeout: HANDSHAKE_TIMEOUT_MS,
+    // What the shore sends down this socket is a question (a path, a window, a limit) or a
+    // one-word note; nothing honest comes near this. ws defaults to 100 MiB, and a relay that
+    // has been taken over could send that and have the Signal K process on a Cerbo GX or a Pi
+    // killed for memory. Past the ceiling ws closes the socket with 1009 and the frame is
+    // never assembled.
+    maxPayload: SHORE_MESSAGE_MAX_BYTES,
+    // Compression is a second way to the same place: a few kilobytes on the wire inflating to
+    // the ceiling and more. Nothing on this socket is large enough to be worth compressing.
+    perMessageDeflate: false
   })
 
   return {

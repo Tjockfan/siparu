@@ -119,6 +119,37 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
+/**
+ * A 200 whose chunked body runs to 16 MiB: what a relay that has been taken over sends. Finite,
+ * so that the ceiling removed fails the case instead of hanging the runner.
+ */
+const oversized = () => {
+  let sent = 0
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ < 1024) controller.enqueue(new Uint8Array(16 * 1024).fill(0x61))
+        else controller.close()
+      }
+    }),
+    { status: 200 }
+  )
+}
+
+describe('an answer too large to read', () => {
+  it('fails the sync with the shore named as the cause, not the boat being offline', async () => {
+    // Bounded: without the ceiling this read runs until the request timeout and
+    // buffers everything that arrived in the meantime. With it, the read stops a few chunks
+    // in, and the helm is told what actually happened.
+    relayAnswers(oversized)
+    const { sync } = keysync()
+    sync.start()
+    await until(() => sync.status().state === 'failing')
+    expect(sync.status().lastError).toMatch(/more than this boat will read/)
+    expect(sync.status().lastError).not.toMatch(/online/)
+  })
+})
+
 describe('a boat whose key file cannot be read', () => {
   it('publishes nothing, keeps the file, and names it', async () => {
     fs.writeFileSync(path.join(dir, 'keys.json'), 'half a fi')

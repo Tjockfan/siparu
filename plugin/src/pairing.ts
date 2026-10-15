@@ -18,6 +18,7 @@
 import type { ServerAPI } from '@signalk/server-api'
 import type { IRouter } from 'express'
 import { readable } from './access'
+import { AnswerTooLarge, readBounded } from './bounded'
 import type { DeviceAnchor } from './approval'
 import { fingerprintOfEncoded } from './fingerprint'
 import type { PendingUnlink, RemoteLink } from './remotelink'
@@ -283,7 +284,7 @@ async function relay<T>(
     }
 
     if (!res.ok) {
-      const text = await res.text().catch(() => '')
+      const text = await readBounded(res).catch(() => '')
       let code: string | null = null
       try {
         code = (JSON.parse(text) as { error?: string }).error ?? null
@@ -296,7 +297,10 @@ async function relay<T>(
       // diagnosis dressed up as a helpful one.
       throw new RelayRefused(res.status, code, `relay ${path} -> ${res.status} ${text.slice(0, 120)}`)
     }
-    return (await res.json()) as T
+    // Bounded rather than res.json(): a pairing receipt is a few hundred bytes, and a relay
+    // answering with more than this boat will read is refused, not buffered until the
+    // process dies.
+    return JSON.parse(await readBounded(res)) as T
   } finally {
     clearTimeout(timeout)
   }
@@ -437,7 +441,10 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
         // no internet, captive portal, DNS. Say so plainly instead of spinning.
         json({
           state: 'error',
-          message: 'Cannot reach Siparu. Is the boat online?'
+          message:
+            e instanceof AnswerTooLarge
+              ? 'Siparu answered with more than this boat will read. Try again later.'
+              : 'Cannot reach Siparu. Is the boat online?'
         })
         app.debug(`pair status: ${String(e)}`)
       }
@@ -488,7 +495,11 @@ export function registerPairRoutes(router: IRouter, deps: Deps): void {
               // vessel for a neighbour's attempts would send the skipper hunting a fault
               // that is not there.
               'Too many pairing attempts from this network. Wait an hour and try again.'
-            : 'Cannot reach Siparu. Check the boat is online (DNS, port 443, captive portal).'
+            : e instanceof AnswerTooLarge
+              ? // The relay answered, and with far more than a pairing receipt. Her uplink
+                // works; sending the skipper to look at it would be the wrong diagnosis.
+                'Siparu answered with more than this boat will read. Try again later.'
+              : 'Cannot reach Siparu. Check the boat is online (DNS, port 443, captive portal).'
         app.error(`pair start failed: ${String(e)}`)
         res.status(502).json({ state: 'error', message: lastError } satisfies PairScreen)
       }
