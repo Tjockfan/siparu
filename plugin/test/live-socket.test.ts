@@ -14,6 +14,8 @@ const REMOTE = { boatToken: 'tok-1', boatId: 'boat-1', pairedAt: '2026-07-10T00:
 
 let server: WebSocketServer | undefined
 let live: LiveUplink | undefined
+/** What the uplink said to its log while the case ran. */
+let said: string[] = []
 
 afterEach(async () => {
   live?.stop()
@@ -24,6 +26,7 @@ afterEach(async () => {
 
 /** A relay on the loopback, and the boat's socket to it once the upgrade has happened. */
 async function connected() {
+  said = []
   server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await once(server, 'listening')
   const port = (server.address() as AddressInfo).port
@@ -38,7 +41,7 @@ async function connected() {
     frame: () => ({ ts: 1 }),
     seal: (frame) => ({ mode: 'sealed' as const, frame }),
     sealAnswer: (payload, id) => ({ mode: 'sealed' as const, frame: { id, payload } }),
-    debug: () => {}
+    debug: (line) => said.push(line)
     // No `connect`: the real one, with the real options.
   })
   live.start()
@@ -65,7 +68,7 @@ describe('the shore socket', () => {
     expect(sock.readyState).toBe(WebSocket.OPEN)
   })
 
-  it('closes with 1009 on a message past the ceiling, without assembling it', async () => {
+  it('refuses a message past the ceiling and drops the line, without assembling it', async () => {
     const { sock } = await connected()
     const code = closedWith(sock)
     sock.send('x'.repeat(SHORE_MESSAGE_MAX_BYTES + 1024))
@@ -75,6 +78,13 @@ describe('the shore socket', () => {
       code,
       new Promise<string>((r) => setTimeout(() => r('still open after 2 s'), 2000))
     ])
-    expect(outcome).toBe(1009)
+    // The ceiling is ws's, and ws names it when it trips. This is the proof that the frame
+    // was refused by size rather than by anything else that drops a socket.
+    expect(said.join('\n')).toMatch(/Max payload size exceeded/)
+    // ws writes a 1009 close frame and the uplink then terminates the socket on the error,
+    // so the frame races the reset. Linux and macOS hand the relay the frame before the
+    // reset; Windows discards it and reports 1006. Either way the line is down and the
+    // message was never assembled, which is the behaviour this case pins.
+    expect([1009, 1006]).toContain(outcome)
   })
 })
