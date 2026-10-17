@@ -12,7 +12,7 @@ nothing to the boat: four for pairing (a tap at the helm), one for the fuel sour
 engine feeds voyage fuel) and two for correcting a passage the detector split or joined
 wrongly. CI proves both on every commit, and an eighth write route fails the build.
 
-## [Unreleased]
+## [0.2.23] - 2026-10-18
 
 ### Fixed
 
@@ -1280,7 +1280,7 @@ being able to delete it is the point.
   and instrument history stored as hourly NDJSON with rollups, an automatic voyage engine,
   a chart, and a GET-only REST API.
 
-[Unreleased]: https://github.com/Tjockfan/siparu/compare/v0.2.22...HEAD
+[0.2.23]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.23
 [0.2.22]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.22
 [0.2.20]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.20
 [0.2.19]: https://github.com/Tjockfan/siparu/releases/tag/v0.2.19
