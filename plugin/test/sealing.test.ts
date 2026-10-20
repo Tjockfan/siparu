@@ -29,6 +29,8 @@ import {
 } from '../src/sealing'
 // @ts-expect-error - reference implementation, plain JS outside the build
 import * as reference from '../../dev/e2e-vectors/frame.mjs'
+// @ts-expect-error - reference implementation, plain JS outside the build
+import * as question from '../../dev/e2e-vectors/request.mjs'
 
 const dir = join(__dirname, '..', '..', 'dev', 'e2e-vectors')
 const v = JSON.parse(readFileSync(join(dir, 'vectors.json'), 'utf8'))
@@ -376,5 +378,36 @@ describe('the frame type', () => {
       alert: 'warning'
     }
     expect(frame.alert).toBe('warning')
+  })
+})
+
+describe('a question, against the committed vectors', () => {
+  // The question is sealed by two programs that never open one (the phone, the browser) and
+  // opened by one that never seals one afloat: this module. The round-trip tests above cannot
+  // notice this opener drifting from those sealers; they would stay green while every sealed
+  // question aboard opened to nothing and every screen ashore waited out its timeout. The
+  // committed envelope is the one both shores pin, so this is the test that notices.
+  const q = JSON.parse(readFileSync(join(dir, 'request-vectors.json'), 'utf8'))
+  const priv = un(q.inbox.private)
+  const pub = un(q.inbox.public)
+
+  it('opens the committed question', () => {
+    const opened = openRequest(q.envelope, q.boat, priv, pub)
+    expect(opened.id).toBe(q.envelope.id)
+    expect(opened.plaintext).toBe(q.expected_plaintext)
+  })
+
+  it('agrees with the reference in both directions', () => {
+    const text = '{"type":"track","id":"q-1","voyageId":"v-1"}'
+    const theirs = question.sealRequest({ boat: q.boat, id: 'q-1', plaintext: text, inbox: pub })
+    expect(openRequest(theirs, q.boat, priv, pub).plaintext).toBe(text)
+    const ours = sealRequest({ boat: q.boat, id: 'q-1', plaintext: text, inbox: pub })
+    expect(question.openRequest(ours, q.boat, priv, pub)).toBe(text)
+  })
+
+  it('refuses the committed question at another vessel', () => {
+    expect(() =>
+      openRequest(q.envelope, 'f0f0f0f0-0000-4000-8000-000000000002', priv, pub)
+    ).toThrow()
   })
 })

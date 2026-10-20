@@ -47,7 +47,8 @@ import type {
   AisFeed,
   HealthRequest,
   HealthResponse,
-  HealthResult
+  HealthResult,
+  UnreadableAskReply
 } from './contract'
 
 /**
@@ -122,6 +123,20 @@ export const PING_EVERY_MS = 25_000
 /** A boat with no uplink must not knock every five seconds for a fortnight. */
 const RECONNECT_BASE_MS = 5_000
 const RECONNECT_CEILING_MS = 15 * 60_000
+
+/**
+ * What goes back, sealed, for a question she could not open. Said in the owner's direction and
+ * not the vessel's: the boat is answering, so the words must not read as though she were not.
+ * Both shores fetch her inbox key when a screen opens, so a stale copy is cured by opening the
+ * screen again, and a derivation out of step by updating; neither cure is pairing again, which
+ * runs through the same carrier that may have handed her the question.
+ */
+const UNREADABLE_ASK = {
+  code: 'UNREADABLE' as const,
+  message:
+    'This boat could not open the question as it was sealed. Open this screen again; if it ' +
+    'keeps happening, update the Siparu plugin aboard and the app.'
+}
 
 /**
  * What she waits after being told something that redialling cannot fix: an unknown token, or a
@@ -525,6 +540,18 @@ export class LiveUplink {
       const opened = this.openSealedAsk(data)
       if (opened) {
         this.dispatch(gen, opened.plaintext)
+        return
+      }
+      // A sealed question that did not open. Silence was the worst answer here: the screen
+      // waited out its timeout and then said the boat had not answered, which sends her owner
+      // to check a vessel that answered the moment it arrived. It fails to open when it was
+      // sealed under a derivation she does not share (a plugin and an app out of step, which
+      // the committed vectors exist to catch before a release) or to a key she does not hold.
+      // Either way the reason goes back the only way anything of hers goes, sealed, under the
+      // id the relay routes by, and it names nothing about the question: nothing could be read.
+      const unread = unopenedAsk(data)
+      if (unread) {
+        this.reply(gen, { id: unread.id, error: UNREADABLE_ASK })
         return
       }
       const asked = rpcEnvelope(data)
@@ -985,6 +1012,7 @@ export class LiveUplink {
       | FuelResponse
       | AisResponse
       | HealthResponse
+      | UnreadableAskReply
   ): void {
     if (gen !== this.gen || !this.sock) return
     try {
@@ -1374,4 +1402,23 @@ export function isWatchingNote(data: string): boolean {
   }
   if (!msg || typeof msg !== 'object') return false
   return (msg as { type?: unknown }).type === 'watching'
+}
+
+/**
+ * The id of a sealed question that did not open, or null for anything else on the socket.
+ *
+ * Only the two fields the relay itself reads are looked at: the tag that says it is a question
+ * and the id it is routed by. Whether the rest was a question at all is exactly what could not
+ * be determined, so nothing else is.
+ */
+export function unopenedAsk(data: string): { id: string } | null {
+  let msg: unknown
+  try {
+    msg = JSON.parse(data)
+  } catch {
+    return null
+  }
+  if (!msg || typeof msg !== 'object') return null
+  const { type, id } = msg as { type?: unknown; id?: unknown }
+  return type === 'ask' && typeof id === 'string' && id.length > 0 ? { id } : null
 }

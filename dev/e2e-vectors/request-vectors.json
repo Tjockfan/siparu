@@ -1,0 +1,22 @@
+{
+  "note": "Cross-platform vectors for the shore-to-boat request envelope (spec 3.7). Every private key here is test-only and published on purpose. Generated from the boat plugin's own sealing code.",
+  "request_version": 1,
+  "suite": {
+    "agreement": "X25519",
+    "kdf": "HKDF-SHA256",
+    "aead": "ChaCha20-Poly1305"
+  },
+  "boat": "f0f0f0f0-0000-4000-8000-000000000001",
+  "inbox": {
+    "public": "Y01q7xXH__2BDgd6YAOGhV8bWcuwdCW0AIN-_eNuEDU",
+    "private": "AGhr5mWrZoLK8mRcQ_EsWLlHQDvuwZ4F0hEwhn-sHnI"
+  },
+  "expected_plaintext": "{\"type\":\"voyages\",\"id\":\"a7c3f1e2-0000-4000-8000-00000000000b\",\"limit\":25,\"offset\":0}",
+  "envelope": {
+    "type": "ask",
+    "v": 1,
+    "id": "a7c3f1e2-0000-4000-8000-00000000000b",
+    "eph": "g5Jfwq2EuRmTCnVpE_73fnRUvPmd07AQfSBIzqaK4H8",
+    "body": "F2mQ8SRqO_fbiWlH5mJzhHU4m5sQlIE56cyE_RPbqfjsWjV8HKq8fMKIJO3zTqr4iUaf0xiLGfulR8bj6wAs7rtb_fhx5xyfqZiN4KmFm_iiv-jFmxWO-LheU6EWnwzOduu_6g"
+  }
+}

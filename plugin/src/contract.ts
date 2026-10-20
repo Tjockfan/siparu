@@ -586,6 +586,20 @@ export interface ApiError {
 }
 
 /**
+ * The boat's reply to a sealed question she could not open.
+ *
+ * It is the one reply without a `type`, and by construction: the type lives inside the body,
+ * and the body is what did not open. Both shores read a sealed reply by its `id` and then by
+ * `error` or `result`, so this needs nothing new of them; it exists so that a question sealed
+ * under a derivation the boat does not share, or to a key she does not hold, is answered with
+ * its reason instead of left to time out and be blamed on the vessel.
+ */
+export interface UnreadableAskReply {
+  id: string
+  error: { code: 'UNREADABLE'; message: string }
+}
+
+/**
  * The sealed frame, and the key material around it.
  *
  * These shapes belong here rather than beside the sealing code because they are

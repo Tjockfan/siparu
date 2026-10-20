@@ -19,6 +19,8 @@ import { describe, expect, it } from 'vitest'
 import { ed25519PublicFromRaw, openFrame, signingInput, verifyFrame } from '../../dev/e2e-vectors/frame.mjs'
 // @ts-expect-error - reference implementation, plain JS outside the build
 import { approvalInput, boatMac, deviceMac } from '../../dev/e2e-vectors/approval.mjs'
+// @ts-expect-error - reference implementation, plain JS outside the build
+import { openRequest as openQuestion } from '../../dev/e2e-vectors/request.mjs'
 
 const dir = join(__dirname, '..', '..', 'dev', 'e2e-vectors')
 const v = JSON.parse(readFileSync(join(dir, 'vectors.json'), 'utf8'))
@@ -116,3 +118,39 @@ describe('device approval vectors', () => {
   })
 })
 
+describe('sealed question vectors', () => {
+  const q = JSON.parse(readFileSync(join(dir, 'request-vectors.json'), 'utf8'))
+  const priv = un(q.inbox.private)
+  const pub = un(q.inbox.public)
+
+  it('opens the committed question as the boat would', () => {
+    expect(openQuestion(q.envelope, q.boat, priv, pub)).toBe(q.expected_plaintext)
+  })
+
+  it('carries exactly what the relay forwards, and nothing of the question', () => {
+    expect(Object.keys(q.envelope).sort()).toEqual(['body', 'eph', 'id', 'type', 'v'])
+    expect(q.envelope.type).toBe('ask')
+    expect(q.envelope.v).toBe(q.request_version)
+    expect(JSON.stringify(q.envelope)).not.toContain('voyages')
+  })
+
+  it('will not open under an id the carrier rewrote', () => {
+    // The id is cleartext because the relay routes by it, and in the derivation so that a
+    // carrier decorating it with routing state of its own costs itself the plaintext.
+    expect(() => openQuestion({ ...q.envelope, id: `w1.${q.envelope.id}` }, q.boat, priv, pub)).toThrow()
+  })
+
+  it('refuses a respelled ephemeral key, so the same bytes have one spelling on the wire', () => {
+    // The last character of a 43-character encoding carries two slack bits; a canonical
+    // spelling leaves them clear, so bumping its alphabet index re-reads to the same bytes.
+    const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+    const last = q.envelope.eph.slice(-1)
+    const alias = q.envelope.eph.slice(0, -1) + B64URL[B64URL.indexOf(last) + 1]
+    expect(Buffer.from(alias, 'base64url').equals(Buffer.from(q.envelope.eph, 'base64url'))).toBe(true)
+    expect(() => openQuestion({ ...q.envelope, eph: alias }, q.boat, priv, pub)).toThrow()
+  })
+
+  it('refuses an envelope that is not tagged as a question', () => {
+    expect(() => openQuestion({ ...q.envelope, type: 'answer' }, q.boat, priv, pub)).toThrow()
+  })
+})

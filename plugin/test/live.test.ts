@@ -380,6 +380,50 @@ describe('what she answers while she is sealing', () => {
     expect(last().sent).toHaveLength(before)
   })
 
+  it('answers a sealed question it cannot open with a sealed refusal, not silence', async () => {
+    // A question sealed under a derivation she does not share, or to a key she does not hold,
+    // used to get nothing back: the screen waited out its timeout and blamed the boat. The
+    // reason now goes back the only way anything of hers goes, sealed, under the id the relay
+    // routes by, and the store is never reached.
+    const asked: number[] = []
+    const { live, last } = uplink({
+      openAsk: () => undefined,
+      onVoyagesQuery: async (limit) => {
+        asked.push(limit)
+        return { voyages: [] } as never
+      }
+    })
+    live.start()
+    last().open()
+    last().say(JSON.stringify({ type: 'ask', v: 1, id: 'w-1.q', eph: 'x', body: 'y' }))
+    await flush()
+
+    const sent = last()
+      .sent.filter((s) => s !== 'ping')
+      .map((s) => JSON.parse(s) as Record<string, unknown>)
+    const answer = sent.find((m) => m.type === 'answer')
+    expect(answer, 'an unopened question must still be answered').toBeDefined()
+    expect(answer!.id).toBe('w-1.q')
+    expect((answer!.frame as { payload?: unknown }).payload).toEqual({
+      id: 'w-1.q',
+      error: { code: 'UNREADABLE', message: expect.stringContaining('could not open') }
+    })
+    // Nothing went back in the clear, and nothing was read on her behalf.
+    expect(sent.some((m) => 'error' in m)).toBe(false)
+    expect(asked).toHaveLength(0)
+  })
+
+  it('says nothing to a sealed question with no id to answer under', () => {
+    // No id, no route back: the relay could not deliver a refusal and would not have forwarded
+    // the question. Whatever this is, it is not something a reply can reach.
+    const { live, last } = uplink({ openAsk: () => undefined })
+    live.start()
+    last().open()
+    const before = last().sent.length
+    last().say(JSON.stringify({ type: 'ask', v: 1, id: '', eph: 'x', body: 'y' }))
+    expect(last().sent).toHaveLength(before)
+  })
+
   it('still says nothing to a message that is not a question at all', () => {
     // The shore may not steer a boat, and a refusal is still a reply. Anything that is not one
     // of the five reads gets no answer at all.

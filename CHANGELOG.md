@@ -12,6 +12,24 @@ nothing to the boat: four for pairing (a tap at the helm), one for the fuel sour
 engine feeds voyage fuel) and two for correcting a passage the detector split or joined
 wrongly. CI proves both on every commit, and an eighth write route fails the build.
 
+## [Unreleased]
+
+### Changed
+
+- **A sealed question the boat cannot open is answered with its reason.** It used to be
+  dropped, and the screen that asked waited out its timeout and then reported that the boat
+  had not answered. She now seals a refusal back under the question's id, naming nothing of
+  the question, so a plugin and an app that have drifted apart say so at once rather than
+  looking like a vessel that is offline.
+
+### Added
+
+- The sealed question now has committed cross-platform vectors on the boat's side
+  (`dev/e2e-vectors/request-vectors.json`, with a reference implementation and a generator
+  that refuses to write what the shipping opener did not open). The app and the portal
+  already pinned the same file; the opener did not, so a change to the derivation aboard
+  would have passed three green CI runs. It fails this one now.
+
 ## [0.2.23] - 2026-10-18
 
 ### Fixed

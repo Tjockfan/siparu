@@ -47,6 +47,29 @@ with the reader and disagreed with every boat afloat, and the phone's tests
 stayed green through all of it. The output lives with the app, in
 `Tests/Fixtures/answer-vectors.json`, since nothing on this side reads it.
 
+The question a screen seals to her is a third file, and the one the boat opens
+rather than seals:
+
+```sh
+npm run build                                                      # it reads dist
+node dev/e2e-vectors/generate-request.mjs > dev/e2e-vectors/request-vectors.json
+npx vitest run plugin/test/sealing.test.ts plugin/test/e2e-vectors.test.ts
+```
+
+`request.mjs` is the reference for that direction, and the generator seals with
+it and refuses to write a file the shipping opener in `dist` did not open. The
+same file is held by the app (`Tests/Fixtures/request-vectors.json`) and the
+portal (`sealed-request-vectors.json`), byte for byte, and both open it with a
+transcription of the boat's derivation; copy it to both after regenerating and
+run their suites. The committed file predates the generator (it was sealed by
+the plugin's own module when the app first pinned it), and the next regeneration
+replaces it in all three places at once. It was the one file the plugin did not hold: the two sealers
+pinned it and the opener did not, so a change to the derivation aboard would
+have gone through three green CI runs and left every sealed question opening to
+nothing, with no reason on either shore. Since then the boat answers a question
+she cannot open with a sealed refusal that says so, and this file turns the
+plugin's own CI red first.
+
 The fingerprint an owner compares by eye is a fourth file, and the only one
 whose output is read by a person rather than by code:
 
