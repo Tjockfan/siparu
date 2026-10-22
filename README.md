@@ -154,8 +154,8 @@ she is still there, not where she is. Either way the shore keeps none of it:
 when she drops off, all that remains ashore is her name and when she was last
 seen. Both are outbound: she dials the relay, the relay never dials her.
 
-Five kinds of message travel the other way, and every one of them is a read of
-the store she wrote herself:
+Ten kinds of message travel the other way, and every one of them is a read of
+the store she wrote herself or of her own state:
 
 | Inbound | Description |
 |---|---|
@@ -164,6 +164,11 @@ the store she wrote herself:
 | `{ type: 'voyages', id, limit }` | Her recent voyages, newest first. She clamps the count, so a request cannot ask for more than she will give. |
 | `{ type: 'track', id, voyageId }` | One voyage's recorded path, decimated aboard before it goes over the wire. |
 | `{ type: 'phases', id, limit }` | The activity band beneath the voyages, newest first, clamped the same way. |
+| `{ type: 'rollups', id, from, to }` | Her hourly summaries over a window, unflattened: what an export of figures reads. As the local `GET /rollups/hourly`. |
+| `{ type: 'stats', id }` | The voyage screen's four windows: today, yesterday, the week, the season. As the local `GET /voyages/stats`. |
+| `{ type: 'fuel', id }` | Which engine fuel-rate paths she reports and which are counted, so the voyage screen can say why a passage shows no fuel. The choice itself is made at her helm. As the local `GET /config/fuel-paths`. |
+| `{ type: 'ais', id, maxNm, limit }` | The vessels her receiver hears within a radius, newest first, clamped as the route is. As the local `GET /ais/targets`. |
+| `{ type: 'health', id }` | Her own account of herself, as the local `GET /health` serves it. |
 
 Anything else the shore sends is ignored, because a boat takes no command and so
 there is nothing else to hear.
