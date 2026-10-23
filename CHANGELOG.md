@@ -12,6 +12,19 @@ nothing to the boat: four for pairing (a tap at the helm), one for the fuel sour
 engine feeds voyage fuel) and two for correcting a passage the detector split or joined
 wrongly. CI proves both on every commit, and an eighth write route fails the build.
 
+## [Unreleased]
+
+### Changed
+
+- **A page of snapshot rows sent to the shore is held to a byte budget, not only a row
+  count.** A boat reporting engines, tanks and batteries writes a few kilobytes a minute,
+  and five thousand of her minutes came to tens of megabytes in one sealed message, over
+  what the relay will carry on a boat with enough gauges. On the live socket she now stops
+  a page at sixteen mebibytes of rows, flags it as before, and says where the next page
+  starts (`next` on the snapshots answer, on a cut by row count too). The local REST route
+  is not budgeted: nothing between it and the screen has a ceiling. The screens read
+  `next` first and fall back to counting rows for a boat from before it.
+
 ## [0.2.24] - 2026-10-20
 
 ### Changed

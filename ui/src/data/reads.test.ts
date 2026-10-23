@@ -23,8 +23,12 @@ const NOW = Date.UTC(2026, 8, 8, 12, 0, 0);
 /**
  * A boat holding one row a minute from `minutesFrom` to now, answering the way the plugin
  * does: raw rows from her floor onward, at most her page, and the flag set by either cause.
+ *
+ * `rowsAWeigh` is her byte budget in rows: a wide boat stops a page there, short of the row
+ * ceiling, and says where the next one starts. A boat from before `next` (`says: false`)
+ * cuts at the ceiling and leaves the reader to count.
  */
-function boat(minutesFrom: number) {
+function boat(minutesFrom: number, opts: { rowsAWeigh?: number; says?: boolean } = {}) {
   const snapshots = vi.fn(async (q: SnapshotsQuery & { bucket: number }): Promise<SnapshotsResult> => {
     const to = q.to ?? NOW;
     const from = Math.max(q.from ?? minutesFrom, minutesFrom);
@@ -32,9 +36,11 @@ function boat(minutesFrom: number) {
     const all: Snapshot[] = [];
     for (let ts = Math.ceil(from / MINUTE) * MINUTE; ts <= to; ts += MINUTE) all.push({ ts } as Snapshot);
     all.sort((a, b) => (q.order === "asc" ? a.ts - b.ts : b.ts - a.ts));
-    const rows = all.slice(0, Math.min(q.limit ?? 200, BOAT_PAGE_MAX));
-    if (rows.length < all.length) clamped = true;
-    return { rows, clamped, minutesFrom };
+    const page = Math.min(q.limit ?? 200, BOAT_PAGE_MAX, opts.rowsAWeigh ?? Infinity);
+    const rows = all.slice(0, page);
+    const next = rows.length < all.length ? rows.length : undefined;
+    if (next !== undefined) clamped = true;
+    return { rows, clamped, minutesFrom, ...(opts.says === false || next === undefined ? {} : { next }) };
   });
   // One row an hour for everything before her floor, which is what fills a longer window.
   const rollupHours = vi.fn(async (from: number, to: number): Promise<RollupHour[]> => {
@@ -85,6 +91,26 @@ describe("the shared minute read", () => {
     const res = await reads.minutes({ from: NOW - 7 * 24 * HOUR, to: NOW, limit: BOAT_PAGE_MAX + 1 });
     expect(res.rows).toHaveLength(BOAT_PAGE_MAX);
     expect(res.clamped).toBe(true);
+  });
+
+  it("carries a page she cut for its weight, which comes back short and still partial", async () => {
+    // A boat reporting a hundred gauges stops a page at her byte budget long before the row
+    // ceiling, and says where the next one starts. The page is short, so counting rows would
+    // call it the end of the window; her `next` is what says it is not.
+    const { reads } = boat(NOW - 7 * 24 * HOUR, { rowsAWeigh: 40 });
+    const res = await reads.minutes({ from: NOW - 2 * HOUR, to: NOW, limit: BOAT_PAGE_MAX + 1 });
+    expect(res.rows).toHaveLength(40);
+    expect(res.clamped).toBe(true);
+  });
+
+  it("reads a boat from before `next` as before, by the page coming back full", async () => {
+    const { reads } = boat(NOW - 7 * 24 * HOUR, { says: false });
+    const cut = await reads.minutes({ from: NOW - 7 * 24 * HOUR, to: NOW, limit: BOAT_PAGE_MAX + 1 });
+    expect(cut.rows).toHaveLength(BOAT_PAGE_MAX);
+    expect(cut.clamped).toBe(true);
+    const whole = await reads.minutes({ from: NOW - 2 * HOUR, to: NOW, limit: BOAT_PAGE_MAX + 1 });
+    expect(whole.rows).toHaveLength(121);
+    expect(whole.clamped).toBe(false);
   });
 
   it("reports a window well inside her minutes as whole", async () => {

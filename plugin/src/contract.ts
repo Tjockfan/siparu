@@ -3,7 +3,7 @@
  *
  * These shapes are served by the local read-only REST API today and MUST stay
  * platform-neutral: the Phase-2 relay history RPC transports the exact same
- * query/result shapes over WSS ({id, query} -> chunked result). Nothing
+ * query/result shapes over WSS ({id, query} -> one bounded result). Nothing
  * Cloudflare- or transport-specific may leak in here.
  *
  * Field names are snake_case on the wire; the webapp consumes them as-is.
@@ -180,8 +180,22 @@ export interface SnapshotsQuery {
 
 export interface SnapshotsResult {
   rows: Snapshot[]
-  /** True when the range was narrowed (bucket=1 clamped to its window, or limit hit). */
+  /** True when the range was narrowed (bucket=1 clamped to its window, or the page was cut). */
   clamped: boolean
+  /**
+   * The offset of the row after this page, present only when the window held more rows than
+   * the page carried. A page is cut by `limit` or by the boat's byte budget (query.ts
+   * PAGE_MAX_BYTES), and a reader cannot tell a cut page from a full last one by counting
+   * rows: the budget depends on how wide her rows are. Absent when the page reached the end
+   * of the window. A boat from before this field never sends it, so its absence alone does
+   * not mean the window was covered.
+   *
+   * An offset, like the query's own, so it is stable only while the rows before it are:
+   * page newest first with `from` and `to` both given, and the next page starts where this
+   * one stopped. Oldest first, with `from` before the minutes she keeps, her floor moves
+   * forward a row a minute and the offset with it.
+   */
+  next?: number
   /**
    * On bucket=1 only: the earliest instant this boat serves minutes from, so a reader can
    * fill what lies before it from the hourly rollup instead of assuming where minutes stop.

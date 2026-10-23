@@ -1,9 +1,10 @@
 import * as fs from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Snapshot } from '../src/contract'
-import { QueryError, QueryService } from '../src/query'
+import { PAGE_MAX_BYTES, QueryError, QueryService } from '../src/query'
 import { RollupEngine } from '../src/rollup'
 import { Store } from '../src/store'
 
@@ -215,9 +216,19 @@ describe('paging and validation', () => {
     const r = await query.snapshots({ bucket: 60, limit: 2 }, NOW)
     expect(r.rows.map((x) => x.sog)).toEqual([6, 5])
     expect(r.clamped).toBe(true)
+    expect(r.next).toBe(2)
     const page2 = await query.snapshots({ bucket: 60, limit: 2, offset: 2 }, NOW)
     expect(page2.rows.map((x) => x.sog)).toEqual([4])
     expect(page2.clamped).toBe(false)
+    expect(page2.next).toBeUndefined()
+  })
+
+  it('says where the next page starts only when the window held more than the page', async () => {
+    const all = await query.snapshots({ bucket: 60, order: 'asc' }, NOW)
+    expect(all.next).toBeUndefined()
+    const cut = await query.snapshots({ bucket: 60, order: 'asc', limit: 1, offset: 1 }, NOW)
+    expect(cut.rows).toHaveLength(1)
+    expect(cut.next).toBe(2)
   })
 
   it('rejects unknown bucket sizes', async () => {
@@ -327,5 +338,68 @@ describe('bucket=1 window', () => {
     const r = await query.pathSeries(RPM, { bucket: 1, from: THREE_DAYS_AGO_NOON, order: 'asc' }, NOW)
     expect(r.points.map((p) => p.last)).toEqual([11, 20, 30, 25, 26])
     expect(r.minutesFrom).toBe(THREE_DAYS_AGO_NOON)
+  })
+})
+
+describe('a page that would not fit on the wire', () => {
+  const H = 3_600_000
+  const wide = (n: number, v: number) =>
+    Object.fromEntries(Array.from({ length: n }, (_, i) => [`electrical.batteries.${i}.voltage`, v]))
+  const bytes = (row: Snapshot) => Buffer.byteLength(JSON.stringify(row))
+
+  it('stops the page where the byte budget runs out, and says where the next one starts', async () => {
+    // Three wide rows this morning. The budget is set so that exactly two of them fit.
+    await store.append(snap(TODAY_START + 1 * H, 1, wide(40, 12.1)))
+    await store.append(snap(TODAY_START + 2 * H, 2, wide(40, 12.2)))
+    await store.append(snap(TODAY_START + 3 * H, 3, wide(40, 12.3)))
+    await store.flush()
+    const q = { bucket: 1 as const, order: 'asc' as const, from: TODAY_START + 1 * H, to: TODAY_START + 3 * H }
+    const whole = await query.snapshots(q, NOW)
+    expect(whole.rows.map((x) => x.sog)).toEqual([1, 2, 3])
+    expect(whole.next).toBeUndefined()
+
+    const budget = bytes(whole.rows[0]!) + bytes(whole.rows[1]!)
+    // One byte under the two rows and only the first fits; at the two rows, both do.
+    expect((await query.snapshots(q, NOW, budget - 1)).rows.map((x) => x.sog)).toEqual([1])
+    const page1 = await query.snapshots(q, NOW, budget)
+    expect(page1.rows.map((x) => x.sog)).toEqual([1, 2])
+    expect(page1.clamped).toBe(true)
+    expect(page1.next).toBe(2)
+    const page2 = await query.snapshots({ ...q, offset: page1.next }, NOW, budget)
+    expect(page2.rows.map((x) => x.sog)).toEqual([3])
+    expect(page2.clamped).toBe(false)
+    expect(page2.next).toBeUndefined()
+  })
+
+  it('still carries one row when a single row is over the budget, so a page always moves', async () => {
+    await store.append(snap(TODAY_START + 1 * H, 1, wide(40, 12.1)))
+    await store.append(snap(TODAY_START + 2 * H, 2, wide(40, 12.2)))
+    await store.flush()
+    const q = { bucket: 1 as const, order: 'asc' as const, from: TODAY_START + 1 * H, to: TODAY_START + 2 * H }
+    const page1 = await query.snapshots(q, NOW, 10)
+    expect(page1.rows.map((x) => x.sog)).toEqual([1])
+    expect(page1.next).toBe(1)
+    const page2 = await query.snapshots({ ...q, offset: 1 }, NOW, 10)
+    expect(page2.rows.map((x) => x.sog)).toEqual([2])
+    expect(page2.next).toBeUndefined()
+  })
+
+  it('is handed the budget by the socket path and not by the local route', () => {
+    // Read as text rather than wired up: the plugin's start() needs a Signal K server around
+    // it, and what this pins is one argument at two call sites. The socket answer crosses
+    // the relay and carries the budget; the local route has nothing between it and the
+    // screen and must not.
+    const src = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
+    expect(src).toMatch(/onSnapshotsQuery: \(q\) => qs\.snapshots\(q, Date\.now\(\), PAGE_MAX_BYTES\)/)
+    expect(src).toMatch(/snapshots: \(q: SnapshotsQuery\) => qs\.snapshots\(q, Date\.now\(\)\)/)
+  })
+
+  it('is unbounded unless the caller hands it a budget, which is what the local route wants', async () => {
+    await store.append(snap(TODAY_START + 1 * H, 1, wide(40, 12.1)))
+    await store.append(snap(TODAY_START + 2 * H, 2, wide(40, 12.2)))
+    await store.flush()
+    const q = { bucket: 1 as const, order: 'asc' as const, from: TODAY_START + 1 * H, to: TODAY_START + 2 * H }
+    expect((await query.snapshots(q, NOW)).rows.map((x) => x.sog)).toEqual([1, 2])
+    expect(PAGE_MAX_BYTES).toBe(16 * 1024 * 1024)
   })
 })

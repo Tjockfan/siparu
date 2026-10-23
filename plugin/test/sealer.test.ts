@@ -4,6 +4,7 @@ import * as path from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DevicePublicKey } from '../src/contract'
 import { BoatKeyStore } from '../src/keystore'
+import { PAGE_MAX_BYTES, fitPage } from '../src/query'
 import { Sealer } from '../src/sealer'
 import { openFrame, rawPublic, verifyFrame } from '../src/sealing'
 import { generateKeyPairSync } from 'crypto'
@@ -317,3 +318,31 @@ describe('an empty list is silence, and it says which silence', () => {
   })
 })
 
+
+describe('the heaviest page she will send', () => {
+  it('fits the relay once sealed, with the envelope around it', () => {
+    // The relay drops any message over 32 MiB and closes the line it came on. The page
+    // budget is in bytes of JSON rows (query.ts PAGE_MAX_BYTES), and what crosses the wire
+    // is those rows sealed (base64url, four thirds) inside an answer envelope. This pins
+    // the whole of that: a page the budget admits, through the real sealer, measured as the
+    // socket sends it. A hundred and twenty-eight gauges a row is the most a boat reports.
+    const RELAY_MAX = 32 * 1024 * 1024
+    const paths = Object.fromEntries(
+      Array.from({ length: 128 }, (_, i) => [`electrical.batteries.${i}.capacity.stateOfCharge`, 0.123456789])
+    )
+    const row = (i: number) => ({ ...FRAME, ts: FRAME.ts + i * 60_000, path_values: paths }) as never
+    const offered = Array.from({ length: 5000 }, (_, i) => row(i))
+    const page = fitPage(offered, PAGE_MAX_BYTES)
+    expect(page.length).toBeLessThan(offered.length)
+    expect(page.length).toBeGreaterThan(1000)
+
+    const phone = device('kid-phone')
+    const verdict = sealer([phone.wire]).s.answer({ rows: page, clamped: true, next: page.length }, 'req-1')
+    expect(verdict.mode).toBe('sealed')
+    if (verdict.mode !== 'sealed') return
+    const onTheWire = Buffer.byteLength(JSON.stringify({ type: 'answer', id: 'req-1', frame: verdict.frame }))
+    expect(onTheWire).toBeLessThan(RELAY_MAX)
+    // And not by accident of a small page: the budget is spent, so the margin is the ratio.
+    expect(onTheWire).toBeGreaterThan(PAGE_MAX_BYTES)
+  })
+})

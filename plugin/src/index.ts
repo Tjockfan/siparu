@@ -25,7 +25,7 @@ import { CONFIG_SCHEMA, INTERNAL, Options, RELAY_URL, resolveOptions } from './c
 import { HealthResult, InventoryEntry, InventoryResult, LiveResult, SnapshotsQuery } from './contract'
 import { fingerprintOfEncoded } from './fingerprint'
 import { DYNAMIC_PREFIXES, MetricsState, SUBSCRIBED_PATHS } from './metrics'
-import { QueryService } from './query'
+import { PAGE_MAX_BYTES, QueryService } from './query'
 import { registerPairRoutes, retryPendingUnlinks, securityOff } from './pairing'
 import { registerConfigRoutes } from './config-routes'
 import { registerVoyageEditRoutes } from './voyage-routes'
@@ -607,8 +607,10 @@ export = (app: ServerAPI): Plugin => {
             // service and nowhere near Signal K - a read, never a command.
             onHistoryQuery: (p, q) => qs.pathSeries(p, q, Date.now()),
             // Her whole recorded rows over a window, the logbook read - the same store the local
-            // /snapshots serves, reached here and nowhere near Signal K.
-            onSnapshotsQuery: (q) => qs.snapshots(q, Date.now()),
+            // /snapshots serves, reached here and nowhere near Signal K. Held to the page
+            // budget here and not on the REST route: this answer crosses the relay in one
+            // sealed message, and the relay has a ceiling (query.ts PAGE_MAX_BYTES).
+            onSnapshotsQuery: (q) => qs.snapshots(q, Date.now(), PAGE_MAX_BYTES),
             // Her recent voyages, the list the local /voyages serves. The count is clamped to the
             // same 1..500 bounds the REST route enforces, since vl.list does not clamp its own.
             onVoyagesQuery: async (limit) => ({

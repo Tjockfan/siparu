@@ -64,6 +64,41 @@ export const LIMIT_DEFAULT = 200
 export const LIMIT_MAX = 5000
 
 /**
+ * The most a page of snapshot rows may weigh, as JSON, before the boat stops the page.
+ *
+ * LIMIT_MAX counts rows, and rows are not one size: a boat reporting engines, tanks and
+ * batteries writes a few kilobytes a minute, so five thousand of her minutes come to tens of
+ * megabytes, and the answer goes to the shore sealed, in one message, through a relay that
+ * drops anything over 32 MiB and closes the line it came on. The reader asks for rows; the
+ * wire carries bytes; the ceiling has to be in bytes. Sixteen mebibytes of JSON seals to
+ * about 21.3 MiB on the wire (base64url, four thirds), two thirds of the relay's limit, and
+ * holds a full day of minutes from a boat with 270 gauges. A page that stops short says so
+ * with `clamped` and says where the next one starts with `next`, so a reader keeps paging
+ * rather than counting rows to guess.
+ *
+ * The budget is the socket's, not the store's: the local REST route has no relay between it
+ * and the screen, so it is read without one (index.ts hands the budget to the socket path
+ * only). Measured against the serialised row, not estimated from the first one: rows differ
+ * when a gauge comes and goes, and the one that overflows is the one an estimate misses.
+ */
+export const PAGE_MAX_BYTES = 16 * 1024 * 1024
+
+/**
+ * The longest prefix of `rows` that fits the budget, never shorter than one row: a page that
+ * carries nothing cannot be paged past, and one row over budget is the boat's to send once
+ * rather than never. Only the rows, not the envelope: the few hundred bytes around them are
+ * nowhere near the margin the budget leaves.
+ */
+export function fitPage(rows: Snapshot[], budget: number): Snapshot[] {
+  let total = 0
+  for (let i = 0; i < rows.length; i++) {
+    total += Buffer.byteLength(JSON.stringify(rows[i]))
+    if (total > budget && i > 0) return rows.slice(0, i)
+  }
+  return rows
+}
+
+/**
  * How far back the raw record can be read at minute resolution.
  *
  * It used to be the current UTC day and nothing earlier, which was a reading cost decided as
@@ -140,7 +175,11 @@ export class QueryService {
     private rollups: RollupEngine
   ) {}
 
-  async snapshots(q: SnapshotsQuery, now: number): Promise<SnapshotsResult> {
+  /**
+   * `maxBytes` is the page's byte budget (PAGE_MAX_BYTES on the socket path); unbounded by
+   * default, which is what the local REST route wants.
+   */
+  async snapshots(q: SnapshotsQuery, now: number, maxBytes = Infinity): Promise<SnapshotsResult> {
     const limit = Math.min(Math.max(1, q.limit ?? LIMIT_DEFAULT), LIMIT_MAX)
     const offset = Math.max(0, q.offset ?? 0)
     const order = q.order ?? 'desc'
@@ -171,9 +210,15 @@ export class QueryService {
     rows = rows.filter((r) => r.ts >= (q.bucket === 1 ? 0 : (q.from ?? 0)) && r.ts <= to)
     rows.sort((a, b) => (order === 'asc' ? a.ts - b.ts : b.ts - a.ts))
     const total = rows.length
-    rows = rows.slice(offset, offset + limit)
-    if (offset + rows.length < total) clamped = true
-    return { rows, clamped, ...(floor === undefined ? {} : { minutesFrom: floor }) }
+    rows = fitPage(rows.slice(offset, offset + limit), maxBytes)
+    const next = offset + rows.length < total ? offset + rows.length : undefined
+    if (next !== undefined) clamped = true
+    return {
+      rows,
+      clamped,
+      ...(next === undefined ? {} : { next }),
+      ...(floor === undefined ? {} : { minutesFrom: floor })
+    }
   }
 
   /**

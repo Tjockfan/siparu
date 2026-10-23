@@ -145,9 +145,12 @@ export function sharedReads(raw: RawReads) {
     // Her flag answers two questions at once (plugin/src/query.ts): the page was cut, or the
     // window reached back past the minutes she keeps. This read asks for the second on purpose
     // and fills those days from the rollup above, so the flag means something was withheld
-    // only when the page came back full. Taking it at face value calls a complete answer
-    // partial, which is the same lie in the other direction.
-    let clamped = res.clamped && res.rows.length >= page;
+    // only when the page was cut. She says so outright with `next`: a page can stop short of
+    // the row count because her byte budget ran out first, and a short page from a wide boat
+    // is not the end of the window. A boat from before `next` is read as before, by the page
+    // coming back full. Taking the flag at face value calls a complete answer partial, which
+    // is the same lie in the other direction.
+    let clamped = res.next !== undefined || (res.clamped && res.rows.length >= page);
     if (q.limit !== undefined) {
       if (rows.length > q.limit) clamped = true;
       rows = rows.slice(0, q.limit);
