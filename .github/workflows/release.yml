@@ -43,7 +43,7 @@ jobs:
       # publish it will not authorise, so the failure reads as "package not found" rather
       # than "you are not signed in". Without that file npm reaches the default registry
       # and negotiates OIDC, which is the point of this workflow.
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
 
