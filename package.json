@@ -38,7 +38,8 @@
     "prepublishOnly": "bash tools/clean-room-scan.sh",
     "build:webapp": "npm --prefix webapp run build",
     "build:all": "npm run build && npm run build:webapp",
-    "ci:build": "npm --prefix ui ci && npm --prefix webapp ci && npm run build:all"
+    "ci:build": "npm --prefix ui ci && npm --prefix webapp ci && npm run build:all",
+    "ci:test": "npm --prefix ui ci && npm --prefix webapp ci && vitest run"
   },
   "dependencies": {
     "ws": "^8.21.0"
