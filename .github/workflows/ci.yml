@@ -1,9 +1,12 @@
-# CI has two layers:
-#  1. plugin-ci - Signal K's official reusable workflow: Linux x64/arm64, macOS,
-#     Windows (Node 20+22) plus an armv7/Venus OS run under QEMU. It verifies the
-#     package layout, entry point, schema, lifecycle, API usage, npm-pack integrity
-#     and the --ignore-scripts AppStore install.
-#  2. guards - the product's non-negotiables: the read-only proof, GET-only REST,
+# CI has three layers:
+#  1. plugin-ci - Signal K's official reusable workflow: Linux x64/arm64, macOS and
+#     Windows on Node 22 and 24. It verifies the package layout, entry point, schema,
+#     lifecycle, API usage, npm-pack integrity and the --ignore-scripts AppStore
+#     install, then installs the plugin into a real server and starts it.
+#  2. floor - the compatibility floor the README promises, Node 20 + signalk-server
+#     2.18, which the reusable workflow stopped covering when Node 20 reached end of
+#     life. The boats did not move on with it, so this job keeps proving it.
+#  3. guards - the product's non-negotiables: the read-only proof, GET-only REST,
 #     the map-stack licence gate, and no value imports from devDependencies.
 name: CI
 
@@ -17,9 +20,13 @@ jobs:
   plugin-ci:
     # Pinned to a commit SHA (supply chain). To update:
     # gh api repos/SignalK/signalk-server/commits/master --jq .sha
-    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@1806425cc9389e3de85c78609397043e67ea0f1d
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@9fd347062f40ea602dd7575a8648293b593efbca
     with:
-      node-versions: '["20", "22"]'
+      # The workflow refuses anything below 22 now. 20 is covered by the floor job below.
+      node-versions: '["22", "24"]'
+      # The one build every desktop and integration job then tests. 22 is what the
+      # release workflow builds the published package with, so CI tests that output.
+      build-node-version: '22'
       build-command: 'npm run ci:build'
       test-command: 'npm test'
       # Off by default in the reusable workflow, which meant the one thing every other job
@@ -28,6 +35,64 @@ jobs:
       # new install gets today, so a break at either end is visible before an owner meets it.
       enable-signalk-integration: true
       signalk-server-versions: '["2.18.0", "latest"]'
+
+  floor:
+    # The reusable workflow dropped Node 20 when it reached end of life. The installed
+    # base did not: Venus OS stable ships signalk-server 2.18 on Node 20, and that is
+    # the pairing the README names as the floor. plugin-ci proved it until it moved
+    # on; this job carries on the same way: build and test on 20, then pack the
+    # plugin, install it the way the AppStore does, into a real 2.18.0 server, and
+    # watch it come up.
+    name: Compatibility floor - Node 20 + signalk-server 2.18.0
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Build and test on Node 20
+        run: |
+          npm ci
+          npm run ci:build
+          npm test
+
+      - name: Install into signalk-server 2.18.0 the way the AppStore does
+        run: |
+          # npm pack prints the tarball name on stdout and its notices on stderr.
+          tgz=$(npm pack --ignore-scripts --pack-destination /tmp 2>/dev/null | tail -n 1)
+          mkdir -p /tmp/sk-floor
+          cd /tmp/sk-floor
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund signalk-server@2.18.0
+          # --ignore-scripts is how the AppStore installs a plugin. A package that needs
+          # a build step at install time breaks there, and that is rule one here.
+          npm install --ignore-scripts --no-audit --no-fund "/tmp/$tgz"
+          mkdir -p plugin-config-data
+          echo '{"enabled": true, "configuration": {}}' > plugin-config-data/siparu.json
+
+      - name: Start the server and watch the plugin come up
+        run: |
+          cd /tmp/sk-floor
+          # 2.18.0 takes its port from the environment; it has no -p flag.
+          export SIGNALK_NODE_CONFIG_DIR=/tmp/sk-floor PORT=3000
+          ./node_modules/.bin/signalk-server --sample-nmea0183-data --override-timestamps &
+          SK_PID=$!
+          trap 'kill $SK_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 45); do
+            curl -sf http://localhost:3000/signalk/v1/api/ > /dev/null && break
+            sleep 2
+          done
+          plugins=$(curl -sf http://localhost:3000/skServer/plugins)
+          echo "$plugins" | jq -r '.[] | "  \(.packageName // .id)  \(.state // "?")"'
+          echo "$plugins" | jq -e '.[] | select(.packageName == "signalk-siparu")' > /dev/null
+          # The plugin's own health route answers only once start() has run through. It
+          # reports "degraded" at this point, no data having arrived yet; the proof is
+          # that it answers at all, on this Node, inside this server.
+          curl -sf http://localhost:3000/plugins/siparu/health
+          echo
 
   guards:
     name: Product guards
