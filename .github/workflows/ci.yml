@@ -28,7 +28,10 @@ jobs:
       # release workflow builds the published package with, so CI tests that output.
       build-node-version: '22'
       build-command: 'npm run ci:build'
-      test-command: 'npm test'
+      # The workflow builds once and hands every test job the tree without its
+      # node_modules, then installs the root package only. The ui and webapp tests
+      # import their own dependencies, so the test command installs those first.
+      test-command: 'npm run ci:test'
       # Off by default in the reusable workflow, which meant the one thing every other job
       # only approximates was never done: install this plugin into a real server and start it.
       # 2.18.0 is the compatibility floor - the build Venus OS ships - and `latest` is what a
