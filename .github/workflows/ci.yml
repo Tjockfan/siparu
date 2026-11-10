@@ -20,7 +20,7 @@ jobs:
   plugin-ci:
     # Pinned to a commit SHA (supply chain). To update:
     # gh api repos/SignalK/signalk-server/commits/master --jq .sha
-    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@9fd347062f40ea602dd7575a8648293b593efbca
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@c071e0f47fd05d8009b0e16c6ddbe79c9f79481e
     with:
       # The workflow refuses anything below 22 now. 20 is covered by the floor job below.
       node-versions: '["22", "24"]'
